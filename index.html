@@ -576,7 +576,7 @@
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
 
 const APP_TOKEN = "0000";
-const APP_VERSION = "todo-v368"; // 與 sw.js 的 CACHE_NAME 保持一致
+const APP_VERSION = "todo-v369"; // 與 sw.js 的 CACHE_NAME 保持一致
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 function checkLogin() {
@@ -730,6 +730,17 @@ function applySide() {
   if (sideState === 0) { sf.style.display = 'none'; fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
   else { sf.style.display = 'flex'; fab.style.opacity = '1'; fab.style.pointerEvents = ''; fab.style.left = (sideState === 1 ? ((w - 46) / 2) : 14) + 'px'; }
 }
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab') return;
+  // 有輸入框 focus 時不攔截
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  e.preventDefault();
+  sideState = (sideState + 1) % 3;
+  playSound('swipe');
+  applySide();
+});
 
 function updateBanner() {
   const b = document.getElementById('netBanner');
