@@ -312,23 +312,7 @@
     .import-map-btns button{flex:1;padding:11px;border:none;border-radius:11px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;}
     .import-confirm-btn{background:var(--primary);color:#fff;}
     .import-cancel-btn{background:#E5E5EA;color:var(--label);}
-    #loginScreen{position:fixed;inset:0;z-index:999;background:var(--sidebar-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px calc(32px + var(--sab));}
-    #loginScreen.hidden{display:none;}
-    .login-logo{margin-bottom:8px;}
-    .login-title{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-0.3px;}
-    .login-sub{font-size:13px;color:rgba(255,255,255,0.45);margin-bottom:36px;}
-    .login-box{width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;}
-    .login-input{width:100%;padding:15px 16px;background:#2C2C2E;border:1.5px solid transparent;border-radius:13px;color:#fff;font-size:16px;font-family:inherit;outline:none;transition:border-color .18s;}
-    .login-input:focus{border-color:var(--primary);}
-    .login-input::placeholder{color:#636366;}
-    .login-input.shake{animation:shake .35s cubic-bezier(.36,.07,.19,.97);border-color:var(--red);}
-    @keyframes shake{10%,90%{transform:translateX(-3px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
-    .login-btn{width:100%;padding:15px;background:var(--primary);color:#fff;border:none;border-radius:13px;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;transition:opacity .15s;}
-    .login-btn:active{opacity:.82;}
-    .login-btn:disabled{background:var(--gray);cursor:default;}
-    .login-err{font-size:13px;color:var(--red);font-weight:600;text-align:center;min-height:18px;}
-    .login-remember{display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.55);font-size:13px;cursor:pointer;}
-    .login-remember input{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+
 
 ```
 /* ══ 選擇日期隱藏 input ══ */
@@ -339,30 +323,6 @@
 <body>
 
 <!-- 登入畫面 -->
-
-<div id="loginScreen">
-  <div class="login-logo">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="64" height="64">
-      <rect x="5" y="3" width="14" height="18" rx="2"/>
-      <path d="M9 3v2h6V3"/>
-      <line x1="9" y1="9" x2="15" y2="9"/>
-      <line x1="9" y1="13" x2="15" y2="13"/>
-      <line x1="9" y1="17" x2="12" y2="17"/>
-      <polyline points="7 9 8 10 9 8" stroke-width="1.8"/>
-    </svg>
-  </div>
-  <div class="login-title">宜修的待辦清單</div>
-  <div class="login-sub">請輸入密碼以繼續</div>
-  <div class="login-box">
-    <input type="password" id="loginPwd" class="login-input" placeholder="密碼" onkeydown="if(event.key==='Enter')doLogin()">
-    <label class="login-remember">
-      <input type="checkbox" id="loginRemember" checked>
-      記住登入狀態（30天）
-    </label>
-    <div class="login-err" id="loginErr"></div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">登入</button>
-  </div>
-</div>
 
 <div id="sidebar">
   <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增">
@@ -503,7 +463,7 @@
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" onchange="handleImport(event)">
       <div class="import-result" id="importResult"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="if(confirm('確定登出？'))doLogout()">登出</button>
+        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="location.reload()">重新載入</button>
         <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;flex-shrink:0;">讀取中…</span>
       </div>
     </div>
@@ -593,37 +553,10 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz-8ZUeu8D6KU8lfBn-qv2VVn-cufCo9TsgALa_WpnikWz8TX0To7e0IO97looAh5a5/exec";
 
-const APP_TOKEN = "Dg@23076419$$$";
-const APP_VERSION = "todo-v393"; // 與 sw.js 的 CACHE_NAME 保持一致
-const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
+const APP_VERSION = "todo-v394"; // 與 sw.js 的 CACHE_NAME 保持一致
 
-function checkLogin() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('authToken') || 'null');
-    if (!stored) return false;
-    if (Date.now() > stored.exp) { localStorage.removeItem('authToken'); return false; }
-    return stored.token === APP_TOKEN;
-  } catch { return false; }
-}
-function doLogin() {
-  const pwd = document.getElementById('loginPwd').value;
-  const errEl = document.getElementById('loginErr');
-  const remember = document.getElementById('loginRemember').checked;
-  if (!pwd) { shakeInput(); return; }
-  if (pwd !== APP_TOKEN) { errEl.textContent = '密碼錯誤，請重試'; shakeInput(); return; }
-  const ttl = remember ? TOKEN_TTL : (8 * 60 * 60 * 1000);
-  localStorage.setItem('authToken', JSON.stringify({ token: APP_TOKEN, exp: Date.now() + ttl }));
-  playSound('add');
-  document.getElementById('loginScreen').classList.add('hidden');
-  errEl.textContent = '';
-  init();
-}
-function doLogout() { localStorage.removeItem('authToken'); location.reload(); }
-function shakeInput() {
-  const el = document.getElementById('loginPwd');
-  el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
-  el.addEventListener('animationend', () => el.classList.remove('shake'), { once: true });
-}
+function checkLogin() { return true; }
+function doLogout() { location.reload(); }
 
 let allT = [], allC = [], currentF = '今天';
 let syncLogs = [], pendingQueue = [];
@@ -1826,10 +1759,7 @@ async function init() {
   renderAll();
 }
 
-window.onload = () => {
-  if (checkLogin()) { document.getElementById('loginScreen').classList.add('hidden'); init(); }
-  else { setTimeout(()=>document.getElementById('loginPwd').focus(),100); }
-};
+window.onload = () => { init(); };
 </script>
 
 <script>
