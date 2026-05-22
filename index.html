@@ -313,6 +313,39 @@
     .import-confirm-btn{background:var(--primary);color:#fff;}
     .import-cancel-btn{background:#E5E5EA;color:var(--label);}
 
+    /* 使用教學 */
+    #guideM .sheet{max-height:90dvh;}
+    #guideM .sh-body{padding:0 14px 12px;}
+    .guide-tabs{display:flex;gap:4px;padding:4px;background:var(--bg);border-radius:11px;margin-bottom:12px;position:sticky;top:0;z-index:5;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+    .guide-tabs::-webkit-scrollbar{display:none;}
+    .guide-tab{flex:1 0 auto;min-width:54px;padding:8px 10px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;color:var(--gray);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
+    .guide-tab.active{background:var(--card);color:var(--primary);box-shadow:0 1px 2px rgba(0,0,0,0.06);}
+    .guide-page{display:none;animation:fadeScaleIn .2s ease;}
+    .guide-page.active{display:block;}
+    .guide-h{font-size:17px;font-weight:800;color:var(--label);margin:4px 0 8px;letter-spacing:-0.3px;}
+    .guide-sub{font-size:13px;color:var(--gray);margin-bottom:14px;line-height:1.55;}
+    .guide-step{display:flex;gap:10px;margin-bottom:11px;align-items:flex-start;}
+    .guide-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+    .guide-txt{flex:1;font-size:14px;line-height:1.55;color:var(--label);}
+    .guide-txt b{font-weight:700;color:var(--label);}
+    .guide-txt code{background:var(--bg);padding:1px 6px;border-radius:5px;font-size:13px;font-family:-apple-system,SFMono-Regular,Menlo,monospace;color:#0066CC;}
+    .guide-tip{background:#FFF8E1;border-left:3px solid var(--orange);border-radius:0 9px 9px 0;padding:9px 11px;margin:9px 0;font-size:13px;color:#7A5A00;line-height:1.5;}
+    .guide-tip b{color:#5C4400;}
+    .guide-card{background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:9px;}
+    .guide-card-title{font-size:14px;font-weight:700;color:var(--label);margin-bottom:5px;display:flex;align-items:center;gap:6px;}
+    .guide-card-body{font-size:13px;color:var(--gray);line-height:1.55;}
+    .guide-card-body b{color:var(--label);font-weight:600;}
+    .guide-icon-demo{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;background:var(--primary);color:#fff;font-size:13px;font-weight:700;margin:0 2px;vertical-align:middle;}
+    .guide-key{display:inline-block;padding:1px 7px;border-radius:5px;background:#E5E5EA;color:var(--label);font-size:12px;font-weight:600;margin:0 1px;}
+    .guide-nav{display:flex;gap:8px;margin-top:14px;padding-top:10px;border-top:.5px solid #E5E5EA;}
+    .guide-nav-btn{flex:1;padding:11px;border:none;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .guide-nav-btn.prev{background:#E5E5EA;color:var(--label);}
+    .guide-nav-btn.next{background:var(--primary);color:#fff;}
+    .guide-nav-btn:disabled{opacity:0.35;cursor:default;}
+    .guide-dots{display:flex;justify-content:center;gap:5px;margin:8px 0 4px;}
+    .guide-dot{width:6px;height:6px;border-radius:50%;background:#D1D1D6;transition:background .18s, width .18s;}
+    .guide-dot.active{background:var(--primary);width:18px;border-radius:3px;}
+
 
 ```
 /* ══ 選擇日期隱藏 input ══ */
@@ -463,8 +496,142 @@
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" onchange="handleImport(event)">
       <div class="import-result" id="importResult"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="openGuide()">使用教學</button>
         <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="location.reload()">重新載入</button>
         <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;flex-shrink:0;">讀取中…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 使用教學 -->
+<div id="guideM" class="modal" onclick="if(event.target===this)closeM('guideM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title">使用教學</div>
+    <div class="sh-body">
+      <div class="guide-tabs" id="guideTabs">
+        <button class="guide-tab active" onclick="switchGuide(0)">安裝</button>
+        <button class="guide-tab" onclick="switchGuide(1)">版面</button>
+        <button class="guide-tab" onclick="switchGuide(2)">基本</button>
+        <button class="guide-tab" onclick="switchGuide(3)">手勢</button>
+        <button class="guide-tab" onclick="switchGuide(4)">到場</button>
+        <button class="guide-tab" onclick="switchGuide(5)">匯入</button>
+      </div>
+
+      <!-- Page 0：加到主畫面 -->
+      <div class="guide-page active">
+        <div class="guide-h">📱 加到主畫面</div>
+        <div class="guide-sub">把網頁變成桌面 App，全螢幕體驗、離線也能用。</div>
+        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt">用 <b>Safari</b> 開啟這個網頁（其他瀏覽器不支援這功能）。</div></div>
+        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt">點底部正中央的 <b>分享按鈕</b>（方框朝上箭頭）。</div></div>
+        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt">在選單裡往下滑找到 <b>「加入主畫面」</b>。</div></div>
+        <div class="guide-step"><div class="guide-num">4</div><div class="guide-txt">右上角點 <b>「加入」</b>。完成！桌面會出現一個 App 圖示。</div></div>
+        <div class="guide-tip"><b>為什麼要加到主畫面？</b><br>從圖示開啟才能進入「全螢幕模式」（沒有 Safari 網址列），體驗才會像原生 App，而且離線時也能正常使用。</div>
+      </div>
+
+      <!-- Page 1：版面介紹 -->
+      <div class="guide-page">
+        <div class="guide-h">🗺️ 版面介紹</div>
+        <div class="guide-sub">熟悉每個區塊位置，操作會更順手。</div>
+        <div class="guide-card">
+          <div class="guide-card-title">① 抬頭列（最上方黑色橫條）</div>
+          <div class="guide-card-body">顯示目前 <b>檢視名稱</b>（例如「今天」「全部」），右側有 <b>到場時間</b> 按鈕跟 <b>🔍 搜尋</b>。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">② 左側欄（深色直條）</div>
+          <div class="guide-card-body">最上是 <b>＋ 藍色圓鈕（FAB）</b>，下方依序是「今天」「全部」「已完成」與自訂分類。點任一項可切換檢視。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">③ 任務清單（主要區域）</div>
+          <div class="guide-card-body">每張卡片左邊圓圈打勾 = 完成，點卡片內容區 = 開選單，<b>左側彩色邊條</b>是分類顏色，紅邊代表逾期。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">④ FAB 按鈕（左上 ＋）</div>
+          <div class="guide-card-body"><b>點一下</b>＝快速新增（只填名稱跟分類）；<b>長按</b>＝開啟完整新增視窗（含日期、優先級、備註）。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">⑤ 側欄底部兩顆按鈕</div>
+          <div class="guide-card-body">需要先把側欄展開才看得到。<b>🏷️ 分類管理</b>＝新增/改名/刪除/排序分類；<b>🔄 同步</b>＝看同步狀態、立即同步、匯入 Excel、重新載入。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">⑥ 同步狀態列（藍/橘條）</div>
+          <div class="guide-card-body">出現在抬頭下方。橘色＝離線或有未同步操作；藍色＝同步中；沒出現＝一切正常。</div>
+        </div>
+      </div>
+
+      <!-- Page 2：基本操作 -->
+      <div class="guide-page">
+        <div class="guide-h">✏️ 基本操作</div>
+        <div class="guide-sub">最常用的四種動作。</div>
+        <div class="guide-card">
+          <div class="guide-card-title">新增任務</div>
+          <div class="guide-card-body">點側欄左上 <b>藍色 ＋</b> 按鈕 → 輸入任務名稱 → 選分類 → 按「新增」。<br>需要設定日期、優先級、備註的話，<b>長按 ＋ 按鈕</b>開啟完整視窗。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">完成任務</div>
+          <div class="guide-card-body">點任務卡片 <b>最左邊的圓圈</b>，打勾代表完成，會自動移到「已完成」分類。再點一次可取消完成。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">編輯任務</div>
+          <div class="guide-card-body">點任務卡片的 <b>文字區域</b>（不是圓圈），會跳出選單。選「快速編輯」改名稱跟分類；想改更多就開啟完整視窗。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">刪除任務</div>
+          <div class="guide-card-body">點任務文字 → 跳出選單 → 選「快速編輯」進入完整視窗 → 最下方有紅色 <b>「刪除此任務」</b> 按鈕。</div>
+        </div>
+        <div class="guide-tip"><b>P# 是什麼？</b><br>優先級（Priority），數字越小越優先。預設 P99（最低）。可以填 1~99，例如 P1 排最上面。</div>
+      </div>
+
+      <!-- Page 3：進階手勢 -->
+      <div class="guide-page">
+        <div class="guide-h">👆 進階手勢</div>
+        <div class="guide-sub">這些手勢讓操作更快。</div>
+        <div class="guide-card">
+          <div class="guide-card-title">左右滑動切換側欄寬度</div>
+          <div class="guide-card-body">在主畫面 <b>左右滑動</b> 可切換側欄三種寬度：<br>• <b>隱藏</b>（最寬畫面）<br>• <b>窄</b>（只顯示圖示）← 預設<br>• <b>寬</b>（顯示完整名稱與計數）</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">長按任務 = 直接開啟編輯</div>
+          <div class="guide-card-body"><b>長按任務卡片</b>（按住約 0.5 秒）直接進入完整編輯視窗，跳過彈出選單那步。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">長按「全部」= 日期篩選</div>
+          <div class="guide-card-body"><b>長按側欄的「全部」</b>，會跳出日期選擇器，可篩選「某日以前」的任務（用來抓近期該做的事）。標題會變成 mm/dd，再點一下標題可清除篩選。</div>
+        </div>
+        <div class="guide-card">
+          <div class="guide-card-title">任務選單裡的快捷鈕</div>
+          <div class="guide-card-body">點任務文字後跳出的選單裡有：<br>• <b>快速編輯</b>：只改名稱跟分類<br>• <b>設為今天</b> / <b>設為明天</b>：一鍵改日期<br>• <b>選擇日期</b>：跳日曆選擇</div>
+        </div>
+        <div class="guide-tip"><b>桌面版小撇步</b>：用鍵盤的 <span class="guide-key">Tab</span> 可循環切換側欄三種寬度。</div>
+      </div>
+
+      <!-- Page 4：到場時間 -->
+      <div class="guide-page">
+        <div class="guide-h">🕒 到場時間</div>
+        <div class="guide-sub">抬頭右上的「到場時間」按鈕用法。</div>
+        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt"><b>點一下</b>按鈕：記錄當下時間（例如 09:23），按鈕會變成藍色顯示時間。</div></div>
+        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt"><b>再點一下</b>已記錄的按鈕：跳出確認後清除。</div></div>
+        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt"><b>長按</b>按鈕：展開最近 5 筆到場記錄（含日期）。</div></div>
+        <div class="guide-tip"><b>用途範例</b><br>到客戶現場、上下班打卡、會議簽到、訪客報到等需要記錄「我幾點到」的場合。記錄保存在裝置內，不會上傳到雲端。</div>
+      </div>
+
+      <!-- Page 5：Excel 匯入 -->
+      <div class="guide-page">
+        <div class="guide-h">📊 Excel / CSV 匯入</div>
+        <div class="guide-sub">一次把現成的清單批次匯入（僅電腦版可用）。</div>
+        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt">在電腦上打開這個 App，展開側欄、點 <b>🔄 同步</b>。</div></div>
+        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt">點 <b>「匯入 Excel / CSV」</b> 按鈕，選擇檔案（支援 .xlsx / .xls / .csv）。</div></div>
+        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt">跳出「欄位對應」視窗，把 Excel 的每一欄對應到：<br>• <b>任務名稱</b>（必填）<br>• 分類 / 截止日期 / 優先級 / 備註（選填）</div></div>
+        <div class="guide-step"><div class="guide-num">4</div><div class="guide-txt">按「開始匯入」，重複的任務會自動跳過。匯入後會自動同步到雲端。</div></div>
+        <div class="guide-tip"><b>日期格式</b><br>支援 <code>2024-12-25</code>、<code>2024/12/25</code>、Excel 日期序號等常見格式。無法辨識的會變成空白。</div>
+        <div class="guide-tip"><b>為何手機看不到匯入按鈕？</b><br>手機上選檔案的體驗很差，所以刻意隱藏。請改用電腦操作。</div>
+      </div>
+
+      <div class="guide-dots" id="guideDots"></div>
+      <div class="guide-nav">
+        <button class="guide-nav-btn prev" id="guidePrev" onclick="prevGuide()">上一頁</button>
+        <button class="guide-nav-btn next" id="guideNext" onclick="nextGuide()">下一頁</button>
       </div>
     </div>
   </div>
@@ -551,12 +718,71 @@
 </div>
 
 <script>
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz-8ZUeu8D6KU8lfBn-qv2VVn-cufCo9TsgALa_WpnikWz8TX0To7e0IO97looAh5a5/exec";
 
-const APP_VERSION = "todo-v395"; // 與 sw.js 的 CACHE_NAME 保持一致
+const APP_VERSION = "todo-v396"; // 與 sw.js 的 CACHE_NAME 保持一致
 
 function checkLogin() { return true; }
 function doLogout() { location.reload(); }
+
+// ── 使用教學 ──────────────────────────────────────────────────
+const GUIDE_VERSION = 'v1'; // 改版時遞增可讓所有使用者重新看到教學
+let _guideIdx = 0;
+const _guideTotal = 6;
+
+function openGuide() {
+  _guideIdx = 0;
+  renderGuideState();
+  openModal('guideM');
+}
+function switchGuide(idx) {
+  playSound('tap');
+  _guideIdx = idx;
+  renderGuideState();
+}
+function nextGuide() {
+  if (_guideIdx >= _guideTotal - 1) { closeM('guideM'); markGuideSeen(); return; }
+  playSound('select');
+  _guideIdx++;
+  renderGuideState();
+}
+function prevGuide() {
+  if (_guideIdx <= 0) return;
+  playSound('select');
+  _guideIdx--;
+  renderGuideState();
+}
+function renderGuideState() {
+  // 切換 tab 與 page
+  const tabs = document.querySelectorAll('#guideTabs .guide-tab');
+  const pages = document.querySelectorAll('#guideM .guide-page');
+  tabs.forEach((t, i) => t.classList.toggle('active', i === _guideIdx));
+  pages.forEach((p, i) => p.classList.toggle('active', i === _guideIdx));
+  // 滾動到頂
+  const body = document.querySelector('#guideM .sh-body');
+  if (body) body.scrollTop = 0;
+  // 滾動 tabs 讓 active 那顆置中（手機螢幕窄時必要）
+  const activeTab = tabs[_guideIdx];
+  if (activeTab) {
+    const tabsBar = document.getElementById('guideTabs');
+    const offset = activeTab.offsetLeft - (tabsBar.clientWidth / 2) + (activeTab.clientWidth / 2);
+    tabsBar.scrollTo({ left: offset, behavior: 'smooth' });
+  }
+  // 上下頁按鈕
+  document.getElementById('guidePrev').disabled = _guideIdx === 0;
+  const next = document.getElementById('guideNext');
+  next.textContent = _guideIdx === _guideTotal - 1 ? '完成 ✓' : '下一頁';
+  // 進度點
+  const dotsEl = document.getElementById('guideDots');
+  if (dotsEl) dotsEl.innerHTML = Array.from({length:_guideTotal}, (_,i)=>`<div class="guide-dot ${i===_guideIdx?'active':''}"></div>`).join('');
+}
+function markGuideSeen() {
+  localStorage.setItem('guideSeen', GUIDE_VERSION);
+}
+function shouldShowGuide() {
+  return localStorage.getItem('guideSeen') !== GUIDE_VERSION;
+}
+
 
 let allT = [], allC = [], currentF = '今天';
 let syncLogs = [], pendingQueue = [];
@@ -1757,6 +1983,10 @@ async function init() {
   const synced = await fullSync('啟動');
   if (synced) await autoCleanDone();
   renderAll();
+  // 首次使用自動跳出教學
+  if (shouldShowGuide()) {
+    setTimeout(() => { openGuide(); }, 600);
+  }
 }
 
 window.onload = () => { init(); };
