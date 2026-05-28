@@ -42,6 +42,7 @@
       transition:width 0.26s cubic-bezier(.32,.72,0,1);
       overflow:hidden;
       overscroll-behavior:none;
+      position:relative;z-index:700;
     }
     #fab {
       flex-shrink:0;
@@ -56,6 +57,20 @@
       -webkit-tap-highlight-color:transparent;
     }
     #fab:active{transform:scale(.9);}
+    #fab.syncing { animation: fabSpin 1s linear infinite; }
+    #fab.offline { opacity: 0.6; }
+    @keyframes fabSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+    @keyframes badgePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.6;transform:scale(1.2)} }
+    #fabBadge{
+      display:none;position:absolute;top:-4px;right:-4px;
+      background:#FF3B30;color:#fff;
+      font-size:10px;font-weight:700;
+      min-width:16px;height:16px;border-radius:8px;
+      align-items:center;justify-content:center;
+      padding:0 4px;box-sizing:border-box;
+      pointer-events:none;
+    }
+    #fabBadge.show{display:flex;}
     #sideList{
       flex:1;
       overflow-y:scroll;overflow-x:hidden;
@@ -132,8 +147,8 @@
       display:flex;align-items:center;gap:10px;
     }
     #vTitle{font-size:22px;font-weight:800;color:#fff;flex:1;margin:0;letter-spacing:-0.3px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    #titleDateInput{display:none;border:none;border-bottom:2px solid rgba(255,255,255,0.7);background:rgba(255,255,255,0.15);color:#fff;font-size:15px;font-weight:700;font-family:inherit;outline:none;padding:4px 6px;border-radius:6px 6px 0 0;color-scheme:dark;width:140px;flex-shrink:0;}
-    #allFilterMenu{display:none;position:fixed;z-index:300;background:var(--card);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.28);min-width:200px;overflow:visible;}
+    
+    #allFilterMenu{display:none;position:fixed;z-index:600;background:var(--card);border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.28);min-width:200px;overflow:visible;}
     #allFilterMenu.open{display:block;}
     .afm-item{display:flex;align-items:center;padding:13px 16px;font-size:15px;font-weight:500;color:var(--label);border-bottom:.5px solid #E5E5EA;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;}
     .afm-item:last-child{border-bottom:none;}
@@ -177,21 +192,48 @@
     .srch-x{position:absolute;right:4px;color:#636366;display:none;cursor:pointer;padding:4px;width:24px;height:24px;}
     #srchIcon.has-query{background:var(--primary);animation:srchPulse 1.4s ease-in-out infinite;}
     @keyframes srchPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,122,255,.7);}50%{box-shadow:0 0 0 7px rgba(0,122,255,0);}}
-    #netBanner{flex-shrink:0;display:none;padding:5px 12px;font-size:12px;font-weight:600;text-align:center;}
-    #netBanner.offline{display:block;background:var(--orange);color:#fff;}
-    #netBanner.pending{display:block;background:var(--orange);color:#fff;}
-    #netBanner.syncing{display:block;background:var(--primary);color:#fff;}
+    
     #listWrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 8px calc(var(--sab)+20px);-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;}
+    #importProgress{
+      display:none;flex-shrink:0;
+      padding:8px 12px;margin:0;
+      background:var(--card);border-bottom:.5px solid var(--sep);
+    }
+    #importProgress.show{display:block;}
+    .ip-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+    .ip-label{font-size:13px;font-weight:600;color:var(--label);}
+    .ip-count{font-size:12px;color:var(--gray);}
+    .ip-bar-wrap{height:6px;background:var(--sep);border-radius:3px;overflow:hidden;}
+    .ip-bar{height:100%;border-radius:3px;transition:width .3s ease;width:0%;}
+    .ip-bar.running{background:var(--primary);}
+    .ip-bar.retrying{background:var(--orange);}
+    .ip-bar.done{background:#34C759;}
+    .ip-bar.failed{background:var(--red);}
+    .ip-status{font-size:11px;color:var(--gray);margin-top:4px;text-align:right;}
+    .ip-error-row{display:none;justify-content:space-between;align-items:center;margin-top:6px;}
+    .ip-error-row.show{display:flex;}
+    .ip-error-msg{font-size:12px;color:var(--red);font-weight:600;}
+    .ip-retry-btn{font-size:12px;font-weight:700;color:#fff;background:var(--primary);border:none;border-radius:8px;padding:5px 12px;cursor:pointer;white-space:nowrap;}
     #listWrap::-webkit-scrollbar{display:none;}
-    .card{background:var(--card);border-radius:11px;margin-bottom:7px;display:flex;align-items:center;box-shadow:0 1px 2px rgba(0,0,0,0.06);user-select:none;-webkit-user-select:none;}
+    .card{
+      background:var(--card);border-radius:11px;margin-bottom:7px;
+      display:flex;align-items:center;
+      box-shadow:0 1px 2px rgba(0,0,0,0.06);
+      user-select:none;-webkit-user-select:none;
+      touch-action:manipulation;
+      content-visibility:auto;
+      contain-intrinsic-size:auto 78px;
+    }
+    .card:has(.task-note){contain-intrinsic-size:auto 95px;}
     .card.overdue-card{border-left:3px solid var(--red);border-radius:0 11px 11px 0;}
-    .chk-area{padding:13px 9px 13px 13px;cursor:pointer;flex-shrink:0;}
-    .checkbox{width:24px;height:24px;border:2px solid #C7C7CC;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+    .chk-area{padding:13px 9px 13px 13px;cursor:pointer;flex-shrink:0;touch-action:manipulation;}
+    .checkbox{width:24px;height:24px;border:2px solid #C7C7CC;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .15s;touch-action:manipulation;}
     .checkbox.done{background:var(--primary);border-color:var(--primary);}
     .checkbox.done::after{content:'✓';color:#fff;font-size:13px;font-weight:800;}
-    .info{flex:1;padding:12px 11px 12px 0;overflow:hidden;cursor:pointer;}
+    .info{flex:1;padding:12px 11px 12px 0;overflow:hidden;cursor:pointer;touch-action:manipulation;}
     .task-title{-webkit-text-size-adjust:none;text-size-adjust:none;font-size:17px;font-weight:600;color:var(--label);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;display:block;width:100%;}
     .task-title.done{text-decoration:line-through;color:var(--gray);font-weight:400;}
+    .card.empty-task-card{background:#FFF8E7;border-left:3px solid var(--red);}
     .task-meta{display:flex;align-items:center;gap:6px;margin-top:2px;}
     .meta-cat{-webkit-text-size-adjust:none;text-size-adjust:none;font-size:11px;font-weight:700;color:#fff;background:var(--gray);padding:2px 7px;border-radius:5px;flex-shrink:0;max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .meta-date{-webkit-text-size-adjust:none;text-size-adjust:none;font-size:12px;color:var(--gray);flex-shrink:0;}
@@ -200,7 +242,7 @@
     .task-note{-webkit-text-size-adjust:none;text-size-adjust:none;font-size:12px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;width:100%;}
     .empty-state{text-align:center;color:var(--gray);padding:50px 20px;font-size:15px;line-height:2;}
     .empty-state .emo{display:flex;justify-content:center;margin-bottom:12px;}
-    #quickM{display:none;position:fixed;z-index:200;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
+    #quickM{display:none;position:fixed;z-index:820;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
     #quickM.open{display:block;}
     @keyframes fadeScaleIn{from{opacity:0;transform:scale(0.92) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
     .quick-row{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
@@ -210,7 +252,7 @@
     #quickCat{flex:1;padding:12px 12px;border:none;border-radius:10px;background:var(--bg);font-size:17px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;cursor:pointer;}
     #quickSave{padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     #quickSave:active{opacity:.85;}
-    #quickOverlay{display:none;position:fixed;inset:0;z-index:199;}
+    #quickOverlay{display:none;position:fixed;inset:0;z-index:819;background:rgba(0,0,0,.35);}
     #quickOverlay.open{display:block;}
     #ctxOverlay{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.35);}
     #ctxOverlay.open{display:block;}
@@ -221,11 +263,11 @@
     .ctx-item:last-child{border-bottom:none;}
     .ctx-item:active{background:var(--bg);}
     /* 快速編輯浮窗 */
-    #quickEditM{display:none;position:fixed;z-index:510;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
+    #quickEditM{display:none;position:fixed;z-index:810;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
     #quickEditM.open{display:block;}
-    #quickEditOverlay{display:none;position:fixed;inset:0;z-index:509;}
+    #quickEditOverlay{display:none;position:fixed;inset:0;z-index:809;background:rgba(0,0,0,.35);}
     #quickEditOverlay.open{display:block;}
-    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.48);align-items:flex-end;z-index:100;}
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.48);align-items:flex-end;z-index:800;}
     .modal.open{display:flex;}
     .sheet{background:var(--card);width:100%;border-radius:20px 20px 0 0;padding-bottom:calc(var(--sab) + 6px);display:flex;flex-direction:column;max-height:88dvh;animation:slideUp .3s cubic-bezier(.32,.72,0,1);position:relative;transition:transform .25s cubic-bezier(.32,.72,0,1);will-change:transform;}
     @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
@@ -235,6 +277,7 @@
     .sh-body{flex:1;overflow-y:auto;padding:2px 12px 10px;-webkit-overflow-scrolling:touch;transition:max-height .25s cubic-bezier(.32,.72,0,1);touch-action:pan-y;}
     .sh-body::-webkit-scrollbar{display:none;}
     #catM .sheet,#syncM .sheet{max-height:72dvh;}
+    #catM .sheet{padding-bottom:0;}
     #syncM .sh-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
     .f{width:100%;padding:9px 11px;border:none;border-radius:9px;background:var(--bg);font-size:15px;font-family:inherit;color:var(--label);margin-bottom:6px;outline:none;display:block;-webkit-appearance:none;appearance:none;}
     .f::placeholder{color:#AEAEB2;}
@@ -249,17 +292,17 @@
     .cat-row:last-child{border-bottom:none;}
     .cat-name{flex:1;font-size:14px;font-weight:600;color:var(--label);}
     .cat-acts{display:flex;gap:8px;flex-shrink:0;align-items:center;}
-    .cat-act{font-size:13px;font-weight:600;cursor:pointer;}
-    .cat-color-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0;cursor:pointer;border:2px solid transparent;transition:transform .15s;}
+    .cat-act{font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;}
+    .cat-color-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0;cursor:pointer;border:2px solid transparent;transition:transform .15s;touch-action:manipulation;}
     .cat-color-dot:active{transform:scale(.88);}
-    .color-picker-wrap{display:none;position:fixed;z-index:300;background:var(--card);border-radius:14px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);flex-wrap:wrap;gap:8px;width:188px;}
+    .color-picker-wrap{display:none;position:fixed;z-index:850;background:var(--card);border-radius:14px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);flex-wrap:wrap;gap:8px;width:188px;}
     .color-picker-wrap.open{display:flex;}
-    .cp-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s;flex-shrink:0;}
+    .cp-swatch{width:28px;height:28px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform .15s;flex-shrink:0;touch-action:manipulation;}
     .cp-swatch:active{transform:scale(.88);}
     .cp-swatch.selected{border-color:#1C1C1E;box-shadow:0 0 0 2px #fff,0 0 0 4px #1C1C1E;}
     .card.cat-colored{border-left:3px solid var(--cat-color,var(--gray));border-radius:0 11px 11px 0;}
     .card.overdue-card.cat-colored{border-left:3px solid var(--red);}
-    .move-btn{width:30px;height:30px;border:none;border-radius:8px;background:#F2F2F7;color:var(--label);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+    .move-btn{width:30px;height:30px;border:none;border-radius:8px;background:#F2F2F7;color:var(--label);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
     .move-btn:active{background:#E5E5EA;}
     .move-btn:disabled{opacity:0.25;pointer-events:none;}
     .cat-add-row{display:flex;gap:8px;align-items:center;margin-top:8px;padding-top:8px;border-top:.5px solid #E5E5EA;}
@@ -299,7 +342,7 @@
     .import-result{font-size:12px;padding:8px 10px;border-radius:8px;margin-top:6px;display:none;line-height:1.6;}
     .import-result.ok{background:#E8F8ED;color:#1A7A35;}
     .import-result.err{background:#FFE5E5;color:#C0392B;}
-    #importMapModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;padding:20px;}
+    #importMapModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:810;align-items:center;justify-content:center;padding:20px;}
     #importMapModal.open{display:flex;}
     .import-map-sheet{background:var(--card);border-radius:16px;width:100%;max-width:420px;padding:20px;display:flex;flex-direction:column;gap:10px;max-height:90dvh;overflow-y:auto;}
     .import-map-title{font-size:16px;font-weight:700;color:var(--label);text-align:center;margin-bottom:4px;}
@@ -313,55 +356,52 @@
     .import-confirm-btn{background:var(--primary);color:#fff;}
     .import-cancel-btn{background:#E5E5EA;color:var(--label);}
 
-    /* 使用教學 */
-    #guideM .sheet{max-height:90dvh;}
-    #guideM .sh-body{padding:0 14px 12px;}
-    .guide-tabs{display:flex;gap:4px;padding:4px;background:var(--bg);border-radius:11px;margin-bottom:12px;position:sticky;top:0;z-index:5;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-    .guide-tabs::-webkit-scrollbar{display:none;}
-    .guide-tab{flex:1 0 auto;min-width:54px;padding:8px 10px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;color:var(--gray);cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;white-space:nowrap;}
-    .guide-tab.active{background:var(--card);color:var(--primary);box-shadow:0 1px 2px rgba(0,0,0,0.06);}
-    .guide-page{display:none;animation:fadeScaleIn .2s ease;}
-    .guide-page.active{display:block;}
-    .guide-h{font-size:17px;font-weight:800;color:var(--label);margin:4px 0 8px;letter-spacing:-0.3px;}
-    .guide-sub{font-size:13px;color:var(--gray);margin-bottom:14px;line-height:1.55;}
-    .guide-step{display:flex;gap:10px;margin-bottom:11px;align-items:flex-start;}
-    .guide-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px;}
-    .guide-txt{flex:1;font-size:14px;line-height:1.55;color:var(--label);}
-    .guide-txt b{font-weight:700;color:var(--label);}
-    .guide-txt code{background:var(--bg);padding:1px 6px;border-radius:5px;font-size:13px;font-family:-apple-system,SFMono-Regular,Menlo,monospace;color:#0066CC;}
-    .guide-tip{background:#FFF8E1;border-left:3px solid var(--orange);border-radius:0 9px 9px 0;padding:9px 11px;margin:9px 0;font-size:13px;color:#7A5A00;line-height:1.5;}
-    .guide-tip b{color:#5C4400;}
-    .guide-card{background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:9px;}
-    .guide-card-title{font-size:14px;font-weight:700;color:var(--label);margin-bottom:5px;display:flex;align-items:center;gap:6px;}
-    .guide-card-body{font-size:13px;color:var(--gray);line-height:1.55;}
-    .guide-card-body b{color:var(--label);font-weight:600;}
-    .guide-icon-demo{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:5px;background:var(--primary);color:#fff;font-size:13px;font-weight:700;margin:0 2px;vertical-align:middle;}
-    .guide-key{display:inline-block;padding:1px 7px;border-radius:5px;background:#E5E5EA;color:var(--label);font-size:12px;font-weight:600;margin:0 1px;}
-    .guide-nav{display:flex;gap:8px;margin-top:14px;padding-top:10px;border-top:.5px solid #E5E5EA;}
-    .guide-nav-btn{flex:1;padding:11px;border:none;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-    .guide-nav-btn.prev{background:#E5E5EA;color:var(--label);}
-    .guide-nav-btn.next{background:var(--primary);color:#fff;}
-    .guide-nav-btn:disabled{opacity:0.35;cursor:default;}
-    .guide-dots{display:flex;justify-content:center;gap:5px;margin:8px 0 4px;}
-    .guide-dot{width:6px;height:6px;border-radius:50%;background:#D1D1D6;transition:background .18s, width .18s;}
-    .guide-dot.active{background:var(--primary);width:18px;border-radius:3px;}
-
-
-```
-/* ══ 選擇日期隱藏 input ══ */
-```
+    /* 同步健康檢查提醒橫幅 */
+    #syncReminder{
+      display:none;position:fixed;
+      top:calc(var(--sat) + 8px);left:8px;right:8px;
+      z-index:8000;
+      background:#FFF3CD;color:#856404;
+      border:1px solid #FFE08A;border-radius:12px;
+      padding:10px 12px;
+      box-shadow:0 4px 14px rgba(0,0,0,.18);
+      align-items:center;gap:10px;
+      font-size:13px;font-weight:600;
+      animation:fadeScaleIn .2s cubic-bezier(.32,.72,0,1);
+    }
+    #syncReminder.show{display:flex;}
+    #syncReminder.urgent{background:#F8D7DA;color:#721C24;border-color:#F5C6CB;}
+    #syncReminder .sr-msg{flex:1;line-height:1.4;}
+    #syncReminder .sr-btn{
+      flex-shrink:0;padding:6px 12px;
+      background:var(--primary);color:#fff;
+      border:none;border-radius:8px;
+      font-size:13px;font-weight:700;
+      font-family:inherit;cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+    }
+    #syncReminder .sr-btn.secondary{background:transparent;color:#856404;}
+    #syncReminder.urgent .sr-btn.secondary{color:#721C24;}
+    #syncReminder .sr-btn:disabled{opacity:0.5;cursor:default;}
 
   </style>
 </head>
 <body>
 
-<!-- 登入畫面 -->
+<!-- 同步健康檢查提醒（body 直接子元素，z-index 高於主畫面） -->
+<div id="syncReminder">
+  <span class="sr-msg">⚠️ 已 <span id="syncReminderDays"></span> 天未同步</span>
+  <button class="sr-btn" onclick="doSyncFromReminder()">立即同步</button>
+  <button class="sr-btn secondary" onclick="dismissSyncReminder()">稍後</button>
+</div>
+
 
 <div id="sidebar">
-  <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="26" height="26">
+  <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增" style="position:relative;">
+    <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="26" height="26">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
     </svg>
+    <span id="fabBadge"></span>
   </button>
   <div id="sideList"></div>
   <div id="sideFoot">
@@ -383,7 +423,6 @@
 <div id="main">
   <div id="mainHeader">
     <h1 id="vTitle" onclick="onVTitleClick()">今天</h1>
-    <input type="date" id="titleDateInput" onchange="onTitleDateChange(this.value)">
     <button id="arrivalBtn"
       onclick="toggleArrival()"
       ontouchstart="arrivalLpStart()"
@@ -409,7 +448,18 @@
       </button>
     </div>
   </div>
-  <div id="netBanner"></div>
+  <div id="importProgress">
+    <div class="ip-header">
+      <span class="ip-label" id="ipLabel">匯入同步中</span>
+      <span class="ip-count" id="ipCount"></span>
+    </div>
+    <div class="ip-bar-wrap"><div class="ip-bar running" id="ipBar"></div></div>
+    <div class="ip-status" id="ipStatus"></div>
+    <div class="ip-error-row" id="ipErrorRow">
+      <span class="ip-error-msg" id="ipErrorMsg"></span>
+      <button class="ip-retry-btn" onclick="ipManualRetry()">立即同步</button>
+    </div>
+  </div>
   <div id="listWrap"><div id="list">載入中…</div></div>
 </div>
 
@@ -457,13 +507,15 @@
 
 <!-- 分類管理 -->
 
-<div id="catM" class="modal" onclick="if(event.target===this)closeM('catM')">
+<div id="catM" class="modal" onclick="if(event.target===this)cancelCatM()">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title">分類管理</div>
     <div class="sh-body">
       <div id="catList"></div>
-      <div class="cat-add-row">
+    </div>
+    <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
+      <div class="cat-add-row" style="margin-top:0;padding-top:0;border-top:none;">
         <input type="text" id="newC" class="cat-add-input" placeholder="新增分類…" onkeydown="if(event.key==='Enter'&&!event.isComposing)addC()">
         <button class="cat-add-btn" onclick="addC()">新增</button>
       </div>
@@ -484,6 +536,7 @@
         <span id="syncNetTxt"></span>
       </div>
       <div class="qpill" id="queuePill"></div>
+      <div id="lastSyncPill" style="font-size:12px;color:var(--gray);text-align:center;padding:4px 0;"></div>
       <div id="syncLog"><p class="log-empty">尚無同步記錄</p></div>
       <div class="sync-row">
         <button class="btn-sync" id="syncNowBtn" onclick="doSyncFromModal()">立即同步</button>
@@ -495,143 +548,8 @@
       </button>
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" onchange="handleImport(event)">
       <div class="import-result" id="importResult"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="openGuide()">使用教學</button>
-        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="location.reload()">重新載入</button>
-        <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;flex-shrink:0;">讀取中…</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- 使用教學 -->
-<div id="guideM" class="modal" onclick="if(event.target===this)closeM('guideM')">
-  <div class="sheet" onclick="event.stopPropagation()">
-    <div class="sh-handle"></div>
-    <div class="sh-title">使用教學</div>
-    <div class="sh-body">
-      <div class="guide-tabs" id="guideTabs">
-        <button class="guide-tab active" onclick="switchGuide(0)">安裝</button>
-        <button class="guide-tab" onclick="switchGuide(1)">版面</button>
-        <button class="guide-tab" onclick="switchGuide(2)">基本</button>
-        <button class="guide-tab" onclick="switchGuide(3)">手勢</button>
-        <button class="guide-tab" onclick="switchGuide(4)">到場</button>
-        <button class="guide-tab" onclick="switchGuide(5)">匯入</button>
-      </div>
-
-      <!-- Page 0：加到主畫面 -->
-      <div class="guide-page active">
-        <div class="guide-h">📱 加到主畫面</div>
-        <div class="guide-sub">把網頁變成桌面 App，全螢幕體驗、離線也能用。</div>
-        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt">用 <b>Safari</b> 開啟這個網頁（其他瀏覽器不支援這功能）。</div></div>
-        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt">點底部正中央的 <b>分享按鈕</b>（方框朝上箭頭）。</div></div>
-        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt">在選單裡往下滑找到 <b>「加入主畫面」</b>。</div></div>
-        <div class="guide-step"><div class="guide-num">4</div><div class="guide-txt">右上角點 <b>「加入」</b>。完成！桌面會出現一個 App 圖示。</div></div>
-        <div class="guide-tip"><b>為什麼要加到主畫面？</b><br>從圖示開啟才能進入「全螢幕模式」（沒有 Safari 網址列），體驗才會像原生 App，而且離線時也能正常使用。</div>
-      </div>
-
-      <!-- Page 1：版面介紹 -->
-      <div class="guide-page">
-        <div class="guide-h">🗺️ 版面介紹</div>
-        <div class="guide-sub">熟悉每個區塊位置，操作會更順手。</div>
-        <div class="guide-card">
-          <div class="guide-card-title">① 抬頭列（最上方黑色橫條）</div>
-          <div class="guide-card-body">顯示目前 <b>檢視名稱</b>（例如「今天」「全部」），右側有 <b>到場時間</b> 按鈕跟 <b>🔍 搜尋</b>。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">② 左側欄（深色直條）</div>
-          <div class="guide-card-body">最上是 <b>＋ 藍色圓鈕（FAB）</b>，下方依序是「今天」「全部」「已完成」與自訂分類。點任一項可切換檢視。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">③ 任務清單（主要區域）</div>
-          <div class="guide-card-body">每張卡片左邊圓圈打勾 = 完成，點卡片內容區 = 開選單，<b>左側彩色邊條</b>是分類顏色，紅邊代表逾期。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">④ FAB 按鈕（左上 ＋）</div>
-          <div class="guide-card-body"><b>點一下</b>＝快速新增（只填名稱跟分類）；<b>長按</b>＝開啟完整新增視窗（含日期、優先級、備註）。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">⑤ 側欄底部兩顆按鈕</div>
-          <div class="guide-card-body">需要先把側欄展開才看得到。<b>🏷️ 分類管理</b>＝新增/改名/刪除/排序分類；<b>🔄 同步</b>＝看同步狀態、立即同步、匯入 Excel、重新載入。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">⑥ 同步狀態列（藍/橘條）</div>
-          <div class="guide-card-body">出現在抬頭下方。橘色＝離線或有未同步操作；藍色＝同步中；沒出現＝一切正常。</div>
-        </div>
-      </div>
-
-      <!-- Page 2：基本操作 -->
-      <div class="guide-page">
-        <div class="guide-h">✏️ 基本操作</div>
-        <div class="guide-sub">最常用的四種動作。</div>
-        <div class="guide-card">
-          <div class="guide-card-title">新增任務</div>
-          <div class="guide-card-body">點側欄左上 <b>藍色 ＋</b> 按鈕 → 輸入任務名稱 → 選分類 → 按「新增」。<br>需要設定日期、優先級、備註的話，<b>長按 ＋ 按鈕</b>開啟完整視窗。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">完成任務</div>
-          <div class="guide-card-body">點任務卡片 <b>最左邊的圓圈</b>，打勾代表完成，會自動移到「已完成」分類。再點一次可取消完成。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">編輯任務</div>
-          <div class="guide-card-body">點任務卡片的 <b>文字區域</b>（不是圓圈），會跳出選單。選「快速編輯」改名稱跟分類；想改更多就開啟完整視窗。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">刪除任務</div>
-          <div class="guide-card-body">點任務文字 → 跳出選單 → 選「快速編輯」進入完整視窗 → 最下方有紅色 <b>「刪除此任務」</b> 按鈕。</div>
-        </div>
-        <div class="guide-tip"><b>P# 是什麼？</b><br>優先級（Priority），數字越小越優先。預設 P99（最低）。可以填 1~99，例如 P1 排最上面。</div>
-      </div>
-
-      <!-- Page 3：進階手勢 -->
-      <div class="guide-page">
-        <div class="guide-h">👆 進階手勢</div>
-        <div class="guide-sub">這些手勢讓操作更快。</div>
-        <div class="guide-card">
-          <div class="guide-card-title">左右滑動切換側欄寬度</div>
-          <div class="guide-card-body">在主畫面 <b>左右滑動</b> 可切換側欄三種寬度：<br>• <b>隱藏</b>（最寬畫面）<br>• <b>窄</b>（只顯示圖示）← 預設<br>• <b>寬</b>（顯示完整名稱與計數）</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">長按任務 = 直接開啟編輯</div>
-          <div class="guide-card-body"><b>長按任務卡片</b>（按住約 0.5 秒）直接進入完整編輯視窗，跳過彈出選單那步。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">長按「全部」= 日期篩選</div>
-          <div class="guide-card-body"><b>長按側欄的「全部」</b>，會跳出日期選擇器，可篩選「某日以前」的任務（用來抓近期該做的事）。標題會變成 mm/dd，再點一下標題可清除篩選。</div>
-        </div>
-        <div class="guide-card">
-          <div class="guide-card-title">任務選單裡的快捷鈕</div>
-          <div class="guide-card-body">點任務文字後跳出的選單裡有：<br>• <b>快速編輯</b>：只改名稱跟分類<br>• <b>設為今天</b> / <b>設為明天</b>：一鍵改日期<br>• <b>選擇日期</b>：跳日曆選擇</div>
-        </div>
-        <div class="guide-tip"><b>桌面版小撇步</b>：用鍵盤的 <span class="guide-key">Tab</span> 可循環切換側欄三種寬度。</div>
-      </div>
-
-      <!-- Page 4：到場時間 -->
-      <div class="guide-page">
-        <div class="guide-h">🕒 到場時間</div>
-        <div class="guide-sub">抬頭右上的「到場時間」按鈕用法。</div>
-        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt"><b>點一下</b>按鈕：記錄當下時間（例如 09:23），按鈕會變成藍色顯示時間。</div></div>
-        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt"><b>再點一下</b>已記錄的按鈕：跳出確認後清除。</div></div>
-        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt"><b>長按</b>按鈕：展開最近 5 筆到場記錄（含日期）。</div></div>
-        <div class="guide-tip"><b>用途範例</b><br>到客戶現場、上下班打卡、會議簽到、訪客報到等需要記錄「我幾點到」的場合。記錄保存在裝置內，不會上傳到雲端。</div>
-      </div>
-
-      <!-- Page 5：Excel 匯入 -->
-      <div class="guide-page">
-        <div class="guide-h">📊 Excel / CSV 匯入</div>
-        <div class="guide-sub">一次把現成的清單批次匯入（僅電腦版可用）。</div>
-        <div class="guide-step"><div class="guide-num">1</div><div class="guide-txt">在電腦上打開這個 App，展開側欄、點 <b>🔄 同步</b>。</div></div>
-        <div class="guide-step"><div class="guide-num">2</div><div class="guide-txt">點 <b>「匯入 Excel / CSV」</b> 按鈕，選擇檔案（支援 .xlsx / .xls / .csv）。</div></div>
-        <div class="guide-step"><div class="guide-num">3</div><div class="guide-txt">跳出「欄位對應」視窗，把 Excel 的每一欄對應到：<br>• <b>任務名稱</b>（必填）<br>• 分類 / 截止日期 / 優先級 / 備註（選填）</div></div>
-        <div class="guide-step"><div class="guide-num">4</div><div class="guide-txt">按「開始匯入」，重複的任務會自動跳過。匯入後會自動同步到雲端。</div></div>
-        <div class="guide-tip"><b>日期格式</b><br>支援 <code>2024-12-25</code>、<code>2024/12/25</code>、Excel 日期序號等常見格式。無法辨識的會變成空白。</div>
-        <div class="guide-tip"><b>為何手機看不到匯入按鈕？</b><br>手機上選檔案的體驗很差，所以刻意隱藏。請改用電腦操作。</div>
-      </div>
-
-      <div class="guide-dots" id="guideDots"></div>
-      <div class="guide-nav">
-        <button class="guide-nav-btn prev" id="guidePrev" onclick="prevGuide()">上一頁</button>
-        <button class="guide-nav-btn next" id="guideNext" onclick="nextGuide()">下一頁</button>
+      <div style="display:flex;justify-content:center;margin-top:6px;">
+        <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;">讀取中…</span>
       </div>
     </div>
   </div>
@@ -666,7 +584,7 @@
     <input type="date" id="allFilterDateInput" onchange="setAllFilterDate(this.value)">
   </div>
 </div>
-<div id="allFilterOverlay" style="display:none;position:fixed;inset:0;z-index:299;" onclick="closeAllFilterMenu()"></div>
+<div id="allFilterOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeAllFilterMenu()"></div>
 
 <!-- 快速選單 -->
 
@@ -720,73 +638,17 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz-8ZUeu8D6KU8lfBn-qv2VVn-cufCo9TsgALa_WpnikWz8TX0To7e0IO97looAh5a5/exec";
 
-const APP_VERSION = "todo-v396"; // 與 sw.js 的 CACHE_NAME 保持一致
+const APP_VERSION = "todo-v500.11"; // 與 sw.js 的 CACHE_NAME 保持一致
 
-function checkLogin() { return true; }
-function doLogout() { location.reload(); }
-
-// ── 使用教學 ──────────────────────────────────────────────────
-const GUIDE_VERSION = 'v1'; // 改版時遞增可讓所有使用者重新看到教學
-let _guideIdx = 0;
-const _guideTotal = 6;
-
-function openGuide() {
-  _guideIdx = 0;
-  renderGuideState();
-  openModal('guideM');
-}
-function switchGuide(idx) {
-  playSound('tap');
-  _guideIdx = idx;
-  renderGuideState();
-}
-function nextGuide() {
-  if (_guideIdx >= _guideTotal - 1) { closeM('guideM'); markGuideSeen(); return; }
-  playSound('select');
-  _guideIdx++;
-  renderGuideState();
-}
-function prevGuide() {
-  if (_guideIdx <= 0) return;
-  playSound('select');
-  _guideIdx--;
-  renderGuideState();
-}
-function renderGuideState() {
-  // 切換 tab 與 page
-  const tabs = document.querySelectorAll('#guideTabs .guide-tab');
-  const pages = document.querySelectorAll('#guideM .guide-page');
-  tabs.forEach((t, i) => t.classList.toggle('active', i === _guideIdx));
-  pages.forEach((p, i) => p.classList.toggle('active', i === _guideIdx));
-  // 滾動到頂
-  const body = document.querySelector('#guideM .sh-body');
-  if (body) body.scrollTop = 0;
-  // 滾動 tabs 讓 active 那顆置中（手機螢幕窄時必要）
-  const activeTab = tabs[_guideIdx];
-  if (activeTab) {
-    const tabsBar = document.getElementById('guideTabs');
-    const offset = activeTab.offsetLeft - (tabsBar.clientWidth / 2) + (activeTab.clientWidth / 2);
-    tabsBar.scrollTo({ left: offset, behavior: 'smooth' });
-  }
-  // 上下頁按鈕
-  document.getElementById('guidePrev').disabled = _guideIdx === 0;
-  const next = document.getElementById('guideNext');
-  next.textContent = _guideIdx === _guideTotal - 1 ? '完成 ✓' : '下一頁';
-  // 進度點
-  const dotsEl = document.getElementById('guideDots');
-  if (dotsEl) dotsEl.innerHTML = Array.from({length:_guideTotal}, (_,i)=>`<div class="guide-dot ${i===_guideIdx?'active':''}"></div>`).join('');
-}
-function markGuideSeen() {
-  localStorage.setItem('guideSeen', GUIDE_VERSION);
-}
-function shouldShowGuide() {
-  return localStorage.getItem('guideSeen') !== GUIDE_VERSION;
-}
-
+// ── 修正方案 v500 新增常數 ──
+const RECENT_DONE_MONTHS = 6;        // 手機端 filter：只顯示近 6 個月內已完成任務
+const SYNC_REMINDER_DAYS = 14;       // 14 天沒全量同步就顯示提醒
+const SYNC_URGENT_DAYS = 30;         // 30 天升級為紅色警告
 
 let allT = [], allC = [], currentF = '今天';
 let syncLogs = [], pendingQueue = [];
 let isSyncRunning = false, sideState = 1;
+let lastSyncTime = parseInt(localStorage.getItem('lastSyncTime') || '0');
 let catOrder = [], lastUsedCat = '';
 let _catPendingOps = []; // 分類管理暫存操作，按「完成」才推送
 
@@ -821,12 +683,158 @@ const loadLocal = () => {
   try { catOrder = JSON.parse(localStorage.getItem('catOrder')) || []; } catch(e) { catOrder = []; }
   lastUsedCat = localStorage.getItem('lastUsedCat') || '';
   try { pendingQueue = JSON.parse(localStorage.getItem('pendingQueue')) || []; } catch(e) { pendingQueue = []; }
+
+  // ── 升級相容處理（v500 新增） ──
+  let needSave = false;
+  let inflightCount = 0;
+  let convertedToggleCount = 0;
+  let orphanToggleCount = 0;
+
+  pendingQueue = pendingQueue.filter(item => {
+    // 1. 補 _opId（舊版沒有此欄位）
+    if (!item._opId) {
+      item._opId = `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+      needSave = true;
+    }
+    // 2. 清除 inflight 標記（上次中斷的視為待推送）
+    if (item.inflight) {
+      inflightCount++;
+      delete item.inflight;
+      delete item.inflightAt;
+      needSave = true;
+    }
+    // 3. 把舊 toggleTask 轉換為 setTaskStatus（冪等性升級）
+    if (item.action === 'toggleTask') {
+      const t = allT.find(x => String(x.ID) === String(item.payload.id));
+      if (t) {
+        item.action = 'setTaskStatus';
+        item.payload.status = t.Status || 'Pending';
+        item.payload.mTime = Date.now();
+        item.label = (item.label || '').replace('toggleTask', 'setTaskStatus');
+        convertedToggleCount++;
+        needSave = true;
+      } else {
+        // 找不到對應任務 → 移除 orphan 操作
+        orphanToggleCount++;
+        needSave = true;
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (inflightCount > 0) {
+    pushLog(`偵測到 ${inflightCount} 筆上次中斷的推送，將自動重試`, 'warn');
+  }
+  if (convertedToggleCount > 0) {
+    pushLog(`升級：轉換 ${convertedToggleCount} 筆 toggle 操作為 setStatus`, 'info');
+  }
+  if (orphanToggleCount > 0) {
+    pushLog(`升級：移除 ${orphanToggleCount} 筆找不到任務的舊操作`, 'warn');
+  }
+  if (needSave) saveLocal();
 };
+
+// ── 修正方案 v500 新增的輔助函式 ──
+
+// filter 函式：判斷任務是否應該保留在本機 allT
+function shouldKeep(t) {
+  if (!t) return false;
+  if (t.Status !== 'Done') return true;          // Pending 全收
+  if (!t.mTime || Number(t.mTime) === 0) return true; // mTime 不明保險收下
+  const cutoff = Date.now() - (RECENT_DONE_MONTHS * 30 * 24 * 60 * 60 * 1000);
+  return Number(t.mTime) >= cutoff;
+}
+
+// 計算本週週二 04:00 的時間戳（以週二為週期切點）
+function getTuesdayOfThisWeek(timestamp) {
+  const d = new Date(timestamp);
+  const day = d.getDay();  // 0=日, 1=一, 2=二, ...
+  // 週日和週一算「上週還沒到本週週二」→ 用上週二
+  // 週二~週六算「本週週二在過去或今天」→ 用本週二
+  let daysFromTuesday;
+  if (day === 0) daysFromTuesday = -5;        // 週日：上週二是 5 天前
+  else if (day === 1) daysFromTuesday = -6;   // 週一：上週二是 6 天前
+  else daysFromTuesday = 2 - day;             // 週二之後（含週二）：算到本週二
+  const result = new Date(d);
+  result.setDate(d.getDate() + daysFromTuesday);
+  result.setHours(4, 0, 0, 0);
+  return result.getTime();
+}
+
+// 判斷是否需要強制全量同步（每週二循環）
+function needsWeeklyFullSync() {
+  const lastFullSync = parseInt(localStorage.getItem('lastFullSync') || '0');
+  const now = Date.now();
+
+  // 防呆：未來時間
+  if (lastFullSync > now) {
+    localStorage.setItem('lastFullSync', '0');
+    return true;
+  }
+
+  // 首次安裝
+  if (lastFullSync === 0) return true;
+
+  // 算出「本週週二 04:00」（以週二為週循環切點）
+  const thisWeekTuesday = getTuesdayOfThisWeek(now);
+
+  // 還沒到本週週二 04:00 → 不觸發
+  if (now < thisWeekTuesday) return false;
+
+  // 已過本週週二 04:00，但 lastFullSync 在本週週二 04:00 之前
+  // → 表示本週還沒全量過 → 觸發
+  return lastFullSync < thisWeekTuesday;
+}
+
+// 健康檢查：超過 14 天沒和雲端同步就提醒
+// 使用 lastSyncTime（任何成功的同步都算）而非 lastFullSync
+function checkSyncHealth() {
+  const lastSync = parseInt(localStorage.getItem('lastSyncTime') || '0');
+  if (lastSync === 0) return;  // 首次安裝不提醒（init 會自動全量）
+
+  const now = Date.now();
+  if (lastSync > now) return;  // 防呆：未來時間
+
+  const days = Math.floor((now - lastSync) / (24 * 60 * 60 * 1000));
+  if (days > SYNC_REMINDER_DAYS) {
+    showSyncReminder(days);
+  }
+}
+
+function showSyncReminder(days) {
+  const el = document.getElementById('syncReminder');
+  if (!el) return;
+  document.getElementById('syncReminderDays').textContent = days;
+  el.classList.toggle('urgent', days > SYNC_URGENT_DAYS);
+  el.classList.add('show');
+  pushLog(`⚠️ 已 ${days} 天未完整同步，建議立即同步`, 'warn');
+}
+
+function dismissSyncReminder() {
+  const el = document.getElementById('syncReminder');
+  if (el) el.classList.remove('show');
+}
+
+async function doSyncFromReminder() {
+  const btn = event?.target;
+  if (btn) btn.disabled = true;
+  if (!isOnline()) {
+    pushLog('目前離線，無法同步', 'warn');
+    if (btn) btn.disabled = false;
+    return;
+  }
+  // 強制走全量
+  await fullSync('手動 - 健康檢查');
+  // pullFromCloudFull 結束時會自動 dismissSyncReminder
+  if (btn) btn.disabled = false;
+}
+
 
 const CAT_COLORS = ['#FF3B30','#FF6B35','#FF9500','#FFCC00','#34C759','#00C7BE','#007AFF','#5856D6','#AF52DE','#FF2D55','#8E8E93','#636366'];
 let catColors = {};
 const saveCatColors = () => localStorage.setItem('catColors', JSON.stringify(catColors));
-const loadCatColors = () => { try { catColors = JSON.parse(localStorage.getItem('catColors')) || {}; } catch { catColors = {}; } };
+const loadCatColors = () => { try { catColors = JSON.parse(localStorage.getItem('catColors')) || {}; } catch(e) { catColors = {}; } };
 function getCatColor(name) {
   const cat = allC.find(c => c.name === name);
   return (cat && cat.color) ? cat.color : '#8E8E93';
@@ -862,8 +870,8 @@ function pickColor(catName, color) {
   const cat = allC.find(c => c.name === catName);
   if (cat) cat.color = color || '';
   if (color) catColors[catName] = color; else delete catColors[catName];
-  saveCatColors(); saveLocal();
-  renderAll(); renderCatList();
+  // 只更新分類管理視窗內的預覽，不更新側欄（等按「完成」才生效）
+  renderCatList();
   // 顏色操作合併：同一分類只保留最後一次
   _catPendingOps = _catPendingOps.filter(op => !(op.action === 'updateCategoryColor' && op.payload.name === catName));
   _catPendingOps.push({action:'updateCategoryColor', payload:{name:catName, rowId:cat?.rowId||null, color:color||''}, label:`設定「${catName}」顏色`});
@@ -898,19 +906,51 @@ document.addEventListener('focusout', e => {
 // 用 visualViewport 監聽鍵盤彈出，讓 modal 跟著往上移而不是縮小
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
+    if (_isDraggingModal) return;
     const modal = document.querySelector('.modal.open');
     if (!modal) return;
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
     if (kbH > 80) {
-      // 鍵盤彈出：sheet 往上移，但不超出螢幕頂部
-      const sheetH = sheet.getBoundingClientRect().height;
-      const moveUp = Math.min(kbH, Math.max(0, kbH - (window.innerHeight - sheetH - kbH - 8)));
-      sheet.style.transform = moveUp > 0 ? `translateY(-${moveUp}px)` : '';
+      if (modal.id === 'catM') {
+        // catM：縮小 sh-body 讓 footer 保持在鍵盤上方
+        const shBody = sheet.querySelector('.sh-body');
+        if (shBody) {
+          const visibleH = window.visualViewport.height;
+          const footerEl = sheet.querySelector('.sh-body + div');
+          const footerH = footerEl ? footerEl.getBoundingClientRect().height : 110;
+          const handleEl = sheet.querySelector('.sh-handle');
+          const titleEl = sheet.querySelector('.sh-title');
+          const handleH = (handleEl ? handleEl.getBoundingClientRect().height : 20) +
+                          (titleEl  ? titleEl.getBoundingClientRect().height  : 40);
+          // visibleH = 鍵盤上方可用空間，catM 貼著底部
+          // shBody 高度 = visibleH - handle - title - footer - 間距
+          const maxBodyH = visibleH - handleH - footerH - 16;
+          shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
+        }
+      } else {
+        const sheetRect = sheet.getBoundingClientRect();
+        const visibleH = window.visualViewport.height;
+        const overflow = sheetRect.bottom - visibleH;
+        if (overflow > 0) {
+          const maxMoveUp = Math.max(0, sheetRect.top - 8);
+          const moveUp = Math.min(overflow + 8, maxMoveUp);
+          sheet.style.transform = moveUp > 0 ? `translateY(-${moveUp}px)` : '';
+        }
+        // sh-body 滾動到 focus 的元素
+        const focused = document.activeElement;
+        if (focused && sheet.contains(focused)) {
+          setTimeout(() => focused.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 100);
+        }
+      }
     } else {
-      // 鍵盤收起：回到原位
       sheet.style.transform = '';
+      // catM：恢復 sh-body 高度
+      if (modal.id === 'catM') {
+        const shBody = sheet.querySelector('.sh-body');
+        if (shBody) shBody.style.maxHeight = '';
+      }
     }
   });
 }
@@ -952,10 +992,27 @@ document.addEventListener('keydown', e => {
 });
 
 function updateBanner() {
-  const b = document.getElementById('netBanner');
-  if (!isOnline()) { b.className = 'offline'; b.textContent = '離線 — 連網後自動同步'; }
-  else if (pendingQueue.length > 0) { b.className = 'pending'; b.textContent = `${pendingQueue.length} 筆操作待同步`; }
-  else { b.className = ''; b.textContent = ''; }
+  const fab = document.getElementById('fab');
+  const badge = document.getElementById('fabBadge');
+  if (!fab || !badge) return;
+  const pending = pendingQueue.length;
+  if (isSyncRunning) {
+    fab.classList.add('syncing');
+    fab.classList.remove('offline');
+    badge.classList.remove('show');
+  } else if (!isOnline()) {
+    fab.classList.remove('syncing');
+    fab.classList.add('offline');
+    badge.textContent = pending > 0 ? pending : '';
+    badge.classList.toggle('show', pending > 0);
+  } else if (pending > 0) {
+    fab.classList.remove('syncing', 'offline');
+    badge.textContent = pending;
+    badge.classList.add('show');
+  } else {
+    fab.classList.remove('syncing', 'offline');
+    badge.classList.remove('show');
+  }
 }
 function pushLog(msg, type='info') {
   syncLogs.unshift({time: fmtTime(), msg, type});
@@ -964,6 +1021,8 @@ function pushLog(msg, type='info') {
 }
 function renderSyncLog() {
   const el = document.getElementById('syncLog'); if (!el) return;
+  const syncM = document.getElementById('syncM');
+  if (!syncM || !syncM.classList.contains('open')) return; // 視窗關著不重建
   if (!syncLogs.length) { el.innerHTML = '<p class="log-empty">尚無同步記錄</p>'; return; }
   el.innerHTML = syncLogs.map(l => `<div class="log-entry"><span class="log-time">${l.time}</span><span class="log-msg ${l.type}">${l.msg}</span></div>`).join('');
 }
@@ -974,107 +1033,552 @@ function updateSyncMeta() {
   else { badge.className = 'sync-badge offline'; if(tag) tag.textContent = '[離線]'; document.getElementById('syncNetTxt').textContent = '目前離線'; }
   if (pendingQueue.length > 0) { pill.className = 'qpill pending'; pill.textContent = `佇列 ${pendingQueue.length} 筆未同步`; }
   else { pill.className = 'qpill ok'; pill.textContent = '全部已同步 ✓'; }
+
+  // 最後同步時間
+  const lastEl = document.getElementById('lastSyncPill');
+  if (lastEl) {
+    if (lastSyncTime > 0) {
+      const diff = Date.now() - lastSyncTime;
+      const mins = Math.floor(diff / 60000);
+      const hrs  = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      let timeStr = '';
+      if (days > 0) timeStr = `${days} 天前`;
+      else if (hrs > 0) timeStr = `${hrs} 小時前`;
+      else if (mins > 0) timeStr = `${mins} 分鐘前`;
+      else timeStr = '剛剛';
+      lastEl.textContent = `最後同步：${timeStr}`;
+    } else {
+      lastEl.textContent = '尚未同步';
+    }
+  }
+
+  // 超過 30 分鐘有待同步資料 → FAB 角標橘色閃爍警示
+  updateBannerStale();
+}
+
+function updateBannerStale() {
+  const fab = document.getElementById('fab');
+  const badge = document.getElementById('fabBadge');
+  if (!fab || !badge) return;
+  const isStale = pendingQueue.length > 0 && lastSyncTime > 0 &&
+                  !isSyncRunning &&
+                  Date.now() - lastSyncTime > 30 * 60 * 1000;
+  if (isStale) {
+    badge.style.background = '#FF9500'; // 橘色
+    badge.style.animation = 'badgePulse 1.2s ease-in-out infinite';
+  } else {
+    badge.style.background = '';
+    badge.style.animation = '';
+  }
 }
 function openSyncLog() {
-  updateSyncMeta(); renderSyncLog(); openModal('syncM'); setTimeout(updateSoundBtn, 50);
+  updateSyncMeta(); openModal('syncM');
+  requestAnimationFrame(() => renderSyncLog()); // openModal 用 rAF 加 open class，需延一幀
+  setTimeout(updateSoundBtn, 50);
   const badge = document.getElementById('swVerBadge');
   if (badge) badge.textContent = APP_VERSION;
 }
 
 function enqueue(action, payload, label) {
-  if (action === 'toggleTask') {
-    const idx = pendingQueue.findIndex(q => q.action === 'toggleTask' && q.payload.id === payload.id);
-    if (idx > -1) { pendingQueue.splice(idx,1); pushLog(`合併抵消：${label}`,'warn'); saveLocal(); updateBanner(); return; }
-  }
-  if (action === 'updateTask') {
-    // 同 id 的 updateTask → 覆蓋
-    const idx = pendingQueue.findIndex(q => q.action === 'updateTask' && q.payload.id === payload.id);
-    if (idx > -1) { pendingQueue[idx] = {action,payload,label,addedAt:Date.now()}; pushLog(`覆蓋佇列：${label}`,'warn'); saveLocal(); updateBanner(); return; }
-    // 有同 id 的 toggleTask → 合併 status 進 updateTask，移除 toggleTask
-    const tidx = pendingQueue.findIndex(q => q.action === 'toggleTask' && q.payload.id === payload.id);
-    if (tidx > -1) {
-      const toggled = pendingQueue[tidx];
-      pendingQueue.splice(tidx, 1);
-      // updateTask 帶入 toggleTask 的狀態（從佇列找任務當前狀態）
-      const t = allT.find(x => String(x.ID) === String(payload.id));
-      if (t) payload.data = {...payload.data, status: t.Status};
-      pushLog(`合併 toggle+update：${label}`,'warn');
+  // ── 空 Task 攔截（v500 新增） ──
+  if (action === 'addTask' || action === 'updateTask') {
+    if (!payload.data?.task || !String(payload.data.task).trim()) {
+      pushLog('空 Task 拒絕推送', 'warn');
+      return;
     }
   }
-  pendingQueue.push({action, payload, label, addedAt: Date.now()});
-  pushLog(`佇列：${label}`, 'warn'); saveLocal(); updateBanner();
+
+  // ── 合併邏輯：只在「非 inflight 項目」之間合併 ──
+  const nonInflight = pendingQueue.filter(q => !q.inflight);
+
+  // setTaskStatus 同 id：後者覆蓋前者
+  if (action === 'setTaskStatus') {
+    const idx = nonInflight.findIndex(q => q.action === 'setTaskStatus' && q.payload.id === payload.id);
+    if (idx > -1) {
+      const targetOpId = nonInflight[idx]._opId;
+      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
+      pushLog(`覆蓋佇列：${label}`, 'warn');
+    }
+  }
+
+  if (action === 'updateTask') {
+    // 同 id 的 updateTask → 覆蓋
+    const uIdx = nonInflight.findIndex(q => q.action === 'updateTask' && q.payload.id === payload.id);
+    if (uIdx > -1) {
+      const targetOpId = nonInflight[uIdx]._opId;
+      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
+      pushLog(`覆蓋佇列：${label}`, 'warn');
+    }
+    // 同 id 的 setTaskStatus → 把 status 合進 updateTask
+    const sIdx = nonInflight.findIndex(q => q.action === 'setTaskStatus' && q.payload.id === payload.id);
+    if (sIdx > -1) {
+      const status = nonInflight[sIdx].payload.status;
+      payload.data = {...payload.data, status};
+      const targetOpId = nonInflight[sIdx]._opId;
+      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
+      pushLog(`合併 status+update：${label}`, 'warn');
+    }
+  }
+
+  pendingQueue.push({
+    action,
+    payload,
+    label,
+    addedAt: Date.now(),
+    _opId: `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+  });
+  pushLog(`佇列：${label}`, 'warn');
+  saveLocal();
+  updateBanner();
 }
 async function flushQueue() {
-  // 清除超過 7 天的佇列項目
+  // 清除超過 7 天的佇列項目（跳過 inflight）
   const expiry = 7 * 24 * 60 * 60 * 1000;
-  const expired = pendingQueue.filter(i => Date.now() - i.addedAt > expiry);
+  const expired = pendingQueue.filter(i => !i.inflight && Date.now() - i.addedAt > expiry);
   if (expired.length) {
-    pendingQueue = pendingQueue.filter(i => Date.now() - i.addedAt <= expiry);
+    const expiredIds = new Set(expired.map(i => i._opId));
+    pendingQueue = pendingQueue.filter(i => !expiredIds.has(i._opId));
     pushLog(`清除 ${expired.length} 筆過期佇列`, 'warn');
     saveLocal();
   }
+
+  // 偵測 inflight 卡住超過 5 分鐘（網路 timeout 或上次中斷）→ 重置
+  const inflightTimeout = 5 * 60 * 1000;
+  const stuck = pendingQueue.filter(i => i.inflight && Date.now() - (i.inflightAt || 0) > inflightTimeout);
+  if (stuck.length > 0) {
+    stuck.forEach(item => {
+      delete item.inflight;
+      delete item.inflightAt;
+    });
+    pushLog(`偵測到 ${stuck.length} 筆推送卡住超過 5 分鐘，已重置`, 'warn');
+    saveLocal();
+  }
+
   if (!pendingQueue.length) return true;
   if (!isOnline()) { pushLog('離線，佇列等待','warn'); return false; }
-  pushLog(`推送 ${pendingQueue.length} 筆…`, 'info');
 
-  // 立即清空佇列，避免推送期間 schedulePush 重複推送同一批
-  const processing = [...pendingQueue];
-  pendingQueue = [];
-  saveLocal();
+  // 取出非 inflight 的項目來推送
+  const toProcess = pendingQueue.filter(i => !i.inflight);
+  if (!toProcess.length) return true;
+
+  pushLog(`推送 ${toProcess.length} 筆…`, 'info');
+
+  // ★ 標記 inflight 而非清空（v500 核心改動）
+  const inflightTime = Date.now();
+  const processingIds = new Set();
+  toProcess.forEach(item => {
+    item.inflight = true;
+    item.inflightAt = inflightTime;
+    processingIds.add(item._opId);
+  });
+  saveLocal();  // 立即寫入 localStorage，被殺也救得回來
 
   const catActions = ['addCategory','deleteCategory','renameCategory','reorderCategories','updateCategoryColor'];
-  const catQueue = processing.filter(i => catActions.includes(i.action));
-  const taskQueue = processing.filter(i => !catActions.includes(i.action));
+  const catQueue = toProcess.filter(i => catActions.includes(i.action));
+  const taskQueue = toProcess.filter(i => !catActions.includes(i.action));
 
-  const failed = [];
+  // 用 Set 追蹤推送結果
+  const successIds = new Set();
+  const failedIds = new Set();
+
+  // 統一的 fetch with timeout（25秒）
+  const batchFetch = (body, ms=25000) => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
+    return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
+  };
 
   // 分類操作：序列推送（避免 deleteRow 列號錯位）
   for (const item of catQueue) {
     try {
-      const res = await fetch(GAS_URL, {method:'POST', body: JSON.stringify({action: item.action, ...item.payload})});
+      const res = await batchFetch(JSON.stringify({action: item.action, ...item.payload}));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      successIds.add(item._opId);
       pushLog(`✓ ${item.label}`, 'success');
-    } catch(e) { pushLog(`✗ ${item.label}: ${e.message||'錯誤'}`, 'error'); failed.push(item); }
+    } catch(e) {
+      failedIds.add(item._opId);
+      pushLog(`✗ ${item.label}: ${e.message||'錯誤'}`, 'error');
+    }
   }
 
-  // 任務操作：平行推送
-  const taskResults = await Promise.all(taskQueue.map(async item => {
-    try {
-      const res = await fetch(GAS_URL, {method:'POST', body: JSON.stringify({action: item.action, ...item.payload})});
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      pushLog(`✓ ${item.label}`, 'success');
-      return null;
-    } catch(e) { pushLog(`✗ ${item.label}: ${e.message||'錯誤'}`, 'error'); return item; }
-  }));
-  failed.push(...taskResults.filter(Boolean));
+  // 任務操作：addTask 獨立批次，其他操作分批平行推送
+  const addTaskQueue = taskQueue.filter(i => i.action === 'addTask');
+  const otherTaskQueue = taskQueue.filter(i => i.action !== 'addTask');
 
-  // 失敗的放回佇列最前面（保留推送期間新加入的操作）
-  pendingQueue = [...failed, ...pendingQueue];
-  saveLocal(); updateBanner(); updateSyncMeta();
-  if (failed.length) {
-    pushLog(`${failed.length} 筆未成功，30 秒後自動重試`, 'warn');
+  // addTask：合併成一次 batchAddTasks
+  if (addTaskQueue.length > 0) {
+    try {
+      const tasks = addTaskQueue.map(item => {
+        const d = item.payload.data;
+        return {
+          ID: d?.ID || item.payload.id,
+          task: d?.task || '',
+          category: d?.category || '',
+          dueDate: d?.dueDate || '',
+          priority: d?.priority || 99,
+          note: d?.note || '',
+          mTime: d?.mTime || Date.now(),
+        };
+      });
+      const res = await batchFetch(JSON.stringify({
+        action: 'batchAddTasks',
+        tasks
+      }));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.status === 'success') {
+        const writtenIds = new Set((json.written || []).map(String));
+        const skippedIds = new Set((json.skipped || []).map(String));
+        const classified = new Set([...writtenIds, ...skippedIds]);
+
+        addTaskQueue.forEach(item => {
+          const id = String(item.payload.id || item.payload.data?.ID || '');
+          if (writtenIds.has(id)) {
+            successIds.add(item._opId);
+            pushLog(`✓ ${item.label}`, 'success');
+          } else if (skippedIds.has(id)) {
+            // 雲端已有此 ID（重複略過），視為成功
+            successIds.add(item._opId);
+            pushLog(`⚠️ ${item.label} 已存在，略過`, 'warn');
+          } else if (!classified.has(id)) {
+            // 未明確成功也未明確 skip → 視為失敗
+            failedIds.add(item._opId);
+            pushLog(`✗ ${item.label} 未確認，將重試`, 'warn');
+          }
+        });
+      }
+    } catch(e) {
+      pushLog(`✗ 批次新增失敗：${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+      addTaskQueue.forEach(item => failedIds.add(item._opId));
+    }
+  }
+
+  // 其他任務操作（updateTask, setTaskStatus, toggleTask, deleteTask）：分批平行推送
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < otherTaskQueue.length; i += BATCH_SIZE) {
+    const batch = otherTaskQueue.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(async item => {
+      try {
+        const res = await batchFetch(JSON.stringify({action: item.action, ...item.payload}));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') {
+          // GAS 端錯誤（例如 task is empty、id not found）
+          pushLog(`✗ ${item.label}: ${json.message || '錯誤'}`, 'error');
+          // 邏輯錯誤不重試（避免無限循環）
+          successIds.add(item._opId);  // 標記為「處理完成、不重試」
+        } else {
+          successIds.add(item._opId);
+          pushLog(`✓ ${item.label}`, 'success');
+        }
+      } catch(e) {
+        failedIds.add(item._opId);
+        pushLog(`✗ ${item.label}: ${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+      }
+    }));
+    if (i + BATCH_SIZE < otherTaskQueue.length) await new Promise(r => setTimeout(r, 500));
+  }
+
+  // ★ 處理推送結果：更新 pendingQueue
+  pendingQueue = pendingQueue.filter(item => {
+    if (successIds.has(item._opId)) {
+      return false;  // 成功：移除
+    }
+    if (failedIds.has(item._opId)) {
+      // 失敗：取消 inflight 標記，留在佇列
+      delete item.inflight;
+      delete item.inflightAt;
+      return true;
+    }
+    // 沒明確結果（中斷、失敗）：取消 inflight，留在佇列
+    if (processingIds.has(item._opId)) {
+      delete item.inflight;
+      delete item.inflightAt;
+    }
+    return true;
+  });
+  saveLocal();
+
+  // 記錄成功推送的操作，供驗證使用
+  if (toProcess.length > 0) {
+    const succeeded = toProcess.filter(i => successIds.has(i._opId));
+    const importOps = succeeded.filter(op => op.label && op.label.startsWith('匯入'));
+
+    if (importOps.length > 0 && failedIds.size === 0) {
+      _lastFlushedOps = importOps;
+      _pendingVerify = true;
+    } else if (importOps.length > 0 && failedIds.size > 0) {
+      _lastFlushedOps = importOps;
+    } else {
+      _lastFlushedOps = succeeded;
+    }
+  }
+
+  updateBanner();
+  updateSyncMeta();
+
+  if (failedIds.size > 0) {
+    pushLog(`${failedIds.size} 筆未成功，30 秒後自動重試`, 'warn');
     setTimeout(() => {
       if (pendingQueue.length && isOnline()) {
         pushLog('自動重試…', 'info');
-        schedulePush();
+        schedulePush(true);
       }
     }, 30000);
     return false;
   }
   return true;
 }
+async function verifyFlushedOps(cloudTasks, cloudCats) {
+  if (!_lastFlushedOps.length) return;
+  const ops = [..._lastFlushedOps];
+  _lastFlushedOps = [];
+
+  // 等待 1 秒，確保 GAS Sheets 寫入完成後再驗證
+  await new Promise(r => setTimeout(r, 1000));
+
+  // 整理需要驗證的任務 IDs 和分類操作
+  const taskChecks = {}; // id → op
+  const catChecks = [];
+
+  ops.forEach(op => {
+    if (['addTask','updateTask','toggleTask','setTaskStatus'].includes(op.action)) {
+      const id = op.payload.id || op.payload.data?.ID;
+      if (id) taskChecks[String(id)] = op;
+    } else if (op.action === 'deleteTask') {
+      const id = op.payload.id;
+      if (id) taskChecks[String(id)] = op;
+    } else if (op.action === 'addCategory') {
+      catChecks.push({type:'exists', name:op.payload.name, op});
+    } else if (op.action === 'deleteCategory') {
+      catChecks.push({type:'notExists', name:op.payload.name, op});
+    } else if (op.action === 'renameCategory') {
+      catChecks.push({type:'renamed', oldName:op.payload.old, newName:op.payload.name, op});
+    } else if (op.action === 'updateCategoryColor') {
+      catChecks.push({type:'color', name:op.payload.name, color:op.payload.color||'', op});
+    }
+  });
+
+  const retryOps = [];
+  const verifyFetch = (body, ms=25000) => {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
+    return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
+  };
+
+  // 驗證任務
+  if (Object.keys(taskChecks).length > 0) {
+    try {
+      const res = await verifyFetch(JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks)}));
+      const json = await res.json();
+      if (json.status === 'success') {
+        const results = json.results || {};
+        Object.entries(taskChecks).forEach(([id, op]) => {
+          const existsInCloud = results[id] === true;
+          const shouldExist = op.action !== 'deleteTask';
+          if (existsInCloud !== shouldExist) {
+            // 驗證失敗，檢查重試次數
+            const key = `${op.action}_${id}`;
+            _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
+            if (_verifyRetryCount[key] <= 3) {
+              retryOps.push(op);
+              pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
+            } else {
+              pushLog(`⚠️ ${op.label} 無法同步，請手動檢查`, 'error');
+              // 即使放棄，也清除計數，避免下次手動同步永遠無法重試
+              delete _verifyRetryCount[key];
+              if (_importTotal > 0) importProgressError('部分資料無法確認寫入，請手動同步');
+            }
+          } else {
+            // 驗證成功，清除重試計數
+            delete _verifyRetryCount[`${op.action}_${id}`];
+          }
+        });
+      }
+    } catch(e) {
+      pushLog(`驗證任務失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
+      // ★ timeout 不再視為通過：把所有 taskChecks 放回 retry（受 _verifyRetryCount 限制）
+      Object.entries(taskChecks).forEach(([id, op]) => {
+        const key = `${op.action}_${id}`;
+        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
+        if (_verifyRetryCount[key] <= 3) {
+          retryOps.push(op);
+        } else {
+          delete _verifyRetryCount[key];
+        }
+      });
+      if (_importTotal > 0) importProgressError('驗證請求超時，將自動重試');
+    }
+  }
+
+  // 驗證分類
+  if (catChecks.length > 0) {
+    try {
+      const res = await verifyFetch(JSON.stringify({action:'verifyCategories', checks: catChecks.map(c => ({type:c.type, name:c.name, color:c.color, oldName:c.oldName, newName:c.newName}))}));
+      const json = await res.json();
+      if (json.status === 'success') {
+        (json.results || []).forEach((r, i) => {
+          const {op} = catChecks[i];
+          if (!r.ok) {
+            const key = `${op.action}_${op.payload.name}`;
+            _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
+            if (_verifyRetryCount[key] <= 3) {
+              retryOps.push(op);
+              pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
+            } else {
+              pushLog(`⚠️ ${op.label} 無法同步，請手動檢查`, 'error');
+              delete _verifyRetryCount[key];  // 清除計數，允許未來再嘗試
+              if (_importTotal > 0) importProgressError('部分資料無法確認寫入，請手動同步');
+            }
+          } else {
+            delete _verifyRetryCount[`${op.action}_${op.payload.name}`];
+          }
+        });
+      }
+    } catch(e) {
+      pushLog(`驗證分類失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
+      // timeout 也計入重試
+      catChecks.forEach(({op}) => {
+        const key = `${op.action}_${op.payload.name}`;
+        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
+        if (_verifyRetryCount[key] <= 3) {
+          retryOps.push(op);
+        } else {
+          delete _verifyRetryCount[key];
+        }
+      });
+    }
+  }
+
+  // 有驗證失敗的操作，放回佇列重試
+  if (retryOps.length > 0) {
+    pendingQueue = [...retryOps, ...pendingQueue];
+    saveLocal(); updateBanner(); updateSyncMeta();
+    pushLog(`${retryOps.length} 筆驗證失敗，30 秒後自動重試`, 'warn');
+    if (_importTotal > 0) importProgressVerifyDone(retryOps.length);
+    setTimeout(() => {
+      if (pendingQueue.length && isOnline()) schedulePush(true);
+    }, 30000);
+  } else {
+    if (_importTotal > 0) importProgressVerifyDone(0);
+  }
+}
+
 async function pullFromCloud(reason, attempt=1) {
   if (!isOnline()) { pushLog('離線略過拉取','warn'); return false; }
-  if (attempt === 1) pushLog(`拉取雲端… (${reason})`, 'info'); else pushLog(`重試第 ${attempt} 次…`, 'info');
+
+  // ── 保護：分類管理視窗開著時跳過拉取（避免覆蓋使用者編輯）──
+  const catMOpen = document.getElementById('catM');
+  if (catMOpen && catMOpen.classList.contains('open')) {
+    pushLog('分類管理開啟中，跳過拉取', 'warn');
+    return false;
+  }
+
+  if (attempt === 1) {
+    pushLog(`拉取雲端… (${reason})`, 'info');
+    _prePullLocalTasks = allT.map(t => ({...t}));
+  } else {
+    pushLog(`重試第 ${attempt} 次…`, 'info');
+  }
+
   try {
-    const fetchWithTimeout = (url, ms=25000) => { const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), ms); return fetch(url, {signal: ctrl.signal}).finally(() => clearTimeout(tid)); };
+    const fetchWithTimeout = (url, ms=25000) => {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, {signal: ctrl.signal}).finally(() => clearTimeout(tid));
+    };
+
+    // 路徑 1：週二全量強制（最優先）
+    if (needsWeeklyFullSync()) {
+      pushLog('本週首次同步，執行全量', 'info');
+      return await pullFromCloudFull(reason, attempt, fetchWithTimeout);
+    }
+
+    // 路徑 2：checkSync 流程（attempt 1 才嘗試，有本機資料才嘗試）
+    if (attempt === 1 && lastSyncTime > 0 && allT.length > 0) {
+      try {
+        const checkRes = await fetchWithTimeout(
+          `${GAS_URL}?action=checkSync&since=${lastSyncTime}`
+        ).then(r => r.json());
+
+        if (checkRes && checkRes.status === 'success') {
+          // v500.7: count 比對（補救 onChange 延遲未觸發的情境）
+          // v500.8: 比對前先 autoCleanDone，讓本機 allT 對齊當前 cutoff
+          //         避免 GAS/前端 cutoff 時間漂移造成的無謂全量
+          if (typeof checkRes.cloudCount === 'number') {
+            autoCleanDone();  // 純 filter，O(n)，極快
+            const pendingAddIds = new Set(
+              pendingQueue
+                .filter(q => q.action === 'addTask' && q.payload?.data)
+                .map(q => String(q.payload.data.ID || q.payload.id))
+            );
+            // 本機已存在 + 不在 pendingQueue 內的數量（與雲端可比的部分）
+            const localCount = allT.filter(t => !pendingAddIds.has(String(t.ID))).length;
+            if (localCount !== checkRes.cloudCount) {
+              pushLog(`數量不符（本機 ${localCount} / 雲端 ${checkRes.cloudCount}），執行全量`, 'warn');
+              return await pullFromCloudFull(reason, attempt, fetchWithTimeout);
+            }
+          }
+
+          // 子路徑 A：無任何變動 → 輕量結束
+          if (!checkRes.hasUpdate && !checkRes.hasDelete && !checkRes.hasCatUpdate) {
+            lastSyncTime = Date.now();
+            localStorage.setItem('lastSyncTime', String(lastSyncTime));
+            _prePullLocalTasks = [];
+            // 成功確認雲端與本機一致 → 視為「已同步」，移除健康提醒
+            dismissSyncReminder();
+            pushLog('雲端無變動', 'success');
+            updateSyncMeta();
+            return true;
+          }
+
+          // 子路徑 B：有刪除事件 → 走全量
+          if (checkRes.hasDelete) {
+            pushLog('偵測到雲端刪除事件，執行全量', 'info');
+            return await pullFromCloudFull(reason, attempt, fetchWithTimeout);
+          }
+
+          // 子路徑 C：只有更新（任務或分類）→ 增量
+          return await pullFromCloudIncremental(reason, checkRes.hasCatUpdate, fetchWithTimeout);
+        }
+      } catch(e) {
+        pushLog(`checkSync 失敗，改走全量: ${e.message||'錯誤'}`, 'warn');
+      }
+    }
+
+    // 路徑 3：fallback 全量（首次安裝、checkSync 失敗、attempt > 1）
+    return await pullFromCloudFull(reason, attempt, fetchWithTimeout);
+
+  } catch(e) {
+    if (attempt < 3 && isOnline()) {
+      pushLog(`拉取失敗，${attempt * 5} 秒後重試…`, 'warn');
+      await new Promise(r => setTimeout(r, attempt * 5000));
+      return pullFromCloud(reason, attempt + 1);
+    }
+    pushLog(`拉取失敗：${e.message||'錯誤'}`, 'error');
+    return false;
+  }
+}
+
+// 全量拉取：取代整個 allT 和 allC（v500 拆分出來方便共用）
+async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
+  try {
     const [resT, resC] = await Promise.all([
       fetchWithTimeout(`${GAS_URL}?action=getTasks`).then(r => r.json()),
       fetchWithTimeout(`${GAS_URL}?action=getCategories`).then(r => r.json())
     ]);
-    if (!Array.isArray(resT)) { pushLog('拉取失敗：Tasks 資料異常', 'error'); return false; }
-    if (!Array.isArray(resC)) { pushLog('拉取失敗：Categories 資料異常', 'error'); return false; }
-    allT = resT.map(t => ({
+
+    if (!Array.isArray(resT)) {
+      pushLog('拉取失敗：Tasks 資料異常', 'error'); return false;
+    }
+    if (!Array.isArray(resC)) {
+      pushLog('拉取失敗：Categories 資料異常', 'error'); return false;
+    }
+
+    // ★ filter：只保留近 6 個月內已完成 + 所有 Pending
+    allT = resT.filter(shouldKeep).map(t => ({
       ...t,
       Task:     String(t.Task     || ''),
       Category: String(t.Category || ''),
@@ -1083,34 +1587,339 @@ async function pullFromCloud(reason, attempt=1) {
       Priority: Number(t.Priority) || 99,
       ID:       String(t.ID       || ''),
     }));
-    if (Array.isArray(resC)) {
+
+    // 合併保護：pendingQueue 裡還沒推送的 addTask，避免被 pullFromCloud 覆蓋
+    const cloudIds = new Set(allT.map(t => String(t.ID)));
+    pendingQueue.filter(q => q.action === 'addTask' && q.payload && q.payload.data).forEach(q => {
+      const d = q.payload.data;
+      const id = String(d.ID || q.payload.id);
+      if (!cloudIds.has(id)) {
+        allT.push({
+          ID: id,
+          Task: String(d.task || ''),
+          Category: String(d.category || ''),
+          DueDate: d.dueDate || '',
+          Status: 'Pending',
+          Priority: Number(d.priority) || 99,
+          Note: String(d.note || ''),
+          mTime: d.mTime || Date.now(),
+        });
+        cloudIds.add(id);
+      }
+    });
+
+    // 合併保護：以本機較新的 mTime 為準
+    const localSnapshot = _prePullLocalTasks || [];
+    if (localSnapshot.length > 0) {
+      allT = allT.map(cloudTask => {
+        const local = localSnapshot.find(l => String(l.ID) === String(cloudTask.ID));
+        if (local && Number(local.mTime) > Number(cloudTask.mTime)) {
+          return local;
+        }
+        return cloudTask;
+      });
+    }
+
+    // 處理分類
+    const filtered = resC.filter(c => c && (typeof c === 'string' ? c !== "Category Name" : c.name !== "Category Name"));
+    const hasSortOrder = filtered.some(c => typeof c === 'object' && c.sortOrder !== undefined);
+    const toObj = c => typeof c === 'string' ? {name:c, rowId:null, color:'', sortOrder:0} : {name:c.name, rowId:c.RowID||c.rowId||null, color:c.color||c.Color||'', sortOrder:c.sortOrder||c.SortOrder||0};
+    if (hasSortOrder) {
+      filtered.sort((a, b) => (a.sortOrder||a.SortOrder||0) - (b.sortOrder||b.SortOrder||0));
+      allC = filtered.map(toObj);
+      catOrder = allC.map(c => c.name);
+    } else {
+      allC = filtered.map(toObj);
+      applyCatOrder();
+    }
+    allC.forEach(c => {
+      if (c.color) catColors[c.name] = c.color;
+      else delete catColors[c.name];
+    });
+    saveCatColors();
+
+    // ★ 全量路徑統一更新：lastSyncTime + lastFullSync + 清提醒
+    saveLocal();
+    pushLog(`完成：${allT.length} 任務 / ${allC.length} 分類`, 'success');
+    lastSyncTime = Date.now();
+    localStorage.setItem('lastSyncTime', String(lastSyncTime));
+    localStorage.setItem('lastFullSync', String(lastSyncTime));
+    dismissSyncReminder();
+    _pendingVerify = false;
+    _prePullLocalTasks = [];
+
+    if (_lastFlushedOps.length > 0) {
+      await verifyFlushedOps(allT, allC);
+    }
+    renderAll();
+    updateSyncMeta();
+    return true;
+  } catch(e) {
+    if (attempt < 3 && isOnline()) {
+      pushLog(`拉取失敗，${attempt * 5} 秒後重試…`, 'warn');
+      await new Promise(r => setTimeout(r, attempt * 5000));
+      return pullFromCloud(reason, attempt + 1);
+    }
+    pushLog(`拉取失敗：${e.message||'錯誤'}`, 'error');
+    return false;
+  }
+}
+
+// 增量拉取：只更新變動的部分（v500 新增）
+async function pullFromCloudIncremental(reason, hasCatUpdate, fetchWithTimeout) {
+  try {
+    const calls = [
+      fetchWithTimeout(`${GAS_URL}?action=getTasks&since=${lastSyncTime}`).then(r => r.json())
+    ];
+    if (hasCatUpdate) {
+      calls.push(fetchWithTimeout(`${GAS_URL}?action=getCategories`).then(r => r.json()));
+    }
+
+    const results = await Promise.all(calls);
+    const resT = results[0];
+    const resC = hasCatUpdate ? results[1] : null;
+
+    if (!Array.isArray(resT)) {
+      pushLog('增量拉取失敗：Tasks 資料異常', 'error');
+      return false;
+    }
+
+    // 增量 merge 任務（mTime 較新者勝 + filter）
+    let mergedCount = 0;
+    resT.forEach(newT => {
+      const normalized = {
+        ...newT,
+        Task:     String(newT.Task     || ''),
+        Category: String(newT.Category || ''),
+        Note:     String(newT.Note     || ''),
+        Status:   String(newT.Status   || 'Pending'),
+        Priority: Number(newT.Priority) || 99,
+        ID:       String(newT.ID       || ''),
+      };
+
+      // filter：被擋下的不加入 allT
+      if (!shouldKeep(normalized)) return;
+
+      const idx = allT.findIndex(t => String(t.ID) === String(normalized.ID));
+      if (idx > -1) {
+        // 已存在：只有雲端更新時才覆蓋
+        if (Number(normalized.mTime) > Number(allT[idx].mTime || 0)) {
+          allT[idx] = normalized;
+          mergedCount++;
+        }
+      } else {
+        // 不存在：新增
+        allT.push(normalized);
+        mergedCount++;
+      }
+    });
+
+    // 處理分類（如果有變動）
+    if (resC && Array.isArray(resC)) {
       const filtered = resC.filter(c => c && (typeof c === 'string' ? c !== "Category Name" : c.name !== "Category Name"));
       const hasSortOrder = filtered.some(c => typeof c === 'object' && c.sortOrder !== undefined);
       const toObj = c => typeof c === 'string' ? {name:c, rowId:null, color:'', sortOrder:0} : {name:c.name, rowId:c.RowID||c.rowId||null, color:c.color||c.Color||'', sortOrder:c.sortOrder||c.SortOrder||0};
-      if (hasSortOrder) { filtered.sort((a, b) => (a.sortOrder||a.SortOrder||0) - (b.sortOrder||b.SortOrder||0)); allC = filtered.map(toObj); catOrder = allC.map(c=>c.name); }
-      else { allC = filtered.map(toObj); applyCatOrder(); }
+      if (hasSortOrder) {
+        filtered.sort((a, b) => (a.sortOrder||a.SortOrder||0) - (b.sortOrder||b.SortOrder||0));
+        allC = filtered.map(toObj);
+        catOrder = allC.map(c => c.name);
+      } else {
+        allC = filtered.map(toObj);
+        applyCatOrder();
+      }
       allC.forEach(c => {
         if (c.color) catColors[c.name] = c.color;
         else delete catColors[c.name];
       });
       saveCatColors();
     }
-    saveLocal(); pushLog(`完成：${allT.length} 任務 / ${allC.length} 分類`, 'success');
-    renderAll(); // 成功後才執行，且只執行一次
+
+    saveLocal();
+    pushLog(`增量同步：${mergedCount} 筆變動`, 'success');
+    lastSyncTime = Date.now();
+    localStorage.setItem('lastSyncTime', String(lastSyncTime));
+    // ★ 注意：增量同步不更新 lastFullSync（這由全量路徑負責）
+    // 但成功完成增量同步表示資料是新的 → 移除健康提醒
+    dismissSyncReminder();
+    _pendingVerify = false;
+    _prePullLocalTasks = [];
+
+    if (_lastFlushedOps.length > 0) {
+      await verifyFlushedOps(allT, allC);
+    }
+    renderAll();
+    updateSyncMeta();
     return true;
   } catch(e) {
-    if (attempt < 3 && isOnline()) {
-      pushLog(`拉取失敗，${attempt * 5} 秒後重試…`, 'warn');
-      await new Promise(r => setTimeout(r, attempt * 5000));
-      return pullFromCloud(reason, attempt + 1); // 遞迴結果直接回傳，不重複 renderAll
-    }
-    pushLog(`拉取失敗：${e.message||'錯誤'}`, 'error');
+    pushLog(`增量拉取失敗，下次會 fallback 全量: ${e.message||'錯誤'}`, 'warn');
     return false;
   }
 }
+let _lastFlushedOps = [];
+let _verifyRetryCount = {};
+let _pendingVerify = false;
+let _importTotal = 0;
+let _prePullLocalTasks = []; // pullFromCloud 前的本機快照，用於 mTime 比對保護
+
+function importProgressShowPull() {
+  _importTotal = 0;
+  const el = document.getElementById('importProgress');
+  el.classList.add('show');
+  document.getElementById('ipLabel').textContent = '同步雲端資料中';
+  document.getElementById('ipCount').textContent = '';
+  document.getElementById('ipStatus').textContent = '取得最新雲端資料…';
+  document.getElementById('ipBar').className = 'ip-bar running';
+  document.getElementById('ipBar').style.width = '15%';
+  document.getElementById('ipErrorRow').classList.remove('show');
+  const syncBtn = document.getElementById('syncNowBtn');
+  if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = '匯入中…'; }
+}
+
+function importProgressShowCompare() {
+  document.getElementById('ipLabel').textContent = '比對資料中';
+  document.getElementById('ipStatus').textContent = '剔除重複任務…';
+  document.getElementById('ipBar').style.width = '35%';
+}
+
+function importProgressShow(total) {
+  _importTotal = total;
+  document.getElementById('ipLabel').textContent = '批次上傳中';
+  document.getElementById('ipCount').textContent = `0 / ${total}`;
+  document.getElementById('ipStatus').textContent = '上傳至雲端…';
+  document.getElementById('ipBar').style.width = '60%';
+  document.getElementById('ipErrorRow').classList.remove('show');
+}
+
+function importProgressShowVerify(written, total) {
+  document.getElementById('ipLabel').textContent = '驗證寫入結果';
+  document.getElementById('ipCount').textContent = `${written} / ${total}`;
+  document.getElementById('ipStatus').textContent = '確認雲端資料…';
+  document.getElementById('ipBar').style.width = '85%';
+}
+
+function importProgressVerifyDone(failCount) {
+  if (!_importTotal) return;
+  const bar = document.getElementById('ipBar');
+  const syncBtn = document.getElementById('syncNowBtn');
+  if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = '立即同步'; }
+  if (failCount > 0) {
+    bar.className = 'ip-bar retrying';
+    document.getElementById('ipLabel').textContent = '驗證失敗，重試中';
+    document.getElementById('ipStatus').textContent = `${failCount} 筆驗證失敗，30 秒後自動重試`;
+  } else {
+    bar.className = 'ip-bar done'; bar.style.width = '100%';
+    document.getElementById('ipLabel').textContent = '匯入同步完成';
+    document.getElementById('ipCount').textContent = `${_importTotal} / ${_importTotal}`;
+    document.getElementById('ipStatus').textContent = '全部同步成功 ✓';
+    setTimeout(() => {
+      document.getElementById('importProgress').classList.remove('show');
+      _importTotal = 0;
+    }, 3000);
+  }
+}
+
+function importProgressError(msg) {
+  if (!_importTotal) return;
+  const bar = document.getElementById('ipBar');
+  bar.className = 'ip-bar failed'; bar.style.width = '100%';
+  document.getElementById('ipLabel').textContent = '⚠️ 匯入同步失敗';
+  document.getElementById('ipStatus').textContent = '';
+  document.getElementById('ipErrorMsg').textContent = msg || '無法確認資料已寫入雲端';
+  document.getElementById('ipErrorRow').classList.add('show');
+  const importBtn = document.querySelector('.import-btn');
+  if (importBtn) { importBtn.disabled = false; importBtn.style.opacity = ''; }
+  const syncBtn = document.getElementById('syncNowBtn');
+  if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = '立即同步'; }
+}
+// v500.9: 立即收回進度條（用於「無新資料」等特殊情境）
+function importProgressHide() {
+  _importTotal = 0;
+  document.getElementById('importProgress').classList.remove('show');
+  document.getElementById('ipErrorRow').classList.remove('show');
+  const syncBtn = document.getElementById('syncNowBtn');
+  if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = '立即同步'; }
+}
+
+async function ipManualRetry() {
+  document.getElementById('ipErrorRow').classList.remove('show');
+  document.getElementById('ipBar').className = 'ip-bar running';
+  document.getElementById('ipLabel').textContent = '重新同步中';
+  document.getElementById('ipStatus').textContent = '推送中…';
+  await fullSync('手動重試');
+}
+
+async function lightVerify() {
+  if (!_lastFlushedOps.length) return;
+  const ops = [..._lastFlushedOps];
+  _lastFlushedOps = [];
+
+  // 等 1 秒確保 GAS 寫入完成
+  await new Promise(r => setTimeout(r, 1000));
+
+  // 只驗證任務類操作
+  const taskChecks = {};
+  ops.forEach(op => {
+    if (['addTask','updateTask','toggleTask','setTaskStatus'].includes(op.action)) {
+      const id = op.payload.id || op.payload.data?.ID;
+      if (id) taskChecks[String(id)] = op;
+    } else if (op.action === 'deleteTask') {
+      const id = op.payload.id;
+      if (id) taskChecks[String(id)] = op;
+    }
+  });
+
+  if (Object.keys(taskChecks).length === 0) return;
+
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 35000);
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks)}),
+      signal: ctrl.signal
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json.status !== 'success') return;
+
+    const results = json.results || {};
+    const retryOps = [];
+    Object.entries(taskChecks).forEach(([id, op]) => {
+      const existsInCloud = results[id] === true;
+      const shouldExist = op.action !== 'deleteTask';
+      if (existsInCloud !== shouldExist) {
+        const key = `${op.action}_${id}`;
+        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
+        if (_verifyRetryCount[key] <= 3) {
+          retryOps.push(op);
+          pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
+        } else {
+          pushLog(`⚠️ ${op.label} 無法同步，請手動立即同步`, 'error');
+          delete _verifyRetryCount[key];  // 清除計數，允許未來再嘗試
+        }
+      } else {
+        delete _verifyRetryCount[`${op.action}_${id}`];
+      }
+    });
+
+    if (retryOps.length > 0) {
+      pendingQueue = [...retryOps, ...pendingQueue];
+      saveLocal(); updateBanner();
+      pushLog(`${retryOps.length} 筆驗證失敗，30 秒後自動重試`, 'warn');
+      setTimeout(() => {
+        if (pendingQueue.length && isOnline()) schedulePush(true);
+      }, 30000);
+    } else {
+      if (_importTotal > 0) importProgressVerifyDone(0);
+    }
+  } catch(e) {
+    pushLog(`輕量驗證失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
+    if (_importTotal > 0) importProgressVerifyDone(0);
+  }
+}
+
 async function fullSync(reason) {
   if (isSyncRunning) return false; isSyncRunning = true; updateBanner();
-  if (isOnline()) { const b = document.getElementById('netBanner'); b.className = 'syncing'; b.textContent = '同步中…'; }
   let success = false;
   try {
     const flushed = await flushQueue();
@@ -1118,19 +1927,54 @@ async function fullSync(reason) {
       const pulled = await pullFromCloud(reason);
       success = pulled === true;
     }
-  } finally { isSyncRunning = false; updateBanner(); updateSyncMeta(); }
+  } finally {
+    isSyncRunning = false; updateBanner(); updateSyncMeta();
+    // 同步期間若有新操作加入佇列，立即觸發推送
+    if (pendingQueue.length > 0) {
+      pushLog(`同步完成後發現 ${pendingQueue.length} 筆新操作，立即推送`, 'info');
+      schedulePush(true); // 立即推送，不等 10 秒
+    }
+  }
   return success;
 }
 let _pushDebounceTimer = null;
-function schedulePush() {
+let _pushForceTimer = null; // 最大等待計時器（60秒強制推送）
+
+function schedulePush(immediate = false) {
   if (_pushDebounceTimer) clearTimeout(_pushDebounceTimer);
+  // immediate 時也清除強制計時器（避免殘留）
+  if (immediate && _pushForceTimer) { clearTimeout(_pushForceTimer); _pushForceTimer = null; }
   _pushDebounceTimer = setTimeout(async () => {
+    // 清除強制計時器
+    if (_pushForceTimer) { clearTimeout(_pushForceTimer); _pushForceTimer = null; }
     _pushDebounceTimer = null;
     if (!isOnline() || !pendingQueue.length) return;
-    if (isSyncRunning) return; // fullSync 進行中，不重複執行
-    await flushQueue();
-    updateBanner(); updateSyncMeta();
-  }, 500);
+    if (isSyncRunning) return;
+    const flushed = await flushQueue();
+    if (_pendingVerify) {
+      _pendingVerify = false; // 無論推送成敗，清除標記避免卡住
+      if (flushed && pendingQueue.length === 0) {
+        await fullSync('匯入驗證');
+      } else {
+        updateBanner(); updateSyncMeta();
+      }
+    } else if (flushed && _lastFlushedOps.length > 0) {
+      await lightVerify();
+      updateBanner(); updateSyncMeta();
+    } else {
+      updateBanner(); updateSyncMeta();
+    }
+  }, immediate ? 0 : 10000);
+
+  // 第一筆進佇列時啟動最大等待計時（60秒強制推送）
+  if (!_pushForceTimer && !immediate) {
+    _pushForceTimer = setTimeout(() => {
+      _pushForceTimer = null;
+      if (_pushDebounceTimer) { clearTimeout(_pushDebounceTimer); _pushDebounceTimer = null; }
+      pushLog('強制推送（操作超過 60 秒未同步）', 'info');
+      schedulePush(true);
+    }, 60000);
+  }
 }
 
 async function pushOp(action, payload, label) {
@@ -1142,6 +1986,30 @@ async function doSyncFromModal() {
   btn.textContent = '同步中…'; btn.disabled = true;
   await fullSync('手動'); btn.textContent = '立即同步'; btn.disabled = false;
 }
+// 切到背景（鎖定/切換App）→ 取消 debounce 立即推送
+// 回到前景（解鎖/切回App）→ 檢查佇列繼續推送
+// v500: 離開超過 5 分鐘 → 自動 fullSync 拉取最新資料
+let _lastBgTime = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    _lastBgTime = Date.now();
+    if (pendingQueue.length > 0 && isOnline() && !isSyncRunning) {
+      // 取消 debounce，立即推送（用 immediate 模式）
+      schedulePush(true);
+    }
+  } else if (document.visibilityState === 'visible') {
+    // 離開超過 5 分鐘 → 完整同步（推送 + 拉取）
+    if (_lastBgTime > 0 && Date.now() - _lastBgTime > 5 * 60 * 1000) {
+      if (isOnline() && !isSyncRunning) {
+        fullSync('回前景檢查');
+      }
+    } else if (pendingQueue.length > 0 && isOnline()) {
+      // 短時間切回，只推送佇列（既有行為）
+      schedulePush(true);
+    }
+  }
+});
+
 window.addEventListener('online', () => {
   pushLog('網路恢復，重送佇列…','info');
   // 取消 schedulePush 的 debounce，避免與 fullSync 競爭
@@ -1149,6 +2017,9 @@ window.addEventListener('online', () => {
   fullSync('網路恢復');
 });
 window.addEventListener('offline', () => { pushLog('網路中斷','warn'); updateBanner(); updateSyncMeta(); });
+
+// 每分鐘更新「最後同步」時間顯示和角標警示
+setInterval(() => { updateSyncMeta(); }, 60000);
 
 function openModal(id) {
   playSound('tap'); const m = document.getElementById(id);
@@ -1160,23 +2031,49 @@ function closeModal(id) {
   m.classList.remove('open');
   const body = m.querySelector('.sh-body'); if (body) body.style.maxHeight = '';
   const sheet = m.querySelector('.sheet'); if (sheet) sheet.style.transform = '';
+  // 清理拖曳事件監聽器，防止記憶體洩漏
+  const handle = m.querySelector('.sh-handle');
+  if (handle && m._dragStart) {
+    handle.removeEventListener('touchstart', m._dragStart);
+    handle.removeEventListener('touchmove',  m._dragMove);
+    handle.removeEventListener('touchend',   m._dragEnd);
+    delete m._dragStart; delete m._dragMove; delete m._dragEnd;
+  }
   setTimeout(() => { m.style.display = 'none'; }, 280);
 }
 function closeM(id) { if (id) closeModal(id); else { closeModal('taskM'); closeModal('catM'); } }
+let _isDraggingModal = false; // 拖曳中暫停 visualViewport 處理
+
 function _startHandleDrag(modal, id) {
   const handle = modal.querySelector('.sh-handle'), sheet = modal.querySelector('.sheet');
   if (!handle || !sheet) return;
-  let startY = 0, isDragging = false;
-  function onTouchStart(e) { startY = e.touches[0].clientY; isDragging = true; sheet.style.transition = 'none'; modal.style.transition = 'none'; }
-  function onTouchMove(e) { if (!isDragging) return; const dy = e.touches[0].clientY - startY; if (dy < 0) return; sheet.style.transform = `translateY(${dy}px)`; }
-  function onTouchEnd(e) {
-    if (!isDragging) return; isDragging = false; sheet.style.transition = '';
-    if (e.changedTouches[0].clientY - startY > 80) closeModal(id);
-    else { sheet.style.transform = ''; modal.style.transition = ''; }
+  // 移除舊的監聽器（防止記憶體洩漏）
+  if (modal._dragStart) {
+    handle.removeEventListener('touchstart', modal._dragStart);
+    handle.removeEventListener('touchmove',  modal._dragMove);
+    handle.removeEventListener('touchend',   modal._dragEnd);
   }
-  handle.addEventListener('touchstart', onTouchStart, {passive:true});
-  handle.addEventListener('touchmove',  onTouchMove,  {passive:true});
-  handle.addEventListener('touchend',   onTouchEnd,   {passive:true});
+  let startY = 0;
+  modal._dragStart = (e) => {
+    startY = e.touches[0].clientY; _isDraggingModal = true;
+    sheet.style.transition = 'none'; modal.style.transition = 'none';
+  };
+  modal._dragMove = (e) => {
+    if (!_isDraggingModal) return;
+    const dy = e.touches[0].clientY - startY; if (dy < 0) return;
+    sheet.style.transform = `translateY(${dy}px)`;
+  };
+  modal._dragEnd = (e) => {
+    if (!_isDraggingModal) return; _isDraggingModal = false; sheet.style.transition = '';
+    if (e.changedTouches[0].clientY - startY > 80) {
+      if (id === 'catM') cancelCatM();
+      else closeModal(id);
+    }
+    else { sheet.style.transform = ''; modal.style.transition = ''; }
+  };
+  handle.addEventListener('touchstart', modal._dragStart, {passive:true});
+  handle.addEventListener('touchmove',  modal._dragMove,  {passive:true});
+  handle.addEventListener('touchend',   modal._dragEnd,   {passive:true});
 }
 
 function renderSidebar() {
@@ -1287,11 +2184,15 @@ function render() {
     const io = d && d < today && t.Status !== 'Done';
     const catColor = getCatColor(t.Category||''); const hasColor = catColor !== '#8E8E93';
     const isDone = t.Status === 'Done';
+    const isEmpty = !t.Task || !String(t.Task).trim();
     const doneTimeStr = isDone && t.mTime ? fmtDoneTime(t.mTime) : '';
-    return `<div class="card ${io?'overdue-card':''} ${hasColor&&!io?'cat-colored':''}" style="${hasColor&&!io?`--cat-color:${catColor}`:''}">
+    const taskTitle = isEmpty
+      ? `<span style="color:var(--red);">⚠️ 未命名（請刪除或編輯）</span>`
+      : t.Task;
+    return `<div class="card ${io?'overdue-card':''} ${hasColor&&!io?'cat-colored':''} ${isEmpty?'empty-task-card':''}" style="${hasColor&&!io?`--cat-color:${catColor}`:''}">
       <div class="chk-area" onclick="toggleT('${t.ID}')"><div class="checkbox ${isDone?'done':''}"></div></div>
       <div class="info" onclick="ctxShowMenu(event,'${t.ID}')" ontouchstart="ctxLongStart(event,'${t.ID}')" ontouchmove="ctxLongMove()" ontouchend="ctxLongEnd()" onmousedown="ctxLongStart(event,'${t.ID}')" onmouseup="ctxLongEnd()" onmouseleave="ctxLongEnd()">
-        <div class="task-title ${isDone?'done':''}">${t.Task||'未命名'}</div>
+        <div class="task-title ${isDone?'done':''}">${taskTitle}</div>
         ${t.Note && String(t.Note).trim() ? `<div class="task-note">${String(t.Note).trim().replace(/\n/g,' ')}</div>` : ''}
         <div class="task-meta">
           ${showCat ? `<span class="meta-cat" style="background:${catColor}">${t.Category||'未分類'}</span>` : ''}
@@ -1330,24 +2231,56 @@ async function toggleT(id) {
   playSound(ns === 'Done' ? 'done' : 'tap');
   t.Status = ns; t.mTime = Date.now();
   saveLocal(); renderAll();
-  await pushOp('toggleTask', {id}, `「${t.Task||id}」→${ns==='Done'?'完成':'待辦'}`);
+  // v500: 改用 setTaskStatus 明確指定目標狀態，避免重試造成翻錯
+  await pushOp('setTaskStatus',
+    {id, status: ns, mTime: t.mTime},
+    `「${t.Task||id}」→${ns==='Done'?'完成':'待辦'}`
+  );
 }
 async function delTask() {
   const id = document.getElementById('editId').value; if (!id || !confirm("確定刪除？")) return;
   playSound('delete'); const t = allT.find(x => String(x.ID) === String(id));
   allT = allT.filter(x => String(x.ID) !== String(id));
+  // 清除佇列裡同 id 的操作，避免刪除後仍推送舊操作
+  pendingQueue = pendingQueue.filter(q =>
+    String(q.payload?.id) !== String(id) && String(q.payload?.data?.ID) !== String(id)
+  );
   saveLocal(); renderAll(); closeM('taskM');
   await pushOp('deleteTask', {id}, `刪除「${t?t.Task:id}」`);
 }
 
+let _catSnapshot = null;
+let _catSnapshotAllT = null;
+
 function openCatM() {
-  _catPendingOps = []; // 開啟時清空暫存操作
+  _catPendingOps = [];
+  // 快照目前狀態，取消時還原
+  _catSnapshot = JSON.parse(JSON.stringify(allC));
+  _catSnapshotAllT = JSON.parse(JSON.stringify(allT));
   renderCatList(); openModal('catM');
+}
+
+function cancelCatM() {
+  // 還原 allC、allT 和 catColors（捨棄視窗內的所有修改）
+  if (_catSnapshot) {
+    allC = _catSnapshot;
+    catOrder = allC.map(c => c.name);
+    // 同步還原 catColors 並寫入 localStorage
+    catColors = {};
+    allC.forEach(c => { if (c.color) catColors[c.name] = c.color; });
+    saveCatColors();
+  }
+  if (_catSnapshotAllT) allT = _catSnapshotAllT;
+  _catSnapshot = null; _catSnapshotAllT = null;
+  _catPendingOps = [];
+  closeModal('catM');
 }
 async function closeCatM() {
   closeM('catM');
+  _catSnapshot = null; _catSnapshotAllT = null;
   if (!_catPendingOps.length) return;
-  // reorderCategories 排在最後，確保新增、改名完成後才調整排序
+  // 按「完成」才寫入本機並更新側欄
+  saveCatColors(); saveLocal(); renderAll();
   const reorderOp = _catPendingOps.filter(op => op.action === 'reorderCategories');
   const otherOps  = _catPendingOps.filter(op => op.action !== 'reorderCategories');
   const ops = [...otherOps, ...reorderOp];
@@ -1379,35 +2312,51 @@ function moveC(idx, dir) {
   playSound('tap'); const newIdx = idx + dir;
   if (newIdx < 0 || newIdx >= allC.length) return;
   const moved = allC.splice(idx, 1)[0]; allC.splice(newIdx, 0, moved);
-  catOrder = allC.map(c=>c.name); saveLocal(); renderCatList(); renderSidebar();
-  // 排序操作合併：移除舊的 reorderCategories，換成最新的
+  catOrder = allC.map(c=>c.name);
+  // 只更新視窗內預覽，不更新側欄（等按「完成」才生效）
+  renderCatList();
   _catPendingOps = _catPendingOps.filter(op => op.action !== 'reorderCategories');
   const order = allC.map((c, i) => ({name:c.name, rowId:c.rowId||null, sortOrder:(i+1)*10, color:c.color||''}));
   _catPendingOps.push({action:'reorderCategories', payload:{order}, label:'分類順序已調整'});
 }
-async function syncCatOrder() {
-  const order = allC.map((c, idx) => ({ name:c.name, rowId:c.rowId||null, sortOrder: (idx+1)*10, color: c.color||'' }));
-  await pushOp('reorderCategories', { order }, '分類順序已調整');
-}
 function addC() {
   const n = document.getElementById('newC').value.trim(); if (!n) return;
+  // 檢查重複
+  if (allC.some(c => c.name === n)) {
+    alert(`分類「${n}」已存在`); return;
+  }
   playSound('add');
   const newCat = { name:n, rowId:null, color:'', sortOrder: allC.length * 10 + 10 };
   allC.push(newCat); catOrder = allC.map(c=>c.name); document.getElementById('newC').value="";
-  saveLocal(); renderSidebar(); renderCatList();
+  renderCatList();
   _catPendingOps.push({action:'addCategory', payload:{name:n, sortOrder:newCat.sortOrder, color:''}, label:`新增分類「${n}」`});
 }
 function delC(name, rowId) {
   if (!confirm(`刪除分類「${name}」？`)) return; playSound('delete');
   allC = allC.filter(c => c.name !== name);
   catOrder = catOrder.filter(c => c !== name);
-  // 移除同一分類之前暫存的新增操作（取消後刪除，不需推送）
-  _catPendingOps = _catPendingOps.filter(op => !(op.action === 'addCategory' && op.payload.name === name));
+  // 移除同一分類之前暫存的新增、顏色操作（不需推送）
+  _catPendingOps = _catPendingOps.filter(op =>
+    !(op.action === 'addCategory' && op.payload.name === name) &&
+    !(op.action === 'updateCategoryColor' && op.payload.name === name)
+  );
   _catPendingOps.push({action:'deleteCategory', payload:{name, rowId}, label:`刪除分類「${name}」`});
-  saveLocal(); renderSidebar(); renderCatList();
+  // 刪除後更新排序，移除舊的 reorderCategories
+  if (allC.length > 0) {
+    _catPendingOps = _catPendingOps.filter(op => op.action !== 'reorderCategories');
+    const order = allC.map((c, i) => ({name:c.name, rowId:c.rowId||null, sortOrder:(i+1)*10, color:c.color||''}));
+    _catPendingOps.push({action:'reorderCategories', payload:{order}, label:'分類順序已調整'});
+  }
+  // 只更新視窗內預覽，不更新側欄（等按「完成」才生效）
+  renderCatList();
 }
 function renameC(oldN) {
-  const newN = prompt("新名稱：", oldN); if (!newN||newN===oldN) return; playSound('tap');
+  const newN = prompt("新名稱：", oldN); if (!newN||newN===oldN) return;
+  // 檢查重複
+  if (allC.some(c => c.name === newN)) {
+    alert(`分類「${newN}」已存在`); return;
+  }
+  playSound('tap');
   const cat = allC.find(c => c.name === oldN);
   allC = allC.map(c => c.name === oldN ? {...c, name:newN} : c);
   catOrder = catOrder.map(c => c === oldN ? newN : c);
@@ -1426,7 +2375,8 @@ function renameC(oldN) {
   if (!hasAddOp) {
     _catPendingOps.push({action:'renameCategory', payload:{old:oldN, name:newN, rowId:cat?.rowId||null}, label:`改名「${oldN}」→「${newN}」`});
   }
-  saveLocal(); renderSidebar(); renderCatList(); render();
+  // 只更新視窗內預覽和任務清單（分類名稱變更需即時反映在任務上），不存檔（等按「完成」才生效）
+  renderCatList(); render();
 }
 
 // ── 全部長壓日期篩選 ─────────────────────────────
@@ -1437,7 +2387,7 @@ function scatAllLpStart(e) {
   _scatAllLpFired = false;
   _scatAllLpTimer = setTimeout(() => {
     _scatAllLpTimer = null; _scatAllLpFired = true;
-    playSound('tap');
+    // v500.10: 移除 setTimeout 內的 playSound（避免破壞 audio context / haptic）
     if (currentF !== '全部') {
       currentF = '全部';
       document.getElementById('vTitle').textContent = '全部';
@@ -1459,7 +2409,7 @@ function showAllFilterMenu(e) {
   // 定位在側欄右側、觸發點附近
   const sb = document.getElementById('sidebar');
   const sbRect = sb.getBoundingClientRect();
-  const top = Math.min((e.clientY || 200), window.innerHeight - 120);
+  const top = Math.min((e.touches?.[0]?.clientY || e.clientY || 200), window.innerHeight - 120);
   menu.style.left = (sbRect.right + 8) + 'px';
   menu.style.top = top + 'px';
   menu.classList.add('open');
@@ -1469,6 +2419,7 @@ function showAllFilterMenu(e) {
 function closeAllFilterMenu() {
   document.getElementById('allFilterMenu').classList.remove('open');
   document.getElementById('allFilterOverlay').style.display = 'none';
+  _scatAllLpFired = false;  // 清除長按守門員，避免下次點分類被誤擋
 }
 
 function setAllFilterTomorrow() {
@@ -1489,41 +2440,25 @@ function applyTitleFilter(val) {
   const [y,m,d] = val.split('-').map(Number);
   const mm = String(m).padStart(2,'0');
   const dd = String(d).padStart(2,'0');
-  document.getElementById('titleDateInput').style.display = 'none';
   document.getElementById('vTitle').textContent = mm + '/' + dd;
   render();
-}
-
-function showTitleDateInput() {
-  const inp = document.getElementById('titleDateInput');
-  // 預設填今天，有 value 時 iOS 才能正常開啟日期選擇器
-  inp.value = _titleFilterDate || getToday();
-  inp.style.display = 'inline-block';
 }
 
 function onVTitleClick() {
   if (currentF !== '全部' || !_titleFilterDate) return;
   // 點標題 mm/dd → 清除篩選
   _titleFilterDate = null;
-  document.getElementById('titleDateInput').style.display = 'none';
-  document.getElementById('titleDateInput').value = '';
   document.getElementById('vTitle').textContent = '全部';
   render();
 }
 
-function onTitleDateChange(val) {
-  if (!val) return;
-  applyTitleFilter(val);
-}
-
 function setF(c) {
-  if (_scatAllLpFired) { _scatAllLpFired = false; return; }
+  if (_scatAllLpFired) { _scatAllLpFired = false; return; } // 長壓觸發，不關閉選單
+  closeAllFilterMenu(); // 切換分類時關閉篩選選單
   playSound('select');
   if (c !== '全部' || currentF === '全部') {
     // 切換到其他分類，或重複點「全部」→ 清除日期篩選
     _titleFilterDate = null;
-    document.getElementById('titleDateInput').style.display = 'none';
-    document.getElementById('titleDateInput').value = '';
   }
   currentF = c;
   document.getElementById('vTitle').textContent = c;
@@ -1594,22 +2529,22 @@ let _quickEditTaskId = null;
 
 function ctxQuickEdit() {
   const id = _ctxTaskId;
-  const rect = _ctxRect; // 記錄任務位置
+  const rect = _ctxRect;
   closeCtxMenu();
   _quickEditTaskId = id;
   const t = allT.find(x => String(x.ID) === String(id));
   if (!t) return;
 
-  // 填入現有資料
   document.getElementById('quickEditInput').value = t.Task || '';
   const sel = document.getElementById('quickEditCat');
   sel.innerHTML = allC.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
   sel.value = t.Category || '';
 
-  // 定位：固定左側 16px，任務在上半部往下展開，下半部往上展開
   const m = document.getElementById('quickEditM');
   m.classList.add('open');
   document.getElementById('quickEditOverlay').classList.add('open');
+  // 暫時降低側欄 z-index，讓快速編輯視窗完整顯示
+  document.getElementById('sidebar').style.zIndex = '1';
 
   const mh = 112, gap = 6;
   const isUpperHalf = rect.top < window.innerHeight / 2;
@@ -1617,6 +2552,7 @@ function ctxQuickEdit() {
   if (isUpperHalf && top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
   if (!isUpperHalf && top < 8) top = 8;
   m.style.left = '16px';
+  m.style.width = '';
   m.style.top  = top + 'px';
 
   setTimeout(() => document.getElementById('quickEditInput').focus(), 100);
@@ -1627,6 +2563,8 @@ function closeQuickEdit() {
   document.getElementById('quickEditM').classList.remove('open');
   document.getElementById('quickEditOverlay').classList.remove('open');
   document.getElementById('quickEditInput').value = '';
+  document.getElementById('sidebar').style.zIndex = '';
+  document.getElementById('sidebar').style.pointerEvents = '';
   _quickEditTaskId = null;
 }
 
@@ -1636,7 +2574,7 @@ async function saveQuickEdit() {
   const cat  = document.getElementById('quickEditCat').value;
   if (!task) { document.getElementById('quickEditInput').focus(); return; }
   playSound('add');
-  closeQuickEdit();
+  closeQuickEdit(); // 內部已恢復 sidebar pointerEvents
   const t = allT.find(x => String(x.ID) === String(id));
   if (!t) return;
   if (t.Task === task && t.Category === cat) return; // 無變更
@@ -1676,7 +2614,7 @@ const ARRIVAL_KEY = 'arrivalHistory';
 const ARRIVAL_MAX = 5;
 
 function getArrivalHistory() {
-  try { return JSON.parse(localStorage.getItem(ARRIVAL_KEY)) || []; } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(ARRIVAL_KEY)) || []; } catch(e) { return []; }
 }
 function saveArrivalHistory(list) {
   localStorage.setItem(ARRIVAL_KEY, JSON.stringify(list));
@@ -1722,7 +2660,7 @@ function arrivalLpStart() {
   _arrivalLpTimer = setTimeout(() => {
     _arrivalLpTimer = null;
     _arrivalLpFired = true;
-    playSound('tap');
+    // v500.10: 移除 setTimeout 內的 playSound（避免破壞 audio context / haptic）
     showArrivalDrop();
   }, 500);
 }
@@ -1781,7 +2719,6 @@ function openQuick() {
   else if (lastUsedCat && allC.some(c=>c.name===lastUsedCat)) sel.value = lastUsedCat;
   const fab = document.getElementById('fab'), fr = fab.getBoundingClientRect(), m = document.getElementById('quickM');
   m.classList.add('open');
-  // 固定左側 16px，寬度由 CSS calc(100vw - 32px) 控制
   m.style.left = '16px';
   m.style.top = (fr.bottom + 10) + 'px';
   document.getElementById('quickOverlay').classList.add('open');
@@ -1821,6 +2758,9 @@ document.addEventListener('visibilitychange', () => {
     }, 500);
   }
 });
+// v500.11: 移除 iOS haptic 機制（iOS 18 已封住 <input switch> 觸發 Taptic Engine 的路徑）
+//          純粹靠強化音效（v500.5 的 triangle 波 + 2.5x 音量 + attack）作為操作回饋
+
 function playSound(type) {
   if (!_soundEnabled) return;
   try {
@@ -1829,14 +2769,23 @@ function playSound(type) {
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     const now = ctx.currentTime;
-    if (type==='tap')    { osc.frequency.setValueAtTime(880,now); osc.frequency.exponentialRampToValueAtTime(660,now+0.06); gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.08); osc.start(now); osc.stop(now+0.08); }
-    else if (type==='done')   { osc.frequency.setValueAtTime(660,now); osc.frequency.setValueAtTime(880,now+0.07); gain.gain.setValueAtTime(0.14,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.18); osc.start(now); osc.stop(now+0.18); }
-    else if (type==='add')    { osc.frequency.setValueAtTime(740,now); osc.frequency.exponentialRampToValueAtTime(1000,now+0.1); gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.12); osc.start(now); osc.stop(now+0.12); }
-    else if (type==='delete') { osc.frequency.setValueAtTime(440,now); osc.frequency.exponentialRampToValueAtTime(220,now+0.12); gain.gain.setValueAtTime(0.12,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.14); osc.start(now); osc.stop(now+0.14); }
-    else if (type==='close')  { osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.exponentialRampToValueAtTime(280,now+0.1); gain.gain.setValueAtTime(0.08,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.12); osc.start(now); osc.stop(now+0.12); return; }
-    else if (type==='select') { osc.type='sine'; osc.frequency.setValueAtTime(520,now); osc.frequency.exponentialRampToValueAtTime(440,now+0.07); gain.gain.setValueAtTime(0.09,now); gain.gain.exponentialRampToValueAtTime(0.001,now+0.09); osc.start(now); osc.stop(now+0.09); return; }
-    else if (type==='swipe')  { osc.type='sine'; osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(700,now+0.08); gain.gain.setValueAtTime(0.07,now); gain.gain.setValueAtTime(0.07,now+0.04); gain.gain.exponentialRampToValueAtTime(0.001,now+0.1); osc.start(now); osc.stop(now+0.1); return; }
-    osc.type = 'sine';
+
+    // v500.4: 統一 attack（5ms 從 0 升到峰值，提升打擊感）
+    const setupGain = (peak, decay) => {
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(peak, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+    };
+
+    osc.type = 'triangle';  // v500.4: 從 sine 改 triangle，更清脆
+
+    if (type==='tap')         { osc.frequency.setValueAtTime(880,now); osc.frequency.exponentialRampToValueAtTime(660,now+0.06); setupGain(0.30,0.08); osc.start(now); osc.stop(now+0.08); }
+    else if (type==='done')   { osc.frequency.setValueAtTime(660,now); osc.frequency.setValueAtTime(880,now+0.07); setupGain(0.35,0.18); osc.start(now); osc.stop(now+0.18); }
+    else if (type==='add')    { osc.frequency.setValueAtTime(740,now); osc.frequency.exponentialRampToValueAtTime(1000,now+0.1); setupGain(0.30,0.12); osc.start(now); osc.stop(now+0.12); }
+    else if (type==='delete') { osc.frequency.setValueAtTime(440,now); osc.frequency.exponentialRampToValueAtTime(220,now+0.12); setupGain(0.30,0.14); osc.start(now); osc.stop(now+0.14); }
+    else if (type==='close')  { osc.frequency.setValueAtTime(500,now); osc.frequency.exponentialRampToValueAtTime(280,now+0.1); setupGain(0.22,0.12); osc.start(now); osc.stop(now+0.12); }
+    else if (type==='select') { osc.frequency.setValueAtTime(520,now); osc.frequency.exponentialRampToValueAtTime(440,now+0.07); setupGain(0.25,0.09); osc.start(now); osc.stop(now+0.09); }
+    else if (type==='swipe')  { osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(700,now+0.08); setupGain(0.20,0.1); osc.start(now); osc.stop(now+0.1); }
   } catch(e) {}
 }
 function toggleSound() { _soundEnabled=!_soundEnabled; localStorage.setItem('soundEnabled',_soundEnabled); updateSoundBtn(); playSound('tap'); }
@@ -1910,36 +2859,178 @@ async function handleImport(event) {
   } catch(e) { resultEl.className='import-result err'; resultEl.textContent='解析失敗：'+(e.message||'未知錯誤'); }
 }
 function closeImportMap() { document.getElementById('importMapModal').classList.remove('open'); _importRows=[]; _importHeaders=[]; }
-function confirmImport() {
+async function confirmImport() {
   const idxTask=parseInt(document.getElementById('mapTask').value);
   const idxCategory=parseInt(document.getElementById('mapCategory').value);
   const idxDueDate=parseInt(document.getElementById('mapDueDate').value);
   const idxPriority=parseInt(document.getElementById('mapPriority').value);
   const idxNote=parseInt(document.getElementById('mapNote').value);
   if (idxTask<0) { alert('請選擇「任務名稱」對應的欄位'); return; }
+
   const resultEl=document.getElementById('importResult');
   const dataRows=_importRows.slice(1).filter(r=>r.some(c=>String(c).trim()));
-  const mTimeBase=Date.now(); let added=0,skipped=0,errors=0;
+  if (!dataRows.length) { resultEl.style.display='block'; resultEl.className='import-result err'; resultEl.textContent='沒有可匯入的資料'; return; }
+
+  // 關閉匯入視窗，顯示進度
+  closeImportMap();
+  resultEl.style.display='block'; resultEl.className='import-result ok';
+  resultEl.textContent='準備中，同步雲端資料…';
+
+  // 禁用匯入按鈕
+  const importBtn = document.querySelector('.import-btn');
+  if (importBtn) { importBtn.disabled = true; importBtn.style.opacity = '0.4'; }
+
+  // 步驟一：先 pullFromCloud 取得最新雲端資料
+  importProgressShowPull();
+  if (isOnline()) {
+    await pullFromCloud('匯入前同步');
+  }
+
+  // 步驟二：本機比對，剔除重複（用最新的 allT）
+  importProgressShowCompare();
+  // 建立本機任務索引（O(n)），避免每筆都線性掃描 allT
+  const existingSet = new Set(
+    allT.filter(t => t.Status !== 'Done')
+        .map(t => `${String(t.Task||'').trim()}|${String(t.Category||'').trim()}`)
+  );
+
+  const mTimeBase=Date.now();
+  let skipped=0, errors=0;
+  const tasksToUpload = [];
+
   for (let i=0;i<dataRows.length;i++) {
-    const row=dataRows[i]; const task=String(row[idxTask]??'').trim(); if(!task){errors++;continue;}
+    const row=dataRows[i];
+    const task=String(row[idxTask]??'').trim(); if(!task){errors++;continue;}
     const category=idxCategory>=0?String(row[idxCategory]??'').trim():'';
     const dueDate=idxDueDate>=0?formatImportDate(row[idxDueDate]):'';
     const priority=idxPriority>=0?(parseInt(row[idxPriority])||99):99;
     const note=idxNote>=0?String(row[idxNote]??'').trim():'';
-    const isDuplicate=allT.some(t=>String(t.Task||'').trim()===task&&String(t.Category||'').trim()===category);
-    if (isDuplicate){skipped++;continue;}
-    const id = genID(); const mTime = mTimeBase + i;
-    allT.push({ID:id,Task:task,Category:category,DueDate:dueDate,Status:'Pending',Priority:priority,Note:note,mTime});
-    enqueue('addTask',{id,data:{task,category,dueDate,priority,note,mTime,ID:id}},`匯入「${task}」`);
-    added++;
+    if (existingSet.has(`${task}|${category}`)){skipped++;continue;}
+    const id=genID(); const mTime=mTimeBase+i;
+    tasksToUpload.push({id,task,category,dueDate,priority,note,mTime,ID:id});
   }
-  saveLocal(); renderAll(); closeImportMap();
-  resultEl.style.display='block'; resultEl.className='import-result ok';
-  let msg=`匯入完成：新增 ${added} 筆`;
-  if (skipped>0) msg+=`，跳過重複 ${skipped} 筆`;
-  if (errors>0)  msg+=`，略過空白列 ${errors} 筆`;
-  resultEl.textContent=msg+'。下次同步時會推送至雲端。';
-  pushLog(`批次匯入 ${added} 筆任務，加入佇列待同步`,'info');
+
+  const added = tasksToUpload.length;
+  let msg=`共 ${added} 筆待上傳`;
+  if (skipped>0) msg+=`，略過重複 ${skipped} 筆`;
+  if (errors>0) msg+=`，略過空白 ${errors} 筆`;
+  resultEl.textContent=msg+'。上傳中…';
+
+  if (added === 0) {
+    resultEl.textContent=`無新資料（略過重複 ${skipped} 筆）`;
+    if (importBtn) { importBtn.disabled=false; importBtn.style.opacity=''; }
+    importProgressHide();  // v500.9: 收回進度條（避免卡在「比對資料中」）
+    return;
+  }
+
+  // 步驟三：批次上傳到雲端（最多重試 3 次）
+  importProgressShow(added);
+  let writtenIds = [], failedTasks = [];
+  let uploadRetry = 0;
+  const MAX_UPLOAD_RETRY = 3;
+
+  while (uploadRetry < MAX_UPLOAD_RETRY) {
+    const tasksBatch = uploadRetry === 0 ? tasksToUpload :
+      tasksToUpload.filter(t => !writtenIds.includes(String(t.ID)));
+
+    if (tasksBatch.length === 0) break;
+
+    if (uploadRetry > 0) {
+      importProgressError(`上傳部分失敗，30 秒後第 ${uploadRetry} 次重試...`);
+      await new Promise(r => setTimeout(r, 30000));
+      importProgressShow(tasksBatch.length);
+      pushLog(`批次上傳第 ${uploadRetry + 1} 次重試（${tasksBatch.length} 筆）`, 'info');
+    }
+
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 60000);
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'batchAddTasks',
+          tasks: tasksBatch.map(t=>({ID:t.ID,task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime}))
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(tid);
+      const json = await res.json();
+      if (json.status === 'success') {
+        writtenIds = [...new Set([...writtenIds, ...(json.written||[])])];
+        failedTasks = tasksToUpload.filter(t => !writtenIds.includes(String(t.ID)));
+        pushLog(`批次上傳：寫入 ${(json.written||[]).length} 筆，略過 ${(json.skipped||[]).length} 筆`, 'success');
+        if (failedTasks.length === 0) break; // 全部成功
+      } else {
+        pushLog(`批次上傳失敗：${json.message||'未知錯誤'}（第 ${uploadRetry+1} 次）`, 'error');
+      }
+    } catch(e) {
+      pushLog(`批次上傳錯誤：${e.name==='AbortError'?'請求超時':e.message}（第 ${uploadRetry+1} 次）`, 'error');
+    }
+    uploadRetry++;
+  }
+
+  // 超過最大重試次數，仍有失敗
+  failedTasks = tasksToUpload.filter(t => !writtenIds.includes(String(t.ID)));
+  if (uploadRetry >= MAX_UPLOAD_RETRY && failedTasks.length > 0) {
+    importProgressError(`上傳失敗 ${failedTasks.length} 筆，請手動同步`);
+    pushLog(`批次上傳連續 ${MAX_UPLOAD_RETRY} 次失敗，停止重試`, 'error');
+    // 失敗的放回佇列，讓使用者手動觸發
+    failedTasks.forEach(t => {
+      pendingQueue.push({
+        action:'addTask',
+        payload:{id:t.ID,data:{task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime,ID:t.ID}},
+        label:`匯入「${t.task}」`,
+        addedAt:Date.now(),
+        _opId: `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+      });
+    });
+    saveQueue(); updateBanner();
+    if (importBtn) { importBtn.disabled=false; importBtn.style.opacity=''; }
+    return;
+  }
+
+  // 步驟四：更新本機 allT（只加入成功寫入的任務）
+  writtenIds.forEach(id => {
+    const t = tasksToUpload.find(x=>String(x.ID)===String(id));
+    if (t && !allT.some(x=>String(x.ID)===String(id))) {
+      allT.push({ID:t.ID,Task:t.task,Category:t.category,DueDate:t.dueDate,Status:'Pending',Priority:t.priority,Note:t.note,mTime:t.mTime});
+    }
+  });
+  saveLocal(); renderAll();
+
+  // 步驟五：pullFromCloud 驗證寫入結果
+  importProgressShowVerify(writtenIds.length, added);
+  await pullFromCloud('匯入驗證');
+
+  // 驗證：檢查 writtenIds 是否都在雲端
+  const cloudIds = new Set(allT.map(t=>String(t.ID)));
+  const missingIds = writtenIds.filter(id=>!cloudIds.has(String(id)));
+
+  if (missingIds.length > 0) {
+    // 缺少的補回佇列，走 verifyFlushedOps 的重試機制（最多 3 次）
+    missingIds.forEach(id => {
+      const t = tasksToUpload.find(x=>String(x.ID)===String(id));
+      if (t && !pendingQueue.some(q=>q.payload?.data?.ID===id)) {
+        pendingQueue.push({
+          action:'addTask',
+          payload:{id:t.ID,data:{task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime,ID:t.ID}},
+          label:`補回「${t.task}」`,
+          addedAt:Date.now(),
+          _opId: `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+        });
+      }
+    });
+    saveQueue(); updateBanner();
+    importProgressVerifyDone(missingIds.length);
+    pushLog(`驗證發現 ${missingIds.length} 筆未寫入，30 秒後自動重試`, 'warn');
+    setTimeout(()=>{ if(pendingQueue.length&&isOnline()) schedulePush(true); }, 30000);
+  } else {
+    importProgressVerifyDone(0);
+    let doneMsg=`匯入完成：新增 ${writtenIds.length} 筆`;
+    if (skipped>0) doneMsg+=`，略過重複 ${skipped} 筆`;
+    resultEl.textContent=doneMsg;
+  }
+  if (importBtn) { importBtn.disabled=false; importBtn.style.opacity=''; }
 }
 function formatImportDate(val) {
   if(!val) return '';
@@ -1967,29 +3058,36 @@ function readXlsx(file,resolve,reject) {
   reader.onerror=()=>reject(new Error('Excel 讀取失敗')); reader.readAsArrayBuffer(file);
 }
 
-async function autoCleanDone() {
-  const cutoff=Date.now()-(6*30*24*60*60*1000);
-  const toDelete=allT.filter(t=>t.Status==='Done'&&Number(t.mTime)>0&&Number(t.mTime)<cutoff);
-  if(!toDelete.length) return;
-  const deleteIds=new Set(toDelete.map(t=>String(t.ID)));
-  allT=allT.filter(t=>!deleteIds.has(String(t.ID))); saveLocal();
-  pushLog(`自動清理 ${toDelete.length} 筆逾期已完成任務`,'info');
-  for(const t of toDelete) await pushOp('deleteTask',{id:t.ID},`清理「${t.Task}」`);
-}
-
-async function init() {
-  loadLocal(); applyCatOrder(); renderAll(); updateBanner(); applySide();
-  if (pendingQueue.length>0) pushLog(`發現 ${pendingQueue.length} 筆離線操作待同步`,'warn');
-  const synced = await fullSync('啟動');
-  if (synced) await autoCleanDone();
-  renderAll();
-  // 首次使用自動跳出教學
-  if (shouldShowGuide()) {
-    setTimeout(() => { openGuide(); }, 600);
+// v500: 改為純本機 filter，不發 HTTP 推送
+// 雲端的清理由 GAS 端的 dailyCleanup() 每週二自動處理
+function autoCleanDone() {
+  const before = allT.length;
+  allT = allT.filter(shouldKeep);
+  const removed = before - allT.length;
+  if (removed > 0) {
+    saveLocal();
+    pushLog(`本機隱藏 ${removed} 筆 6 個月前已完成任務`, 'info');
   }
 }
 
-window.onload = () => { init(); };
+async function init() {
+  loadLocal();
+  autoCleanDone();        // 純 filter，瞬間完成（不阻塞）
+  applyCatOrder();
+  renderAll();
+  updateBanner();
+  applySide();
+
+  // v500: 健康檢查（超過 14 天沒全量同步就顯示提醒）
+  checkSyncHealth();
+
+  if (pendingQueue.length > 0) pushLog(`發現 ${pendingQueue.length} 筆離線操作待同步`, 'warn');
+  await fullSync('啟動');
+}
+
+window.onload = () => {
+  init();
+};
 </script>
 
 <script>
