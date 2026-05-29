@@ -321,30 +321,55 @@
     @media (min-width: 768px){
       .density-btn{display:none !important;}
     }
-    body.density-compact .card{contain-intrinsic-size:auto 60px;}
-    body.density-compact .card:has(.task-note){contain-intrinsic-size:auto 78px;}
-    body.density-compact .chk-area{padding:9px 7px 9px 10px;}
-    body.density-compact .checkbox{width:21px;height:21px;}
-    body.density-compact .info{padding:8px 9px 8px 0;}
-    body.density-compact .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
-    body.density-compact .task-meta{gap:5px;margin-top:1px;}
-    body.density-compact .meta-cat{font-size:10px;padding:1px 6px;}
-    body.density-compact .meta-date{font-size:11px;}
-    body.density-compact .pri-badge{font-size:10px;padding:1px 6px;}
-    body.density-compact .task-note{font-size:11px;}
-    body.density-compact .cust-badge{padding:3px 7px;font-size:11px;}
-    body.density-compact .cust-dot{width:8px;height:8px;}
-    body.density-compact .card{margin-bottom:5px;}
-    body.density-compact .sub-card{height:46px;}
-    body.density-compact .sub-task-title{font-size:13px;}
-    /* v500.27.5: 緊湊模式時、側邊欄分類也縮 */
-    body.density-compact{--cat-h:38px;}
-    body.density-compact .scat-abbr{font-size:14px;}
-    body.density-compact .scat-label{font-size:14px;}
-    body.density-compact .scat-count{font-size:11px;}
-    body.density-compact .scat-icon{width:24px;height:24px;}
-    body.density-compact .scat-icon svg{width:18px;height:18px;}
-    body.density-compact .scat{margin:1px 4px;}
+    /* v500.27.5: 緊湊模式（CSS @media 自動判斷）*/
+    @media (max-width: 379px) and (max-resolution: 2.5dppx) {
+      body:not(.density-normal-force) .card{contain-intrinsic-size:auto 60px;}
+      body:not(.density-normal-force) .card:has(.task-note){contain-intrinsic-size:auto 78px;}
+      body:not(.density-normal-force) .chk-area{padding:9px 7px 9px 10px;}
+      body:not(.density-normal-force) .checkbox{width:21px;height:21px;}
+      body:not(.density-normal-force) .info{padding:8px 9px 8px 0;}
+      body:not(.density-normal-force) .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
+      body:not(.density-normal-force) .task-meta{gap:5px;margin-top:1px;}
+      body:not(.density-normal-force) .meta-cat{font-size:10px;padding:1px 6px;}
+      body:not(.density-normal-force) .meta-date{font-size:11px;}
+      body:not(.density-normal-force) .pri-badge{font-size:10px;padding:1px 6px;}
+      body:not(.density-normal-force) .task-note{font-size:11px;}
+      body:not(.density-normal-force) .cust-badge{padding:3px 7px;font-size:11px;}
+      body:not(.density-normal-force) .cust-dot{width:8px;height:8px;}
+      body:not(.density-normal-force) .card{margin-bottom:5px;}
+      body:not(.density-normal-force) .sub-card{height:46px;}
+      body:not(.density-normal-force) .sub-task-title{font-size:13px;}
+      body:not(.density-normal-force){--cat-h:38px;}
+      body:not(.density-normal-force) .scat-abbr{font-size:14px;}
+      body:not(.density-normal-force) .scat-label{font-size:14px;}
+      body:not(.density-normal-force) .scat-count{font-size:11px;}
+      body:not(.density-normal-force) .scat-icon{width:24px;height:24px;}
+      body:not(.density-normal-force) .scat-icon svg{width:18px;height:18px;}
+      body:not(.density-normal-force) .scat{margin:1px 4px;}
+    }
+    body.density-compact-force .card{contain-intrinsic-size:auto 60px;}
+    body.density-compact-force .card:has(.task-note){contain-intrinsic-size:auto 78px;}
+    body.density-compact-force .chk-area{padding:9px 7px 9px 10px;}
+    body.density-compact-force .checkbox{width:21px;height:21px;}
+    body.density-compact-force .info{padding:8px 9px 8px 0;}
+    body.density-compact-force .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
+    body.density-compact-force .task-meta{gap:5px;margin-top:1px;}
+    body.density-compact-force .meta-cat{font-size:10px;padding:1px 6px;}
+    body.density-compact-force .meta-date{font-size:11px;}
+    body.density-compact-force .pri-badge{font-size:10px;padding:1px 6px;}
+    body.density-compact-force .task-note{font-size:11px;}
+    body.density-compact-force .cust-badge{padding:3px 7px;font-size:11px;}
+    body.density-compact-force .cust-dot{width:8px;height:8px;}
+    body.density-compact-force .card{margin-bottom:5px;}
+    body.density-compact-force .sub-card{height:46px;}
+    body.density-compact-force .sub-task-title{font-size:13px;}
+    body.density-compact-force{--cat-h:38px;}
+    body.density-compact-force .scat-abbr{font-size:14px;}
+    body.density-compact-force .scat-label{font-size:14px;}
+    body.density-compact-force .scat-count{font-size:11px;}
+    body.density-compact-force .scat-icon{width:24px;height:24px;}
+    body.density-compact-force .scat-icon svg{width:18px;height:18px;}
+    body.density-compact-force .scat{margin:1px 4px;}
     .empty-state{text-align:center;color:var(--gray);padding:50px 20px;font-size:15px;line-height:2;}
     .empty-state .emo{display:flex;justify-content:center;margin-bottom:12px;}
     #quickM{display:none;position:fixed;z-index:820;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
@@ -4274,26 +4299,40 @@ function autoCleanDone() {
 
 // v500.27.5: 字級控制（緊湊 / 標準）
 function applyDensity() {
-  const saved = localStorage.getItem('density_test');
-  let density;
-  if (saved === 'compact' || saved === 'normal') {
-    density = saved;
-  } else {
-    // v500.27.5: 用 screen.width（PWA 啟動時 innerWidth 可能不準）
-    density = screen.width < 380 ? 'compact' : 'normal';
-  }
-  document.body.classList.toggle('density-compact', density === 'compact');
+  // v500.27.5: CSS-first、不依賴 screen.width
+  updateDensityBtn();
+}
+
+function updateDensityBtn() {
   const btn = document.getElementById('densityBtn');
-  if (btn) btn.textContent = density === 'compact' ? '緊湊' : '標準';
+  if (!btn) return;
+  const isForceNormal = document.body.classList.contains('density-normal-force');
+  const isForceCompact = document.body.classList.contains('density-compact-force');
+  const isAutoCompact = window.matchMedia('(max-width: 379px) and (max-resolution: 2.5dppx)').matches;
+  const isCompact = isForceCompact || (isAutoCompact && !isForceNormal);
+  btn.textContent = isCompact ? '緊湊' : '標準';
 }
 
 function toggleDensity() {
   playSound('tap');
-  const isCompact = document.body.classList.contains('density-compact');
-  const next = isCompact ? 'normal' : 'compact';
-  localStorage.setItem('density_test', next);
-  applyDensity();
-  pushLog(`字級切換到「${next === 'compact' ? '緊湊' : '標準'}」`, 'info');
+  const isForceNormal = document.body.classList.contains('density-normal-force');
+  const isForceCompact = document.body.classList.contains('density-compact-force');
+  const isAutoCompact = window.matchMedia('(max-width: 379px) and (max-resolution: 2.5dppx)').matches;
+  const isCompact = isForceCompact || (isAutoCompact && !isForceNormal);
+  
+  document.body.classList.remove('density-normal-force', 'density-compact-force');
+  
+  if (isCompact) {
+    if (isAutoCompact) {
+      document.body.classList.add('density-normal-force');
+    }
+  } else {
+    if (!isAutoCompact) {
+      document.body.classList.add('density-compact-force');
+    }
+  }
+  updateDensityBtn();
+  pushLog(`字級切換到「${isCompact ? '標準' : '緊湊'}」（暫時）`, 'info');
 }
 
 async function init() {
