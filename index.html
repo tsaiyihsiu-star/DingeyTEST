@@ -1247,6 +1247,7 @@ function hideCustSuggest() {
 }
 
 function pickCustSuggest(name) {
+  playSound('tap');  // v500.27.5
   const custInput = document.getElementById('custInput');
   const custStatus = document.getElementById('custStatus');
   if (!custInput) return;
@@ -1261,6 +1262,7 @@ function pickCustSuggest(name) {
 
 // v500.29: 詢問是否將客戶欄位內的字加進停用詞
 async function askMarkAsStopWord() {
+  playSound('tap');  // v500.27.5
   const custInput = document.getElementById('custInput');
   const taskInput = document.getElementById('taskInput');
   if (!custInput) return;
@@ -3123,8 +3125,8 @@ function renderCustDots(n) {
 // v500.27: 切換「同客戶展開」狀態
 let _expandedSameCustId = null;
 function toggleSameCust(taskId) {
+  playSound('tap');  // v500.27.5 加音效
   if (_expandedSameCustId === taskId) {
-    // 已展開、收合
     _expandedSameCustId = null;
     render();
   } else {
