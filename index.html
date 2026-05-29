@@ -65,16 +65,17 @@
       overscroll-behavior:none;
       position:relative;z-index:700;
     }
-    /* v500.13: 桌面版側邊欄拖曳調整寬度 / v500.14: 視覺強化 */
+    /* v500.13-15: 桌面版側邊欄拖曳調整寬度 */
     #sidebarResizer{
-      position:absolute;top:0;right:0;width:6px;height:100%;
+      position:fixed;top:0;left:0;width:6px;height:100%;
       background:rgba(255,255,255,0.14);
       cursor:col-resize;
       z-index:701;
-      transition:background 0.15s ease;
+      transition:background 0.15s ease, left 0.26s cubic-bezier(.32,.72,0,1);
       touch-action:none;
       display:flex;align-items:center;justify-content:center;
     }
+    #sidebar.resizing ~ #sidebarResizer{transition:background 0.15s ease;}  /* 拖曳中關閉 left 動畫、跟手 */
     #sidebarResizer::before{
       content:'';
       width:2px;height:24px;
@@ -526,7 +527,6 @@
 </div>
 
 <div id="sidebar">
-  <div id="sidebarResizer" onmousedown="sidebarResizeStart(event)" aria-hidden="true"></div>
   <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增" style="position:relative;">
     <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="26" height="26">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -555,6 +555,9 @@
     </div>
   </div>
 </div>
+
+<!-- v500.15: 拖曳握把獨立浮動（不在 sidebar 內、避免 sidebar 收到 0 時消失） -->
+<div id="sidebarResizer" onmousedown="sidebarResizeStart(event)" aria-hidden="true"></div>
 
 <div id="main">
   <div id="mainHeader">
@@ -776,7 +779,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
 
-const APP_VERSION = "TESTtodo-v500.14"; // 測試版（自動登入 + 視覺標示）
+const APP_VERSION = "TESTtodo-v500.15"; // 測試版（自動登入 + 視覺標示）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1174,12 +1177,17 @@ _mainEl.addEventListener('touchend', e => {
 function applySide() {
   const sb = document.getElementById('sidebar');
   const fab = document.getElementById('fab');
-  // v500.13: 支援使用者拖曳記住的自由寬度
+  const rs = document.getElementById('sidebarResizer');
+  // v500.13-15: 支援使用者拖曳記住的自由寬度
   const customW = parseInt(localStorage.getItem('sideWidth') || '0');
-  const widths = [0, customW || 76, customW ? customW : 130];
+  // 中段：拖過用 customW、否則 76；寬段：拖過用 customW、否則 130
+  const midW = customW || 76;
+  const wideW = customW || 130;
+  const widths = [0, midW, wideW];
   const w = widths[sideState];
   sb.style.width = w + 'px';
-  sb.classList.toggle('wide', w >= 100);  // 寬度足夠就視為 wide
+  sb.classList.toggle('wide', w >= 100);
+  if (rs) rs.style.left = w + 'px';  // v500.15: 握把跟著 sidebar 寬度移動
   if (sideState === 0) { fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
   else { fab.style.opacity = '1'; fab.style.pointerEvents = ''; }
 }
@@ -1202,10 +1210,12 @@ function sidebarResizeMove(e) {
   if (!_resizing) return;
   const newW = _resizeStartW + (e.clientX - _resizeStartX);
   const sb = document.getElementById('sidebar');
+  const rs = document.getElementById('sidebarResizer');
   // 即時套用、不存（拖曳中視覺反饋）
   const clamped = Math.max(0, Math.min(300, newW));
   sb.style.width = clamped + 'px';
   sb.classList.toggle('wide', clamped >= 100);
+  if (rs) rs.style.left = clamped + 'px';  // v500.15: 握把跟著移動
   // 即時更新 FAB 顯示
   const fab = document.getElementById('fab');
   if (clamped < 30) { fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
@@ -1229,7 +1239,7 @@ function sidebarResizeEnd(e) {
   } else {
     const w = Math.max(60, finalW);  // 拖到 30-60 之間自動回彈到 60
     localStorage.setItem('sideWidth', String(w));
-    sideState = 2;  // 進入「自由模式」、Tab 鍵會在 0 跟此寬度切換
+    sideState = 2;  // 寬度等於 sideState=2 的值（applySide 會用 customW 套用）
   }
   applySide();
 }
@@ -1240,13 +1250,8 @@ document.addEventListener('keydown', e => {
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   e.preventDefault();
-  // v500.13: 如果有自由寬度、在 [0, 自由寬度] 兩段切；否則走原 3 段
-  const customW = parseInt(localStorage.getItem('sideWidth') || '0');
-  if (customW > 0) {
-    sideState = (sideState === 0) ? 2 : 0;
-  } else {
-    sideState = (sideState + 1) % 3;
-  }
+  // v500.15: Tab 一律走 3 段循環（拖過後寬段用 customW）
+  sideState = (sideState + 1) % 3;
   playSound('swipe');
   applySide();
 });
@@ -3427,7 +3432,6 @@ window.onload = () => {
     init();
   } else {
     // 測試版：自動登入（跳過密碼輸入）
-    // 隱藏登入畫面、顯示載入中、自動用寫死密碼登入
     document.getElementById('loginScreen').classList.add('hidden');
     _autoLoginTest();
   }
@@ -3448,7 +3452,6 @@ async function _autoLoginTest() {
       localStorage.setItem('authToken', JSON.stringify({ token: data.token, exp }));
       init();
     } else {
-      // 自動登入失敗、退回顯示登入畫面
       document.getElementById('loginScreen').classList.remove('hidden');
       document.getElementById('loginErr').textContent = '測試版自動登入失敗：' + (data.message || '請手動登入');
       setTimeout(() => document.getElementById('loginPwd').focus(), 300);
