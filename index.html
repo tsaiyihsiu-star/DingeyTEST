@@ -312,6 +312,28 @@
     .meta-date.overdue{color:var(--red);font-weight:700;}
     .pri-badge{-webkit-text-size-adjust:none;text-size-adjust:none;margin-left:auto;flex-shrink:0;background:#EBEBEB;color:#636366;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:700;opacity:0.85;}
     .task-note{-webkit-text-size-adjust:none;text-size-adjust:none;font-size:12px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;width:100%;}
+
+    /* v500.27.5: 緊湊模式（小手機自動套用、或手動切換）*/
+    .density-btn{display:flex;}
+    @media (min-width: 768px){
+      .density-btn{display:none !important;}
+    }
+    body.density-compact .card{contain-intrinsic-size:auto 60px;}
+    body.density-compact .card:has(.task-note){contain-intrinsic-size:auto 78px;}
+    body.density-compact .chk-area{padding:9px 7px 9px 10px;}
+    body.density-compact .checkbox{width:21px;height:21px;}
+    body.density-compact .info{padding:8px 9px 8px 0;}
+    body.density-compact .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
+    body.density-compact .task-meta{gap:5px;margin-top:1px;}
+    body.density-compact .meta-cat{font-size:10px;padding:1px 6px;}
+    body.density-compact .meta-date{font-size:11px;}
+    body.density-compact .pri-badge{font-size:10px;padding:1px 6px;}
+    body.density-compact .task-note{font-size:11px;}
+    body.density-compact .cust-badge{padding:3px 7px;font-size:11px;}
+    body.density-compact .cust-dot{width:8px;height:8px;}
+    body.density-compact .card{margin-bottom:5px;}
+    body.density-compact .sub-card{height:46px;}
+    body.density-compact .sub-task-title{font-size:13px;}
     .empty-state{text-align:center;color:var(--gray);padding:50px 20px;font-size:15px;line-height:2;}
     .empty-state .emo{display:flex;justify-content:center;margin-bottom:12px;}
     #quickM{display:none;position:fixed;z-index:820;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
@@ -573,6 +595,10 @@
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/>
         <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/>
       </svg>
+    </button>
+    <!-- v500.27.5: 字級切換（只手機顯示）-->
+    <button class="sbtn density-btn" onclick="toggleDensity()" aria-label="字級">
+      <span id="densityBtn" style="font-size:11px;font-weight:700;letter-spacing:.5px;">標準</span>
     </button>
     <!-- v500.14: 桌面版提示（Tab/拖曳調整寬度），手機隱藏 -->
     <div id="sideHint">
@@ -4220,7 +4246,31 @@ function autoCleanDone() {
   }
 }
 
+// v500.27.5: 字級控制（緊湊 / 標準）
+function applyDensity() {
+  const saved = localStorage.getItem('density');
+  let density;
+  if (saved === 'compact' || saved === 'normal') {
+    density = saved;
+  } else {
+    density = window.innerWidth < 380 ? 'compact' : 'normal';
+  }
+  document.body.classList.toggle('density-compact', density === 'compact');
+  const btn = document.getElementById('densityBtn');
+  if (btn) btn.textContent = density === 'compact' ? '緊湊' : '標準';
+}
+
+function toggleDensity() {
+  playSound('tap');
+  const isCompact = document.body.classList.contains('density-compact');
+  const next = isCompact ? 'normal' : 'compact';
+  localStorage.setItem('density', next);
+  applyDensity();
+  pushLog(`字級切換到「${next === 'compact' ? '緊湊' : '標準'}」`, 'info');
+}
+
 async function init() {
+  applyDensity();          // v500.27.5: 套用字級
   loadLocal();
   autoCleanDone();        // 純 filter，瞬間完成（不阻塞）
   applyCatOrder();
