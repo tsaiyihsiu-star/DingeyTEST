@@ -3047,6 +3047,16 @@ function render() {
   const showCat = currentF==='今天' || currentF==='全部' || currentF==='已完成';
   const weekDays = ['(日)','(一)','(二)','(三)','(四)','(五)','(六)'];
   const getWeekDay = s => { if (!s) return ''; const [y,m,d] = s.split('-').map(Number); return weekDays[new Date(y,m-1,d).getDay()]; };
+  // v500.27.5 效能優化：預計算「客戶名 → Pending 任務數」Map
+  // 避免每張卡片都 filter 整個 allT、把 O(N²) 降為 O(N)
+  const customerCountMap = new Map();
+  for (let i = 0; i < allT.length; i++) {
+    const ti = allT[i];
+    if (ti.Status === 'Done') continue;
+    const c = ti.Customer;
+    if (!c) continue;
+    customerCountMap.set(c, (customerCountMap.get(c) || 0) + 1);
+  }
   const fmtDoneTime = ts => {
     if (!ts) return '';
     const dt = new Date(Number(ts));
@@ -3068,8 +3078,11 @@ function render() {
     const taskTitle = isEmpty
       ? `<span style="color:var(--red);">⚠️ 未命名（請刪除或編輯）</span>`
       : renderTaskTitleWithCust(t.Task, t.Customer, t.CustomerHint);
-    // v500.27: 同客戶數字標籤（N≥2 才顯示）
-    const sameCusN = (!isDone && t.Customer) ? countSameCustomerTasks(t.Customer, t.ID) : 0;
+    // v500.27.5: 同客戶數量 = customer 的總 pending 數 - 1（自己）
+    // 條件：自己不能是 Done、且必須有 Customer
+    const sameCusN = (!isDone && t.Customer)
+      ? Math.max(0, (customerCountMap.get(t.Customer) || 0) - 1)
+      : 0;
     const cusBadge = sameCusN >= 1 ? `<span class="cust-badge" onclick="event.stopPropagation();toggleSameCust('${t.ID}')" data-cust-id="${t.ID}"><span class="cust-dot"></span><span class="cust-n">${sameCusN+1}</span></span>` : '';
     const isExpanded = (_expandedSameCustId === t.ID);
     const expandedHtml = isExpanded ? renderSameCustExpansion(t.Customer, t.ID) : '';
