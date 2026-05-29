@@ -182,6 +182,9 @@
       overflow:hidden;
     }
     #sidebar.wide #sideFoot { display:flex; }
+    /* v500.27.5: foot-row 橫排（分類按鈕 + 字級按鈕同列）*/
+    .foot-row{display:flex;flex-direction:row;align-items:center;gap:6px;}
+    .foot-row .density-btn{width:auto;min-width:44px;padding:0 10px;height:36px;}
     /* v500.14: 桌面版 Tab/拖曳提示（手機隱藏） */
     #sideHint{
       display:none;
@@ -334,6 +337,14 @@
     body.density-compact .card{margin-bottom:5px;}
     body.density-compact .sub-card{height:46px;}
     body.density-compact .sub-task-title{font-size:13px;}
+    /* v500.27.5: 緊湊模式時、側邊欄分類也縮 */
+    body.density-compact{--cat-h:38px;}
+    body.density-compact .scat-abbr{font-size:14px;}
+    body.density-compact .scat-label{font-size:14px;}
+    body.density-compact .scat-count{font-size:11px;}
+    body.density-compact .scat-icon{width:24px;height:24px;}
+    body.density-compact .scat-icon svg{width:18px;height:18px;}
+    body.density-compact .scat{margin:1px 4px;}
     .empty-state{text-align:center;color:var(--gray);padding:50px 20px;font-size:15px;line-height:2;}
     .empty-state .emo{display:flex;justify-content:center;margin-bottom:12px;}
     #quickM{display:none;position:fixed;z-index:820;background:var(--card);border-radius:14px;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.28);width:calc(100vw - 32px);animation:fadeScaleIn .18s cubic-bezier(.32,.72,0,1);}
@@ -584,21 +595,23 @@
   </button>
   <div id="sideList"></div>
   <div id="sideFoot">
-    <button class="sbtn" onclick="openCatM()" aria-label="分類">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
-        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
-        <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/>
-      </svg>
-    </button>
+    <div class="foot-row">
+      <button class="sbtn" onclick="openCatM()" aria-label="分類">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+          <circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+      <!-- v500.27.5: 字級切換（只手機顯示、跟分類按鈕同列）-->
+      <button class="sbtn density-btn" onclick="toggleDensity()" aria-label="字級">
+        <span id="densityBtn" style="font-size:11px;font-weight:700;letter-spacing:.5px;">標準</span>
+      </button>
+    </div>
     <button class="sbtn" onclick="openSyncLog()" aria-label="同步">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/>
         <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/>
       </svg>
-    </button>
-    <!-- v500.27.5: 字級切換（只手機顯示）-->
-    <button class="sbtn density-btn" onclick="toggleDensity()" aria-label="字級">
-      <span id="densityBtn" style="font-size:11px;font-weight:700;letter-spacing:.5px;">標準</span>
     </button>
     <!-- v500.14: 桌面版提示（Tab/拖曳調整寬度），手機隱藏 -->
     <div id="sideHint">
