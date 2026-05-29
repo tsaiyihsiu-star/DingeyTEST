@@ -1506,22 +1506,22 @@ if (window.visualViewport) {
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
     if (kbH > 80) {
-      if (modal.id === 'catM') {
-        // catM：縮小 sh-body 讓 footer 保持在鍵盤上方
+      if (modal.id === 'catM' || modal.id === 'taskM') {
+        // catM / taskM：縮小 sh-body 讓 footer 保持在鍵盤上方
+        // v500.27.5: taskM 加客戶欄位後變高、需要同樣的縮小處理
         const shBody = sheet.querySelector('.sh-body');
         if (shBody) {
           const visibleH = window.visualViewport.height;
           const footerEl = sheet.querySelector('.sh-body + div');
-          const footerH = footerEl ? footerEl.getBoundingClientRect().height : 110;
+          const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
           const handleEl = sheet.querySelector('.sh-handle');
           const titleEl = sheet.querySelector('.sh-title');
           const handleH = (handleEl ? handleEl.getBoundingClientRect().height : 20) +
                           (titleEl  ? titleEl.getBoundingClientRect().height  : 40);
-          // visibleH = 鍵盤上方可用空間，catM 貼著底部
-          // shBody 高度 = visibleH - handle - title - footer - 間距
           const maxBodyH = visibleH - handleH - footerH - 16;
           shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
         }
+        sheet.style.transform = '';
       } else {
         const sheetRect = sheet.getBoundingClientRect();
         const visibleH = window.visualViewport.height;
@@ -1539,8 +1539,8 @@ if (window.visualViewport) {
       }
     } else {
       sheet.style.transform = '';
-      // catM：恢復 sh-body 高度
-      if (modal.id === 'catM') {
+      // catM / taskM：恢復 sh-body 高度
+      if (modal.id === 'catM' || modal.id === 'taskM') {
         const shBody = sheet.querySelector('.sh-body');
         if (shBody) shBody.style.maxHeight = '';
       }
