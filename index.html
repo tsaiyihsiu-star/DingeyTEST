@@ -4274,12 +4274,13 @@ function autoCleanDone() {
 
 // v500.27.5: 字級控制（緊湊 / 標準）
 function applyDensity() {
-  const saved = localStorage.getItem('density');
+  const saved = localStorage.getItem('density_test');
   let density;
   if (saved === 'compact' || saved === 'normal') {
     density = saved;
   } else {
-    density = window.innerWidth < 380 ? 'compact' : 'normal';
+    // v500.27.5: 用 screen.width（PWA 啟動時 innerWidth 可能不準）
+    density = screen.width < 380 ? 'compact' : 'normal';
   }
   document.body.classList.toggle('density-compact', density === 'compact');
   const btn = document.getElementById('densityBtn');
@@ -4290,7 +4291,7 @@ function toggleDensity() {
   playSound('tap');
   const isCompact = document.body.classList.contains('density-compact');
   const next = isCompact ? 'normal' : 'compact';
-  localStorage.setItem('density', next);
+  localStorage.setItem('density_test', next);
   applyDensity();
   pushLog(`字級切換到「${next === 'compact' ? '緊湊' : '標準'}」`, 'info');
 }
