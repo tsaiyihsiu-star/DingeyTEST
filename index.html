@@ -779,7 +779,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
 
-const APP_VERSION = "TESTtodo-v500.15"; // 測試版（自動登入 + 視覺標示）
+const APP_VERSION = "TESTtodo-v500.17"; // 測試版（自動登入 + 視覺標示）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1179,11 +1179,8 @@ function applySide() {
   const fab = document.getElementById('fab');
   const rs = document.getElementById('sidebarResizer');
   // v500.13-15: 支援使用者拖曳記住的自由寬度
-  const customW = parseInt(localStorage.getItem('sideWidth') || '0');
-  // 中段：拖過用 customW、否則 76；寬段：拖過用 customW、否則 130
-  const midW = customW || 76;
-  const wideW = customW || 130;
-  const widths = [0, midW, wideW];
+  // v500.17: Tab 永遠 0/76/130 三段、拖曳不改寬版定義
+  const widths = [0, 76, 130];
   const w = widths[sideState];
   sb.style.width = w + 'px';
   sb.classList.toggle('wide', w >= 100);
@@ -1230,16 +1227,21 @@ function sidebarResizeEnd(e) {
   document.body.style.userSelect = '';
   document.removeEventListener('mousemove', sidebarResizeMove);
   document.removeEventListener('mouseup', sidebarResizeEnd);
-  // 寬度判定：< 30 → 收起 (sideState=0)；其他 → 自由寬度 (sideState=2)
+  // v500.16: 三段判定（更直覺）
+  //   < 30      → 收起 (sideState=0)
+  //   30-99     → 中段 (sideState=1, 寬度 76, 不存 customW)
+  //   100+      → 寬段 (sideState=2, 存 customW)
   const sb = document.getElementById('sidebar');
   const finalW = sb.offsetWidth;
   if (finalW < 30) {
     sideState = 0;
-    localStorage.setItem('sideWidth', '0');  // 收起時不存自由寬度
+    localStorage.removeItem('sideWidth');
+  } else if (finalW < 100) {
+    sideState = 1;
+    localStorage.removeItem('sideWidth');
   } else {
-    const w = Math.max(60, finalW);  // 拖到 30-60 之間自動回彈到 60
-    localStorage.setItem('sideWidth', String(w));
-    sideState = 2;  // 寬度等於 sideState=2 的值（applySide 會用 customW 套用）
+    sideState = 2;
+    localStorage.setItem('sideWidth', String(finalW));
   }
   applySide();
 }
