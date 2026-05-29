@@ -398,9 +398,7 @@
     .cust-badge{position:relative;display:inline-flex;align-items:center;gap:4px;background:rgba(52,199,89,.12);color:#34C759;padding:4px 9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
     .cust-badge::before{content:'';position:absolute;inset:-8px;}
     .cust-badge:active{background:rgba(52,199,89,.25);}
-    .cust-dots{display:inline-flex;gap:1px;}
     .cust-dot{width:9px;height:9px;border-radius:50%;background:#34C759;display:inline-block;}
-    .cust-dot:not(:first-child){margin-left:-3px;border:1px solid var(--card);}
     .cust-n{margin-left:2px;}
     /* v500.27 子任務（展開後） */
     .sub-list{background:rgba(52,199,89,.06);border-radius:0 0 11px 11px;border-top:.5px solid rgba(52,199,89,.25);padding:4px 8px 8px 50px;margin-top:-2px;}
@@ -3122,16 +3120,6 @@ function countSameCustomerTasks(customer, selfId) {
   ).length;
 }
 
-// v500.27: 渲染 3 個圓點（多少個圓點 max 3）
-function renderCustDots(n) {
-  const max = Math.min(n, 3);
-  let html = '';
-  for (let i = 0; i < max; i++) {
-    html += '<span class="cust-dot"></span>';
-  }
-  return html;
-}
-
 // v500.27: 切換「同客戶展開」狀態
 let _expandedSameCustId = null;
 function toggleSameCust(taskId) {
@@ -3620,18 +3608,21 @@ async function saveQuickEdit() {
   if (!t) return;
   if (t.Task === task && t.Category === cat) return; // 無變更
 
-  // v500.27: 若任務名變了、且原本沒有 Customer、重新偵測
+  // v500.27.5: 任務名變了、重新偵測客戶（即使原本有 Customer 也檢查）
+  // 避免：原本「富安 X」(Customer=富安)、改成「捷安 X」、卻仍掛在富安
   let newCustomer = t.Customer || '';
   let newCustomerHint = t.CustomerHint || '';
   const taskNameChanged = t.Task !== task;
-  if (taskNameChanged && !newCustomer) {
+  if (taskNameChanged) {
     const det = detectCustomer(task);
     if (det.customer) {
       newCustomer = det.customer;
       newCustomerHint = '';
     } else if (det.isAmbiguous) {
+      newCustomer = '';
       newCustomerHint = det.hint;
     }
+    // else 保留原本
   }
 
   t.Task = task; t.Category = cat; t.Customer = newCustomer; t.CustomerHint = newCustomerHint; t.mTime = Date.now();
