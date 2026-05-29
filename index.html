@@ -778,7 +778,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyZ7E-8YtUEZH6sEJfFjrV7lS66PHnCaXdJxJwPPa7gZnV0iVi4ZUGHMKsNtgwe_DRD/exec";
 
-const APP_VERSION = "TESTtodo-v500.22"; // 測試版（自動登入 + 視覺標示）
+const APP_VERSION = "TESTtodo-v500.26"; // 測試版（無密碼 GAS 對應版本）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -899,7 +899,9 @@ async function doLogin() {
   btn.disabled = false; btn.textContent = '登入';
 }
 
-function doLogout() { localStorage.removeItem('authToken'); location.reload(); }
+// 測試版 v500.24: 不清 token、純重整（因為自動登入會立刻拿回新 token）
+// 避免「按登出 → 沒 token → 自動登入卡住 30 秒」的窘境
+function doLogout() { location.reload(); }
 function shakeInput() {
   const el = document.getElementById('loginPwd');
   el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
@@ -3486,42 +3488,24 @@ async function init() {
 }
 
 window.onload = () => {
-  if (checkLogin()) {
-    document.getElementById('loginScreen').classList.add('hidden');
-    init();
-  } else {
-    // 測試版：自動登入（跳過密碼輸入）
-    document.getElementById('loginScreen').classList.add('hidden');
-    _autoLoginTest();
-  }
+  // 測試版 v500.26: 對應「無密碼 GAS」、直接 init、不走登入流程
+  // 寫一個假 token 進 localStorage（讓 getSession 不會回 null）
+  const exp = Date.now() + (30 * 24 * 60 * 60 * 1000);
+  localStorage.setItem('authToken', JSON.stringify({ token: 'no-auth-needed', exp }));
+  // 清掉舊的 pendingQueue（可能含舊 GAS 的東西）
+  localStorage.removeItem('pendingQueue');
+  document.getElementById('loginScreen').classList.add('hidden');
+  init();
 };
 
-// 測試版自動登入函式（v500.18: 預先算好 hash，不依賴 crypto.subtle）
-// file:// 協定下 window.crypto.subtle = undefined、無法即時 hash
-// 改用「密碼 'Dg@23076419$$$' 的 SHA-256 預先算好寫死」
+// v500.26: 測試版自動登入函式（保留但不會被呼叫、以防舊路徑誤觸發）
 async function _autoLoginTest() {
-  const TEST_PWD_HASH = 'ca17ceb40e81ecb0a22eb1926c4aca0f5dfb640c07f09f6290e37b7387e66885';
-  try {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'login', hash: TEST_PWD_HASH })
-    });
-    const data = await res.json();
-    if (data.status === 'success') {
-      const exp = Math.min(data.exp, Date.now() + TOKEN_TTL);
-      localStorage.setItem('authToken', JSON.stringify({ token: data.token, exp }));
-      init();
-    } else {
-      document.getElementById('loginScreen').classList.remove('hidden');
-      document.getElementById('loginErr').textContent = '測試版自動登入失敗：' + (data.message || '請手動登入');
-      setTimeout(() => document.getElementById('loginPwd').focus(), 300);
-    }
-  } catch(e) {
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('loginErr').textContent = '連線失敗：' + (e.message || '請手動登入');
-    setTimeout(() => document.getElementById('loginPwd').focus(), 300);
-  }
+  // 直接 init、不打 login API
+  init();
 }
+
+// 測試版自動登入函式（v500.18-v500.26 演進）
+// v500.26: 配合「無密碼 GAS」、整個函式被簡化為直接 init
 </script>
 
 <script>
