@@ -613,7 +613,7 @@
     選擇日期
     <input type="date" id="floatDateInput"
       style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;"
-      onfocus="_datePickTaskId=_ctxTaskId; const _t=allT.find(x=>String(x.ID)===String(_ctxTaskId)); this.value=(_t&&fmtD(_t.DueDate))||getToday();"
+      onclick="_datePickTaskId=_ctxTaskId; const _t=allT.find(x=>String(x.ID)===String(_ctxTaskId)); this.value=(_t&&fmtD(_t.DueDate))||getToday(); try{this.showPicker();}catch(_){}"
       onchange="ctxConfirmDate()">
   </div>
 </div>
