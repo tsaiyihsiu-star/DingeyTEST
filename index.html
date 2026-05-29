@@ -321,54 +321,58 @@
     @media (min-width: 768px){
       .density-btn{display:none !important;}
     }
-    /* v500.27.5: 緊湊模式（CSS @media 自動判斷）*/
-    @media (max-width: 379px) and (max-resolution: 2.5dppx) {
-      body:not(.density-normal-force) .card{contain-intrinsic-size:auto 60px;}
-      body:not(.density-normal-force) .card:has(.task-note){contain-intrinsic-size:auto 78px;}
-      body:not(.density-normal-force) .chk-area{padding:9px 7px 9px 10px;}
-      body:not(.density-normal-force) .checkbox{width:21px;height:21px;}
-      body:not(.density-normal-force) .info{padding:8px 9px 8px 0;}
-      body:not(.density-normal-force) .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
-      body:not(.density-normal-force) .task-meta{gap:5px;margin-top:1px;}
-      body:not(.density-normal-force) .meta-cat{font-size:10px;padding:1px 6px;}
-      body:not(.density-normal-force) .meta-date{font-size:11px;}
-      body:not(.density-normal-force) .pri-badge{font-size:10px;padding:1px 6px;}
-      body:not(.density-normal-force) .task-note{font-size:11px;}
-      body:not(.density-normal-force) .cust-badge{padding:3px 7px;font-size:11px;}
-      body:not(.density-normal-force) .cust-dot{width:8px;height:8px;}
-      body:not(.density-normal-force) .card{margin-bottom:5px;}
-      body:not(.density-normal-force) .sub-card{height:46px;}
-      body:not(.density-normal-force) .sub-task-title{font-size:13px;}
-      body:not(.density-normal-force){--cat-h:38px;}
-      body:not(.density-normal-force) .scat-abbr{font-size:14px;}
-      body:not(.density-normal-force) .scat-label{font-size:14px;}
-      body:not(.density-normal-force) .scat-count{font-size:11px;}
-      body:not(.density-normal-force) .scat-icon{width:24px;height:24px;}
-      body:not(.density-normal-force) .scat-icon svg{width:18px;height:18px;}
-      body:not(.density-normal-force) .scat{margin:1px 4px;}
-    }
+    /* v500.27.5: 緊湊模式
+       - JS 判斷後加 body.auto-compact class
+       - 條件：window.innerWidth < 380 AND devicePixelRatio < 3
+       - 純 6s/SE/7/8（dpr=2、375）→ 緊湊
+       - 大手機放大文字（dpr=3、375）→ 標準
+       - body.density-normal-force 強制標準
+       - body.density-compact-force 強制緊湊 */
+    body.auto-compact:not(.density-normal-force) .card,
     body.density-compact-force .card{contain-intrinsic-size:auto 60px;}
+    body.auto-compact:not(.density-normal-force) .card:has(.task-note),
     body.density-compact-force .card:has(.task-note){contain-intrinsic-size:auto 78px;}
+    body.auto-compact:not(.density-normal-force) .chk-area,
     body.density-compact-force .chk-area{padding:9px 7px 9px 10px;}
+    body.auto-compact:not(.density-normal-force) .checkbox,
     body.density-compact-force .checkbox{width:21px;height:21px;}
+    body.auto-compact:not(.density-normal-force) .info,
     body.density-compact-force .info{padding:8px 9px 8px 0;}
+    body.auto-compact:not(.density-normal-force) .task-title,
     body.density-compact-force .task-title{font-size:14px;line-height:1.22;margin-bottom:2px;}
+    body.auto-compact:not(.density-normal-force) .task-meta,
     body.density-compact-force .task-meta{gap:5px;margin-top:1px;}
+    body.auto-compact:not(.density-normal-force) .meta-cat,
     body.density-compact-force .meta-cat{font-size:10px;padding:1px 6px;}
+    body.auto-compact:not(.density-normal-force) .meta-date,
     body.density-compact-force .meta-date{font-size:11px;}
+    body.auto-compact:not(.density-normal-force) .pri-badge,
     body.density-compact-force .pri-badge{font-size:10px;padding:1px 6px;}
+    body.auto-compact:not(.density-normal-force) .task-note,
     body.density-compact-force .task-note{font-size:11px;}
+    body.auto-compact:not(.density-normal-force) .cust-badge,
     body.density-compact-force .cust-badge{padding:3px 7px;font-size:11px;}
+    body.auto-compact:not(.density-normal-force) .cust-dot,
     body.density-compact-force .cust-dot{width:8px;height:8px;}
+    body.auto-compact:not(.density-normal-force) .card,
     body.density-compact-force .card{margin-bottom:5px;}
+    body.auto-compact:not(.density-normal-force) .sub-card,
     body.density-compact-force .sub-card{height:46px;}
+    body.auto-compact:not(.density-normal-force) .sub-task-title,
     body.density-compact-force .sub-task-title{font-size:13px;}
+    body.auto-compact:not(.density-normal-force),
     body.density-compact-force{--cat-h:38px;}
+    body.auto-compact:not(.density-normal-force) .scat-abbr,
     body.density-compact-force .scat-abbr{font-size:14px;}
+    body.auto-compact:not(.density-normal-force) .scat-label,
     body.density-compact-force .scat-label{font-size:14px;}
+    body.auto-compact:not(.density-normal-force) .scat-count,
     body.density-compact-force .scat-count{font-size:11px;}
+    body.auto-compact:not(.density-normal-force) .scat-icon,
     body.density-compact-force .scat-icon{width:24px;height:24px;}
+    body.auto-compact:not(.density-normal-force) .scat-icon svg,
     body.density-compact-force .scat-icon svg{width:18px;height:18px;}
+    body.auto-compact:not(.density-normal-force) .scat,
     body.density-compact-force .scat{margin:1px 4px;}
     .empty-state{text-align:center;color:var(--gray);padding:50px 20px;font-size:15px;line-height:2;}
     .empty-state .emo{display:flex;justify-content:center;margin-bottom:12px;}
@@ -4299,7 +4303,15 @@ function autoCleanDone() {
 
 // v500.27.5: 字級控制（緊湊 / 標準）
 function applyDensity() {
-  // v500.27.5: CSS-first、不依賴 screen.width
+  // v500.27.5: JS 判斷加 auto-compact class（CSS @media + dppx 在 iOS 行為不穩）
+  // 邏輯：實體像素寬 < 900 → 緊湊（真小手機）
+  //       實體像素寬 >= 900 → 標準（大手機或大手機放大文字）
+  // 範例：6s = 375 × 2 = 750 → 緊湊
+  //       16 Plus 放大 = 375 × 3 = 1125 → 標準
+  //       16 Plus 預設 = 430 × 3 = 1290 → 標準
+  const realW = (screen.width || window.innerWidth) * (window.devicePixelRatio || 1);
+  const isAutoCompact = realW < 900;
+  document.body.classList.toggle('auto-compact', isAutoCompact);
   updateDensityBtn();
 }
 
@@ -4308,7 +4320,7 @@ function updateDensityBtn() {
   if (!btn) return;
   const isForceNormal = document.body.classList.contains('density-normal-force');
   const isForceCompact = document.body.classList.contains('density-compact-force');
-  const isAutoCompact = window.matchMedia('(max-width: 379px) and (max-resolution: 2.5dppx)').matches;
+  const isAutoCompact = document.body.classList.contains('auto-compact');
   const isCompact = isForceCompact || (isAutoCompact && !isForceNormal);
   btn.textContent = isCompact ? '緊湊' : '標準';
 }
@@ -4317,19 +4329,15 @@ function toggleDensity() {
   playSound('tap');
   const isForceNormal = document.body.classList.contains('density-normal-force');
   const isForceCompact = document.body.classList.contains('density-compact-force');
-  const isAutoCompact = window.matchMedia('(max-width: 379px) and (max-resolution: 2.5dppx)').matches;
+  const isAutoCompact = document.body.classList.contains('auto-compact');
   const isCompact = isForceCompact || (isAutoCompact && !isForceNormal);
   
   document.body.classList.remove('density-normal-force', 'density-compact-force');
   
   if (isCompact) {
-    if (isAutoCompact) {
-      document.body.classList.add('density-normal-force');
-    }
+    if (isAutoCompact) document.body.classList.add('density-normal-force');
   } else {
-    if (!isAutoCompact) {
-      document.body.classList.add('density-compact-force');
-    }
+    if (!isAutoCompact) document.body.classList.add('density-compact-force');
   }
   updateDensityBtn();
   pushLog(`字級切換到「${isCompact ? '標準' : '緊湊'}」（暫時）`, 'info');
