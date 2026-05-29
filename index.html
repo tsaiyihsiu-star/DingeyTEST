@@ -6,6 +6,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="待辦TEST">
   <!-- v500.20: 測試版移除 manifest / icon 引用（file:// 下這些會 CORS 失敗、雖無害但會在 console 噴紅色錯誤） -->
@@ -777,7 +778,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
 
-const APP_VERSION = "TESTtodo-v500.20"; // 測試版（自動登入 + 視覺標示）
+const APP_VERSION = "TESTtodo-v500.21"; // 測試版（自動登入 + 視覺標示）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -3524,9 +3525,12 @@ async function _autoLoginTest() {
 </script>
 
 <script>
-  // 測試版：file:// / blob: 協定下 Service Worker 無法註冊、跳過避免錯誤
-  if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('./sw.js');
+  // v500.21: 測試版徹底不註冊 Service Worker（避免 cache 衝突）
+  // 並順手解除已註冊的 sw（如果有的話，從之前部署留下）
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    }).catch(() => {});
   }
 </script>
 
