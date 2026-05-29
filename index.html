@@ -659,11 +659,14 @@
       </div>
       <div id="editMode" style="display:none">
         <input type="text" id="taskInput" class="f" placeholder="任務名稱" onblur="detectCustomerOnBlur()">
-        <!-- v500.27 客戶欄位 -->
-        <div id="custRow" style="position:relative;margin-bottom:10px;">
-          <input type="text" id="custInput" class="f" placeholder="客戶（自動偵測）" style="margin-bottom:0;padding-right:80px;" oninput="onCustInput()">
-          <div id="custStatus" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--gray);pointer-events:none;"></div>
-          <div id="custSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--card);border:1px solid #3A3A3C;border-radius:9px;margin-top:4px;max-height:180px;overflow-y:auto;z-index:10;"></div>
+        <!-- v500.27 客戶欄位、v500.29 加「⊘」停用詞按鈕 -->
+        <div id="custRow" style="position:relative;margin-bottom:10px;display:flex;gap:6px;align-items:stretch;">
+          <div style="flex:1;position:relative;">
+            <input type="text" id="custInput" class="f" placeholder="客戶（自動偵測）" style="margin-bottom:0;padding-right:80px;width:100%;" oninput="onCustInput()">
+            <div id="custStatus" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--gray);pointer-events:none;"></div>
+            <div id="custSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;background:var(--card);border:1px solid #3A3A3C;border-radius:9px;margin-top:4px;max-height:180px;overflow-y:auto;z-index:10;"></div>
+          </div>
+          <button type="button" id="custStopBtn" onclick="askMarkAsStopWord()" title="這不是客戶（加進停用詞）" style="flex-shrink:0;width:42px;border:none;background:var(--bg);color:#FF453A;border-radius:10px;font-size:18px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;">⊘</button>
         </div>
         <div class="frow">
           <div style="flex:2"><input type="date" id="dateInput" class="f" style="margin-bottom:0"></div>
@@ -813,7 +816,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.27"; // 客戶名功能 Phase 1（資料層 + 偵測）
+const APP_VERSION = "TESTtodo-v500.29"; // 停用詞動態化
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1063,7 +1066,12 @@ const CUSTOMER_STOP_WORDS = [
   '繳費', '繳交', '送件', '網路',
   '系統', '電腦', '手機', '設備',
   '討論', '研究', '測試', '確認',
-  '回覆', '收件', '送修', '報修'
+  '回覆', '收件', '送修', '報修',
+  // v500.27.4 補：任務性質類
+  '計畫', '計劃', '規劃', '整理', '清理',
+  '學習', '複習', '練習', '閱讀', '評估',
+  '簡報', '提案', '分析', '思考', '考慮',
+  '運動', '健身', '旅遊', '外出'
 ];
 
 function detectCustomer(taskName) {
@@ -1071,8 +1079,21 @@ function detectCustomer(taskName) {
   const tn = String(taskName).trim();
   if (!tn) return { customer: '', hint: '', isAmbiguous: false, candidates: [] };
 
-  // 先從 allCust 拿已知客戶名清單（依長度降序、確保最長匹配優先）
-  const knownNames = (allCust || []).map(c => c.name).filter(n => n).sort((a, b) => b.length - a.length);
+  // v500.29: 合併內建 + 雲端停用詞
+  // 雲端停用詞：allCust 內 isStopWord === true 的
+  const cloudStopWords = (allCust || [])
+    .filter(c => c && c.isStopWord === true)
+    .map(c => c.name);
+  const effectiveStopWords = [...new Set([...CUSTOMER_STOP_WORDS, ...cloudStopWords])];
+  const isStop = (s) => effectiveStopWords.some(w => s.includes(w));
+
+  // 先從 allCust 拿已知客戶名清單（過濾掉停用詞、依長度降序）
+  // v500.29: 過濾 isStopWord
+  const knownNames = (allCust || [])
+    .filter(c => c && !c.isStopWord)
+    .map(c => c.name)
+    .filter(n => n)
+    .sort((a, b) => b.length - a.length);
 
   // ─── Layer 1：精準匹配（任務名以客戶名開頭）───
   const prefixMatches = knownNames.filter(name => tn.startsWith(name));
@@ -1105,7 +1126,7 @@ function detectCustomer(taskName) {
     // 跳過：純數字 / 非中文開頭 / 停用詞
     if (/^\d/.test(prefix)) continue;
     if (!/^[\u4e00-\u9fa5]/.test(prefix)) continue;
-    if (CUSTOMER_STOP_WORDS.some(s => prefix.includes(s))) continue;
+    if (isStop(prefix)) continue;  // v500.29
 
     const matches = knownNames.filter(name => name.startsWith(prefix));
     if (matches.length === 1) {
@@ -1126,8 +1147,8 @@ function detectCustomer(taskName) {
   for (const part of parts) {
     // 跳過純數字開頭的詞（06、5/28 等）
     if (/^\d+/.test(part)) continue;
-    // 跳過停用詞
-    if (CUSTOMER_STOP_WORDS.some(s => part.includes(s))) continue;
+    // 跳過停用詞（v500.29 合併內建+雲端）
+    if (isStop(part)) continue;
     // 長度 2-6 字、純中文（含繁體）
     if (part.length >= 2 && part.length <= 6 && /^[\u4e00-\u9fa5]+$/.test(part)) {
       basicCandidate = part;
@@ -1236,6 +1257,77 @@ function pickCustSuggest(name) {
     custStatus.style.color = 'var(--green)';
   }
   hideCustSuggest();
+}
+
+// v500.29: 詢問是否將客戶欄位內的字加進停用詞
+async function askMarkAsStopWord() {
+  const custInput = document.getElementById('custInput');
+  const taskInput = document.getElementById('taskInput');
+  if (!custInput) return;
+
+  // 取目標字：優先用客戶欄位、若空就試著從任務名 detectCustomer 出來
+  let target = custInput.value.trim();
+  if (!target) {
+    // 客戶欄位空、看任務名能偵測到什麼
+    if (taskInput && taskInput.value.trim()) {
+      const det = detectCustomer(taskInput.value);
+      target = det.customer || det.hint || '';
+    }
+  }
+  if (!target) {
+    alert('客戶欄位是空的、沒有需要停用的字');
+    return;
+  }
+
+  const ok = confirm(
+    `將「${target}」加進停用詞？\n\n` +
+    `加入後：\n` +
+    `• 之後新增任務不會再被偵測為此客戶\n` +
+    `• 所有任務中關聯到「${target}」的客戶欄位會被清空\n\n` +
+    `（之後可在客戶管理移除）`
+  );
+  if (!ok) return;
+
+  // 清空當前任務客戶欄位
+  custInput.value = '';
+  const custStatus = document.getElementById('custStatus');
+  if (custStatus) custStatus.textContent = '';
+  delete custInput.dataset.userTouched;
+
+  // 本機處理：把這個名字加進 allCust、IsStopWord = true
+  const existing = (allCust || []).find(c => c.name === target);
+  if (existing) {
+    existing.isStopWord = true;
+    existing.taskCount = 0;
+    existing.updatedAt = Date.now();
+  } else {
+    allCust.push({
+      name: target,
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      taskCount: 0,
+      updatedAt: Date.now(),
+      isStopWord: true
+    });
+  }
+
+  // 本機清空所有 allT 內 Customer = target 或 CustomerHint = target 的欄位
+  let cleared = 0;
+  allT.forEach(t => {
+    if (String(t.Customer || '') === target || String(t.CustomerHint || '') === target) {
+      if (String(t.Customer || '') === target) t.Customer = '';
+      if (String(t.CustomerHint || '') === target) t.CustomerHint = '';
+      t.mTime = Date.now();
+      cleared++;
+    }
+  });
+
+  saveLocal();
+  renderAll();
+  pushLog(`「${target}」加入停用詞、清空 ${cleared} 筆任務`, 'success');
+
+  // 推送到 GAS（會在 GAS 端做完整動作：標記 IsStopWord + 清空相關任務）
+  await pushOp('markAsStopWord', { name: target }, `停用詞「${target}」`);
 }
 
 // filter 函式：判斷任務是否應該保留在本機 allT
