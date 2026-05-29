@@ -7,12 +7,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="待辦事項">
+  <meta name="apple-mobile-web-app-title" content="待辦TEST">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icon.png">
   <link rel="icon" href="data:;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==">
   <link rel="manifest" href="manifest.json">
-  <title>待辦事項</title>
+  <title>待辦事項 [測試版]</title>
   <style>
     :root {
       --primary:#007AFF; --red:#FF3B30; --green:#34C759;
@@ -33,6 +33,27 @@
       background:var(--sidebar-bg);
       overscroll-behavior:none;
     }
+    /* === 測試版視覺標示 === */
+    body::before{
+      content:'';
+      position:fixed;inset:0;
+      border:3px solid #FF3B30;
+      pointer-events:none;
+      z-index:99998;
+    }
+    body::after{
+      content:'⚠ 測試版 TEST';
+      position:fixed;
+      top:env(safe-area-inset-top,8px);right:8px;
+      background:#FF3B30;color:#fff;
+      padding:3px 10px;
+      font-size:11px;font-weight:700;
+      border-radius:0 0 8px 8px;
+      letter-spacing:0.5px;
+      z-index:99999;
+      pointer-events:none;
+      font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    }
     #sidebar{
       width:76px;flex-shrink:0;
       height:100dvh;box-sizing:border-box;
@@ -43,6 +64,34 @@
       overflow:hidden;
       overscroll-behavior:none;
       position:relative;z-index:700;
+    }
+    /* v500.13: 桌面版側邊欄拖曳調整寬度 / v500.14: 視覺強化 */
+    #sidebarResizer{
+      position:absolute;top:0;right:0;width:6px;height:100%;
+      background:rgba(255,255,255,0.14);
+      cursor:col-resize;
+      z-index:701;
+      transition:background 0.15s ease;
+      touch-action:none;
+      display:flex;align-items:center;justify-content:center;
+    }
+    #sidebarResizer::before{
+      content:'';
+      width:2px;height:24px;
+      background:rgba(255,255,255,0.45);
+      border-radius:2px;
+      box-shadow:4px 0 0 rgba(255,255,255,0.45), -4px 0 0 rgba(255,255,255,0.45);
+      transition:background 0.15s ease, box-shadow 0.15s ease;
+    }
+    #sidebarResizer:hover, #sidebarResizer.dragging{background:var(--primary);}
+    #sidebarResizer:hover::before, #sidebarResizer.dragging::before{
+      background:#fff;
+      box-shadow:4px 0 0 #fff, -4px 0 0 #fff;
+    }
+    #sidebar.resizing{transition:none;}  /* 拖曳中關閉寬度動畫 */
+    /* 手機隱藏 resizer */
+    @media (hover:none) and (pointer:coarse){
+      #sidebarResizer{display:none;}
     }
     #fab {
       flex-shrink:0;
@@ -133,6 +182,29 @@
       overflow:hidden;
     }
     #sidebar.wide #sideFoot { display:flex; }
+    /* v500.14: 桌面版 Tab/拖曳提示（手機隱藏） */
+    #sideHint{
+      display:none;
+      align-items:center;gap:4px;
+      margin-top:4px;padding-top:6px;
+      font-size:10px;color:rgba(255,255,255,0.42);
+      letter-spacing:0.3px;line-height:1;
+      border-top:0.5px solid rgba(255,255,255,0.06);
+      width:calc(100% - 14px);
+    }
+    #sideHint .hint-key{
+      font-size:9px;font-weight:600;
+      padding:2px 5px;
+      background:rgba(255,255,255,0.1);
+      border-radius:3px;
+      color:rgba(255,255,255,0.6);
+    }
+    #sideHint .hint-icon{font-size:11px;opacity:0.6;}
+    #sideHint .hint-text{font-size:10px;}
+    /* 桌面（精準指標）才顯示 */
+    @media (hover:hover) and (pointer:fine){
+      #sidebar.wide #sideHint{display:flex;}
+    }
     .sbtn{
       margin-left:0 !important;width:44px;height:44px;
       border-radius:12px;background:#2C2C2E;border:none;
@@ -355,6 +427,38 @@
     .import-map-btns button{flex:1;padding:11px;border:none;border-radius:11px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;}
     .import-confirm-btn{background:var(--primary);color:#fff;}
     .import-cancel-btn{background:#E5E5EA;color:var(--label);}
+    #loginScreen{
+      position:fixed;inset:0;z-index:99999;
+      background:var(--sidebar-bg);
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      padding:env(safe-area-inset-top, 20px) 28px env(safe-area-inset-bottom, 20px);
+      overflow-y:auto;-webkit-overflow-scrolling:touch;
+      touch-action:auto;
+      -webkit-tap-highlight-color:rgba(0,0,0,0);
+      isolation:isolate;
+      pointer-events:auto;
+    }
+    #loginScreen.hidden{display:none;}
+    /* 登入畫面顯示時，禁用所有非登入畫面的觸控 */
+    body:has(#loginScreen:not(.hidden)) > *:not(#loginScreen){
+      pointer-events:none !important;
+    }
+    .login-logo{margin-bottom:8px;margin-top:auto;}
+    .login-title{font-size:22px;font-weight:800;color:#fff;margin-bottom:4px;letter-spacing:-0.3px;}
+    .login-sub{font-size:13px;color:rgba(255,255,255,0.45);margin-bottom:36px;}
+    .login-box{width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;margin-bottom:auto;touch-action:auto;}
+    .login-input{width:100%;padding:15px 16px;background:#2C2C2E;border:1.5px solid transparent;border-radius:13px;color:#fff;font-size:16px;font-family:inherit;outline:none;transition:border-color .18s;touch-action:manipulation;-webkit-user-select:text;user-select:text;position:relative;z-index:1;pointer-events:auto;}
+    .login-input:focus{border-color:var(--primary);}
+    .login-input::placeholder{color:#636366;}
+    .login-input.shake{animation:shake .35s cubic-bezier(.36,.07,.19,.97);border-color:var(--red);}
+    @keyframes shake{10%,90%{transform:translateX(-3px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
+    .login-btn{width:100%;padding:15px;background:var(--primary);color:#fff;border:none;border-radius:13px;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;transition:opacity .15s;touch-action:manipulation;}
+    .login-btn:active{opacity:.82;}
+    .login-btn:disabled{background:var(--gray);cursor:default;}
+    .login-err{font-size:13px;color:var(--red);font-weight:600;text-align:center;min-height:18px;}
+    .login-remember{display:flex;align-items:center;gap:8px;color:rgba(255,255,255,0.55);font-size:13px;cursor:pointer;}
+    .login-remember input{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
 
     /* 同步健康檢查提醒橫幅 */
     #syncReminder{
@@ -395,8 +499,34 @@
   <button class="sr-btn secondary" onclick="dismissSyncReminder()">稍後</button>
 </div>
 
+<!-- 登入畫面 -->
+
+<div id="loginScreen">
+  <div class="login-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="64" height="64">
+      <rect x="5" y="3" width="14" height="18" rx="2"/>
+      <path d="M9 3v2h6V3"/>
+      <line x1="9" y1="9" x2="15" y2="9"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="12" y2="17"/>
+      <polyline points="7 9 8 10 9 8" stroke-width="1.8"/>
+    </svg>
+  </div>
+  <div class="login-title">宜修的待辦清單</div>
+  <div class="login-sub">請輸入密碼以繼續</div>
+  <div class="login-box">
+    <input type="password" id="loginPwd" class="login-input" placeholder="密碼" onkeydown="if(event.key==='Enter')doLogin()">
+    <label class="login-remember">
+      <input type="checkbox" id="loginRemember" checked>
+      記住登入狀態（30天）
+    </label>
+    <div class="login-err" id="loginErr"></div>
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">登入</button>
+  </div>
+</div>
 
 <div id="sidebar">
+  <div id="sidebarResizer" onmousedown="sidebarResizeStart(event)" aria-hidden="true"></div>
   <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增" style="position:relative;">
     <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="26" height="26">
       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -417,6 +547,12 @@
         <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/>
       </svg>
     </button>
+    <!-- v500.14: 桌面版提示（Tab/拖曳調整寬度），手機隱藏 -->
+    <div id="sideHint">
+      <span class="hint-key">Tab</span>
+      <span class="hint-icon">⇆</span>
+      <span class="hint-text">拖曳</span>
+    </div>
   </div>
 </div>
 
@@ -548,8 +684,9 @@
       </button>
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" onchange="handleImport(event)">
       <div class="import-result" id="importResult"></div>
-      <div style="display:flex;justify-content:center;margin-top:6px;">
-        <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;">讀取中…</span>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="if(confirm('確定登出？'))doLogout()">登出</button>
+        <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;flex-shrink:0;">讀取中…</span>
       </div>
     </div>
   </div>
@@ -581,7 +718,7 @@
 <div id="allFilterMenu" onclick="event.stopPropagation()">
   <div class="afm-item" onclick="setAllFilterTomorrow()">📅 明天以前</div>
   <div class="afm-date">
-    <input type="date" id="allFilterDateInput" onchange="setAllFilterDate(this.value)">
+    <input type="date" id="allFilterDateInput" onclick="this.showPicker?.()" onfocus="this.showPicker?.()" onchange="setAllFilterDate(this.value)">
   </div>
 </div>
 <div id="allFilterOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeAllFilterMenu()"></div>
@@ -613,7 +750,8 @@
     選擇日期
     <input type="date" id="floatDateInput"
       style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;"
-      onclick="_datePickTaskId=_ctxTaskId; const _t=allT.find(x=>String(x.ID)===String(_ctxTaskId)); this.value=(_t&&fmtD(_t.DueDate))||getToday(); try{this.showPicker();}catch(_){}"
+      onclick="this.showPicker?.()"
+      onfocus="_datePickTaskId=_ctxTaskId; const _t=allT.find(x=>String(x.ID)===String(_ctxTaskId)); this.value=(_t&&fmtD(_t.DueDate))||getToday(); this.showPicker?.();"
       onchange="ctxConfirmDate()">
   </div>
 </div>
@@ -638,12 +776,75 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxIgZpbEbUMxyOgW9NcAwW6OAUHTaUCMGah5owuvkO3SrFtTIqPmCZCRkcZWGuWTXhr/exec";
 
-const APP_VERSION = "todo-v500.12"; // 與 sw.js 的 CACHE_NAME 保持一致
+const APP_VERSION = "TESTtodo-v500.14"; // 測試版（自動登入 + 視覺標示）
+const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
 const RECENT_DONE_MONTHS = 6;        // 手機端 filter：只顯示近 6 個月內已完成任務
 const SYNC_REMINDER_DAYS = 14;       // 14 天沒全量同步就顯示提醒
 const SYNC_URGENT_DAYS = 30;         // 30 天升級為紅色警告
+
+async function hashPassword(pwd) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function getSession() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('authToken') || 'null');
+    if (!stored || !stored.token || Date.now() > stored.exp) {
+      localStorage.removeItem('authToken'); return null;
+    }
+    return stored.token;
+  } catch(e) { return null; }
+}
+
+function checkLogin() {
+  return !!getSession();
+}
+
+async function doLogin() {
+  const pwd = document.getElementById('loginPwd').value;
+  const errEl = document.getElementById('loginErr');
+  const remember = document.getElementById('loginRemember').checked;
+  if (!pwd) { shakeInput(); return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '驗證中…';
+  try {
+    const hash = await hashPassword(pwd);
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'login', hash })
+    });
+    const data = await res.json();
+    if (data.status !== 'success') {
+      if (data.message === 'settings not found') {
+        errEl.textContent = '設定錯誤：請確認 Settings 工作表是否存在';
+      } else {
+        errEl.textContent = '密碼錯誤，請重試';
+      }
+      shakeInput();
+      btn.disabled = false; btn.textContent = '登入'; return;
+    }
+    const ttl = remember ? TOKEN_TTL : (8 * 60 * 60 * 1000);
+    const exp = Math.min(data.exp, Date.now() + ttl);
+    localStorage.setItem('authToken', JSON.stringify({ token: data.token, exp }));
+    playSound('add');
+    document.getElementById('loginScreen').classList.add('hidden');
+    errEl.textContent = '';
+    init();
+  } catch(e) {
+    errEl.textContent = '連線失敗，請稍後再試'; shakeInput();
+  }
+  btn.disabled = false; btn.textContent = '登入';
+}
+
+function doLogout() { localStorage.removeItem('authToken'); location.reload(); }
+function shakeInput() {
+  const el = document.getElementById('loginPwd');
+  el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
+  el.addEventListener('animationend', () => el.classList.remove('shake'), { once: true });
+}
 
 let allT = [], allC = [], currentF = '今天';
 let syncLogs = [], pendingQueue = [];
@@ -973,11 +1174,64 @@ _mainEl.addEventListener('touchend', e => {
 function applySide() {
   const sb = document.getElementById('sidebar');
   const fab = document.getElementById('fab');
-  const widths = [0, 76, 130], w = widths[sideState];
+  // v500.13: 支援使用者拖曳記住的自由寬度
+  const customW = parseInt(localStorage.getItem('sideWidth') || '0');
+  const widths = [0, customW || 76, customW ? customW : 130];
+  const w = widths[sideState];
   sb.style.width = w + 'px';
-  sb.classList.toggle('wide', sideState === 2);
+  sb.classList.toggle('wide', w >= 100);  // 寬度足夠就視為 wide
   if (sideState === 0) { fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
   else { fab.style.opacity = '1'; fab.style.pointerEvents = ''; }
+}
+
+// v500.13: 桌面版側邊欄拖曳調整寬度
+let _resizing = false, _resizeStartX = 0, _resizeStartW = 0;
+function sidebarResizeStart(e) {
+  e.preventDefault();
+  _resizing = true;
+  _resizeStartX = e.clientX;
+  _resizeStartW = document.getElementById('sidebar').offsetWidth;
+  document.getElementById('sidebarResizer').classList.add('dragging');
+  document.getElementById('sidebar').classList.add('resizing');
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  document.addEventListener('mousemove', sidebarResizeMove);
+  document.addEventListener('mouseup', sidebarResizeEnd);
+}
+function sidebarResizeMove(e) {
+  if (!_resizing) return;
+  const newW = _resizeStartW + (e.clientX - _resizeStartX);
+  const sb = document.getElementById('sidebar');
+  // 即時套用、不存（拖曳中視覺反饋）
+  const clamped = Math.max(0, Math.min(300, newW));
+  sb.style.width = clamped + 'px';
+  sb.classList.toggle('wide', clamped >= 100);
+  // 即時更新 FAB 顯示
+  const fab = document.getElementById('fab');
+  if (clamped < 30) { fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
+  else { fab.style.opacity = '1'; fab.style.pointerEvents = ''; }
+}
+function sidebarResizeEnd(e) {
+  if (!_resizing) return;
+  _resizing = false;
+  document.getElementById('sidebarResizer').classList.remove('dragging');
+  document.getElementById('sidebar').classList.remove('resizing');
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  document.removeEventListener('mousemove', sidebarResizeMove);
+  document.removeEventListener('mouseup', sidebarResizeEnd);
+  // 寬度判定：< 30 → 收起 (sideState=0)；其他 → 自由寬度 (sideState=2)
+  const sb = document.getElementById('sidebar');
+  const finalW = sb.offsetWidth;
+  if (finalW < 30) {
+    sideState = 0;
+    localStorage.setItem('sideWidth', '0');  // 收起時不存自由寬度
+  } else {
+    const w = Math.max(60, finalW);  // 拖到 30-60 之間自動回彈到 60
+    localStorage.setItem('sideWidth', String(w));
+    sideState = 2;  // 進入「自由模式」、Tab 鍵會在 0 跟此寬度切換
+  }
+  applySide();
 }
 
 document.addEventListener('keydown', e => {
@@ -986,7 +1240,13 @@ document.addEventListener('keydown', e => {
   const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   e.preventDefault();
-  sideState = (sideState + 1) % 3;
+  // v500.13: 如果有自由寬度、在 [0, 自由寬度] 兩段切；否則走原 3 段
+  const customW = parseInt(localStorage.getItem('sideWidth') || '0');
+  if (customW > 0) {
+    sideState = (sideState === 0) ? 2 : 0;
+  } else {
+    sideState = (sideState + 1) % 3;
+  }
   playSound('swipe');
   applySide();
 });
@@ -1158,6 +1418,14 @@ async function flushQueue() {
   if (!pendingQueue.length) return true;
   if (!isOnline()) { pushLog('離線，佇列等待','warn'); return false; }
 
+  // 推送前讀一次 session token，所有請求共用
+  const sessionToken = getSession();
+  if (!sessionToken) {
+    pushLog('登入已過期，請重新登入', 'error');
+    setTimeout(() => doLogout(), 2000);
+    return false;
+  }
+
   // 取出非 inflight 的項目來推送
   const toProcess = pendingQueue.filter(i => !i.inflight);
   if (!toProcess.length) return true;
@@ -1189,12 +1457,21 @@ async function flushQueue() {
     return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
   };
 
+  let unauthorizedDetected = false;
+
   // 分類操作：序列推送（避免 deleteRow 列號錯位）
   for (const item of catQueue) {
+    if (unauthorizedDetected) break;
     try {
-      const res = await batchFetch(JSON.stringify({action: item.action, ...item.payload}));
+      const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      if (json.status === 'error' && json.message === 'unauthorized') {
+        unauthorizedDetected = true;
+        pushLog('登入已過期，請重新登入', 'error');
+        setTimeout(() => doLogout(), 2000);
+        break;
+      }
       successIds.add(item._opId);
       pushLog(`✓ ${item.label}`, 'success');
     } catch(e) {
@@ -1208,7 +1485,7 @@ async function flushQueue() {
   const otherTaskQueue = taskQueue.filter(i => i.action !== 'addTask');
 
   // addTask：合併成一次 batchAddTasks
-  if (addTaskQueue.length > 0) {
+  if (addTaskQueue.length > 0 && !unauthorizedDetected) {
     try {
       const tasks = addTaskQueue.map(item => {
         const d = item.payload.data;
@@ -1224,10 +1501,14 @@ async function flushQueue() {
       });
       const res = await batchFetch(JSON.stringify({
         action: 'batchAddTasks',
+        token: sessionToken,
         tasks
       }));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      if (json.status === 'error' && json.message === 'unauthorized') {
+        throw new Error('unauthorized');
+      }
       if (json.status === 'success') {
         const writtenIds = new Set((json.written || []).map(String));
         const skippedIds = new Set((json.skipped || []).map(String));
@@ -1250,20 +1531,30 @@ async function flushQueue() {
         });
       }
     } catch(e) {
-      pushLog(`✗ 批次新增失敗：${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
-      addTaskQueue.forEach(item => failedIds.add(item._opId));
+      if (e.message === 'unauthorized') {
+        unauthorizedDetected = true;
+        pushLog('登入已過期，請重新登入', 'error');
+        setTimeout(() => doLogout(), 2000);
+      } else {
+        pushLog(`✗ 批次新增失敗：${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+        addTaskQueue.forEach(item => failedIds.add(item._opId));
+      }
     }
   }
 
   // 其他任務操作（updateTask, setTaskStatus, toggleTask, deleteTask）：分批平行推送
   const BATCH_SIZE = 10;
   for (let i = 0; i < otherTaskQueue.length; i += BATCH_SIZE) {
+    if (unauthorizedDetected) break;
     const batch = otherTaskQueue.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async item => {
       try {
-        const res = await batchFetch(JSON.stringify({action: item.action, ...item.payload}));
+        const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
+        if (json.status === 'error' && json.message === 'unauthorized') {
+          throw new Error('unauthorized');
+        }
         if (json.status === 'error') {
           // GAS 端錯誤（例如 task is empty、id not found）
           pushLog(`✗ ${item.label}: ${json.message || '錯誤'}`, 'error');
@@ -1274,11 +1565,17 @@ async function flushQueue() {
           pushLog(`✓ ${item.label}`, 'success');
         }
       } catch(e) {
-        failedIds.add(item._opId);
-        pushLog(`✗ ${item.label}: ${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+        if (e.message === 'unauthorized') {
+          unauthorizedDetected = true;
+          pushLog('登入已過期，請重新登入', 'error');
+          setTimeout(() => doLogout(), 2000);
+        } else {
+          failedIds.add(item._opId);
+          pushLog(`✗ ${item.label}: ${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+        }
       }
     }));
-    if (i + BATCH_SIZE < otherTaskQueue.length) await new Promise(r => setTimeout(r, 500));
+    if (i + BATCH_SIZE < otherTaskQueue.length && !unauthorizedDetected) await new Promise(r => setTimeout(r, 500));
   }
 
   // ★ 處理推送結果：更新 pendingQueue
@@ -1292,7 +1589,7 @@ async function flushQueue() {
       delete item.inflightAt;
       return true;
     }
-    // 沒明確結果（中斷、失敗）：取消 inflight，留在佇列
+    // 沒明確結果（中斷、unauthorized）：取消 inflight，留在佇列
     if (processingIds.has(item._opId)) {
       delete item.inflight;
       delete item.inflightAt;
@@ -1336,6 +1633,9 @@ async function verifyFlushedOps(cloudTasks, cloudCats) {
   const ops = [..._lastFlushedOps];
   _lastFlushedOps = [];
 
+  const sessionToken = getSession();
+  if (!sessionToken) { pushLog('驗證跳過：未登入', 'warn'); return; }
+
   // 等待 1 秒，確保 GAS Sheets 寫入完成後再驗證
   await new Promise(r => setTimeout(r, 1000));
 
@@ -1371,7 +1671,7 @@ async function verifyFlushedOps(cloudTasks, cloudCats) {
   // 驗證任務
   if (Object.keys(taskChecks).length > 0) {
     try {
-      const res = await verifyFetch(JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks)}));
+      const res = await verifyFetch(JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks), token: sessionToken}));
       const json = await res.json();
       if (json.status === 'success') {
         const results = json.results || {};
@@ -1416,7 +1716,7 @@ async function verifyFlushedOps(cloudTasks, cloudCats) {
   // 驗證分類
   if (catChecks.length > 0) {
     try {
-      const res = await verifyFetch(JSON.stringify({action:'verifyCategories', checks: catChecks.map(c => ({type:c.type, name:c.name, color:c.color, oldName:c.oldName, newName:c.newName}))}));
+      const res = await verifyFetch(JSON.stringify({action:'verifyCategories', checks: catChecks.map(c => ({type:c.type, name:c.name, color:c.color, oldName:c.oldName, newName:c.newName})), token: sessionToken}));
       const json = await res.json();
       if (json.status === 'success') {
         (json.results || []).forEach((r, i) => {
@@ -1484,6 +1784,13 @@ async function pullFromCloud(reason, attempt=1) {
   }
 
   try {
+    const sessionToken = getSession();
+    if (!sessionToken) {
+      pushLog('登入已過期，請重新登入', 'error');
+      setTimeout(() => doLogout(), 2000);
+      return false;
+    }
+
     const fetchWithTimeout = (url, ms=25000) => {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), ms);
@@ -1500,8 +1807,14 @@ async function pullFromCloud(reason, attempt=1) {
     if (attempt === 1 && lastSyncTime > 0 && allT.length > 0) {
       try {
         const checkRes = await fetchWithTimeout(
-          `${GAS_URL}?action=checkSync&since=${lastSyncTime}`
+          `${GAS_URL}?action=checkSync&token=${sessionToken}&since=${lastSyncTime}`
         ).then(r => r.json());
+
+        if (checkRes && checkRes.status === 'error' && checkRes.message === 'unauthorized') {
+          pushLog('登入已過期，請重新登入', 'error');
+          setTimeout(() => doLogout(), 2000);
+          return false;
+        }
 
         if (checkRes && checkRes.status === 'success') {
           // v500.7: count 比對（補救 onChange 延遲未觸發的情境）
@@ -1541,7 +1854,7 @@ async function pullFromCloud(reason, attempt=1) {
           }
 
           // 子路徑 C：只有更新（任務或分類）→ 增量
-          return await pullFromCloudIncremental(reason, checkRes.hasCatUpdate, fetchWithTimeout);
+          return await pullFromCloudIncremental(reason, checkRes.hasCatUpdate, fetchWithTimeout, sessionToken);
         }
       } catch(e) {
         pushLog(`checkSync 失敗，改走全量: ${e.message||'錯誤'}`, 'warn');
@@ -1564,16 +1877,29 @@ async function pullFromCloud(reason, attempt=1) {
 
 // 全量拉取：取代整個 allT 和 allC（v500 拆分出來方便共用）
 async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
+  const sessionToken = getSession();
+  if (!sessionToken) return false;
+
   try {
     const [resT, resC] = await Promise.all([
-      fetchWithTimeout(`${GAS_URL}?action=getTasks`).then(r => r.json()),
-      fetchWithTimeout(`${GAS_URL}?action=getCategories`).then(r => r.json())
+      fetchWithTimeout(`${GAS_URL}?action=getTasks&token=${sessionToken}`).then(r => r.json()),
+      fetchWithTimeout(`${GAS_URL}?action=getCategories&token=${sessionToken}`).then(r => r.json())
     ]);
 
     if (!Array.isArray(resT)) {
+      if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
+        pushLog('登入已過期，請重新登入', 'error');
+        setTimeout(() => doLogout(), 2000);
+        return false;
+      }
       pushLog('拉取失敗：Tasks 資料異常', 'error'); return false;
     }
     if (!Array.isArray(resC)) {
+      if (resC && resC.status === 'error' && resC.message === 'unauthorized') {
+        pushLog('登入已過期，請重新登入', 'error');
+        setTimeout(() => doLogout(), 2000);
+        return false;
+      }
       pushLog('拉取失敗：Categories 資料異常', 'error'); return false;
     }
 
@@ -1666,13 +1992,13 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
 }
 
 // 增量拉取：只更新變動的部分（v500 新增）
-async function pullFromCloudIncremental(reason, hasCatUpdate, fetchWithTimeout) {
+async function pullFromCloudIncremental(reason, hasCatUpdate, fetchWithTimeout, sessionToken) {
   try {
     const calls = [
-      fetchWithTimeout(`${GAS_URL}?action=getTasks&since=${lastSyncTime}`).then(r => r.json())
+      fetchWithTimeout(`${GAS_URL}?action=getTasks&token=${sessionToken}&since=${lastSyncTime}`).then(r => r.json())
     ];
     if (hasCatUpdate) {
-      calls.push(fetchWithTimeout(`${GAS_URL}?action=getCategories`).then(r => r.json()));
+      calls.push(fetchWithTimeout(`${GAS_URL}?action=getCategories&token=${sessionToken}`).then(r => r.json()));
     }
 
     const results = await Promise.all(calls);
@@ -1680,6 +2006,11 @@ async function pullFromCloudIncremental(reason, hasCatUpdate, fetchWithTimeout) 
     const resC = hasCatUpdate ? results[1] : null;
 
     if (!Array.isArray(resT)) {
+      if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
+        pushLog('登入已過期，請重新登入', 'error');
+        setTimeout(() => doLogout(), 2000);
+        return false;
+      }
       pushLog('增量拉取失敗：Tasks 資料異常', 'error');
       return false;
     }
@@ -1853,6 +2184,9 @@ async function lightVerify() {
   const ops = [..._lastFlushedOps];
   _lastFlushedOps = [];
 
+  const sessionToken = getSession();
+  if (!sessionToken) return;
+
   // 等 1 秒確保 GAS 寫入完成
   await new Promise(r => setTimeout(r, 1000));
 
@@ -1875,7 +2209,7 @@ async function lightVerify() {
     const tid = setTimeout(() => ctrl.abort(), 35000);
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks)}),
+      body: JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks), token: sessionToken}),
       signal: ctrl.signal
     });
     clearTimeout(tid);
@@ -2925,6 +3259,7 @@ async function confirmImport() {
 
   // 步驟三：批次上傳到雲端（最多重試 3 次）
   importProgressShow(added);
+  const sessionToken = getSession();
   let writtenIds = [], failedTasks = [];
   let uploadRetry = 0;
   const MAX_UPLOAD_RETRY = 3;
@@ -2949,6 +3284,7 @@ async function confirmImport() {
         method: 'POST',
         body: JSON.stringify({
           action: 'batchAddTasks',
+          token: sessionToken,
           tasks: tasksBatch.map(t=>({ID:t.ID,task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime}))
         }),
         signal: ctrl.signal
@@ -3086,12 +3422,48 @@ async function init() {
 }
 
 window.onload = () => {
-  init();
+  if (checkLogin()) {
+    document.getElementById('loginScreen').classList.add('hidden');
+    init();
+  } else {
+    // 測試版：自動登入（跳過密碼輸入）
+    // 隱藏登入畫面、顯示載入中、自動用寫死密碼登入
+    document.getElementById('loginScreen').classList.add('hidden');
+    _autoLoginTest();
+  }
 };
+
+// 測試版自動登入函式
+async function _autoLoginTest() {
+  const TEST_PWD = 'Dg@23076419$$$';
+  try {
+    const hash = await hashPassword(TEST_PWD);
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'login', hash })
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+      const exp = Math.min(data.exp, Date.now() + TOKEN_TTL);
+      localStorage.setItem('authToken', JSON.stringify({ token: data.token, exp }));
+      init();
+    } else {
+      // 自動登入失敗、退回顯示登入畫面
+      document.getElementById('loginScreen').classList.remove('hidden');
+      document.getElementById('loginErr').textContent = '測試版自動登入失敗：' + (data.message || '請手動登入');
+      setTimeout(() => document.getElementById('loginPwd').focus(), 300);
+    }
+  } catch(e) {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('loginErr').textContent = '連線失敗：' + (e.message || '請手動登入');
+    setTimeout(() => document.getElementById('loginPwd').focus(), 300);
+  }
+}
 </script>
 
 <script>
-  if ('serviceWorker' in navigator) {
+  // 測試版：file:// 協定下 Service Worker 無法註冊、跳過避免錯誤
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js');
   }
 </script>
