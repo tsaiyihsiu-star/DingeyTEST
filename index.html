@@ -1106,11 +1106,22 @@ function createCusOp(opts) {
 }
 
 // 持久化 op log
+// v500.30: 加 debounce、避免阻塞主線程（音效會延遲）
+// debounce 300ms 安全：即使瀏覽器突然關閉、最多丟最後 300ms 內的變化
+// 而 opLog 內 op 都會推送雲端、雲端有完整紀錄、不會真正遺失
+let _saveOpLogTimer = null;
 function saveOpLog() {
-  localStorage.setItem('opLog', JSON.stringify(opLog));
-  localStorage.setItem('cusOpLog', JSON.stringify(cusOpLog));
-  localStorage.setItem('lastSyncOpSeq', String(lastSyncOpSeq));
-  localStorage.setItem('lastSyncCusOpSeq', String(lastSyncCusOpSeq));
+  if (_saveOpLogTimer) clearTimeout(_saveOpLogTimer);
+  _saveOpLogTimer = setTimeout(() => {
+    try {
+      localStorage.setItem('opLog', JSON.stringify(opLog));
+      localStorage.setItem('cusOpLog', JSON.stringify(cusOpLog));
+      localStorage.setItem('lastSyncOpSeq', String(lastSyncOpSeq));
+      localStorage.setItem('lastSyncCusOpSeq', String(lastSyncCusOpSeq));
+    } catch (e) {
+      console.log('[saveOpLog] error:', e);
+    }
+  }, 300);
 }
 
 // 套用 op 到本機 allT
