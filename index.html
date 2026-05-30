@@ -902,7 +902,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.29"; // 停用詞動態化
+const APP_VERSION = "TESTtodo-v500.30"; // op log 同步架構
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1039,6 +1039,447 @@ let lastSyncTime = parseInt(localStorage.getItem('lastSyncTime') || '0');
 let catOrder = [], lastUsedCat = '';
 let _catPendingOps = []; // 分類管理暫存操作，按「完成」才推送
 
+// ── v500.30: op log 同步機制 state ──────────────────────────────────
+let opLog = [];               // 待推送 / 待確認的 ops
+let cusOpLog = [];            // 待推送的客戶 ops
+let lastSyncOpSeq = 0;        // 上次拉到的最大 cloudSeq（TaskOps）
+let lastSyncCusOpSeq = 0;     // 上次拉到的最大 cloudSeq（CustomerOps）
+let clientId = '';            // 本機 UUID（自動產生）
+
+// 取得 / 產生 clientId（第一次啟動自動產生）
+function getClientId() {
+  let cid = localStorage.getItem('clientId');
+  if (!cid) {
+    // 第一次：產生 UUID v4
+    if (window.crypto && window.crypto.randomUUID) {
+      cid = window.crypto.randomUUID();
+    } else {
+      // 降版環境（file:// 或舊 browser）：純 JS 替代
+      cid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+    localStorage.setItem('clientId', cid);
+    console.log('[op log] 產生新 clientId: ' + cid);
+  }
+  return cid;
+}
+
+// clientId 縮寫（前 8 字元）給日誌用
+function getClientShortId() {
+  return getClientId().substring(0, 8);
+}
+
+// 產生 opId（用完整 UUID + seq、避免短 ID 撞號）
+function generateOpId() {
+  let seq = Number(localStorage.getItem('opSeqCounter') || 0) + 1;
+  localStorage.setItem('opSeqCounter', seq);
+  return getClientId() + ':' + seq;
+}
+
+// 建立一個 op
+function createOp(opts) {
+  return {
+    opId: generateOpId(),
+    clientId: getClientId(),
+    taskId: String(opts.taskId || ''),
+    op: opts.op || 'update',           // 'add' / 'update' / 'delete'
+    payload: opts.payload || {},
+    timestamp: opts.timestamp || Date.now(),
+    status: 'pending'                  // pending / acked
+  };
+}
+
+// 建立一個客戶 op
+function createCusOp(opts) {
+  return {
+    opId: generateOpId(),
+    clientId: getClientId(),
+    customerName: String(opts.customerName || ''),
+    op: opts.op || 'update',
+    payload: opts.payload || {},
+    timestamp: opts.timestamp || Date.now(),
+    status: 'pending'
+  };
+}
+
+// 持久化 op log
+function saveOpLog() {
+  localStorage.setItem('opLog', JSON.stringify(opLog));
+  localStorage.setItem('cusOpLog', JSON.stringify(cusOpLog));
+  localStorage.setItem('lastSyncOpSeq', String(lastSyncOpSeq));
+  localStorage.setItem('lastSyncCusOpSeq', String(lastSyncCusOpSeq));
+}
+
+// 套用 op 到本機 allT
+function applyOpToLocal(op) {
+  if (!op || !op.taskId) return;
+  const taskId = String(op.taskId);
+  const payload = op.payload || {};
+  const ts = Number(op.timestamp) || Date.now();
+
+  if (op.op === 'add') {
+    // 新增任務（或冪等：已存在則改為 update）
+    const idx = allT.findIndex(t => String(t.ID) === taskId);
+    if (idx >= 0) {
+      // v500.30: 加 mTime 比對、避免較舊 op 覆蓋較新本機
+      if (Number(allT[idx].mTime || 0) > ts) {
+        return;  // 本機較新、不套用
+      }
+      // 已存在、套用 payload
+      Object.assign(allT[idx], {
+        Task: String(payload.Task || allT[idx].Task || ''),
+        Category: String(payload.Category || allT[idx].Category || ''),
+        DueDate: String(payload.DueDate || allT[idx].DueDate || ''),
+        Status: String(payload.Status || allT[idx].Status || 'Pending'),
+        Priority: Number(payload.Priority) || allT[idx].Priority || 99,
+        Note: String(payload.Note || allT[idx].Note || ''),
+        Customer: String(payload.Customer || allT[idx].Customer || ''),
+        CustomerHint: String(payload.CustomerHint || allT[idx].CustomerHint || ''),
+        mTime: ts
+      });
+    } else {
+      allT.push({
+        ID: taskId,
+        Task: String(payload.Task || ''),
+        Category: String(payload.Category || ''),
+        DueDate: String(payload.DueDate || ''),
+        Status: String(payload.Status || 'Pending'),
+        Priority: Number(payload.Priority) || 99,
+        Note: String(payload.Note || ''),
+        Customer: String(payload.Customer || ''),
+        CustomerHint: String(payload.CustomerHint || ''),
+        mTime: ts
+      });
+    }
+  } else if (op.op === 'update') {
+    const t = allT.find(t => String(t.ID) === taskId);
+    if (!t) {
+      // 不存在、忽略（可能還沒拉到 add op）
+      return;
+    }
+    // v500.30: 加 mTime 比對、避免較舊 op 覆蓋較新本機（防閃回）
+    if (Number(t.mTime || 0) > ts) {
+      // 本機較新、不套用
+      return;
+    }
+    // 只更新 payload 內出現的欄位
+    if ('Task' in payload)         t.Task = String(payload.Task || '');
+    if ('Category' in payload)     t.Category = String(payload.Category || '');
+    if ('DueDate' in payload)      t.DueDate = String(payload.DueDate || '');
+    if ('Status' in payload)       t.Status = String(payload.Status || 'Pending');
+    if ('Priority' in payload)     t.Priority = Number(payload.Priority) || 99;
+    if ('Note' in payload)         t.Note = String(payload.Note || '');
+    if ('Customer' in payload)     t.Customer = String(payload.Customer || '');
+    if ('CustomerHint' in payload) t.CustomerHint = String(payload.CustomerHint || '');
+    t.mTime = ts;
+  } else if (op.op === 'delete') {
+    const idx = allT.findIndex(t => String(t.ID) === taskId);
+    if (idx >= 0) allT.splice(idx, 1);
+  }
+}
+
+// 套用 op 到本機 allCust
+function applyOpToLocalCustomer(op) {
+  if (!op || !op.customerName) return;
+  const name = String(op.customerName);
+  const payload = op.payload || {};
+  const ts = Number(op.timestamp) || Date.now();
+
+  if (op.op === 'add') {
+    const idx = allCust.findIndex(c => c.name === name);
+    if (idx >= 0) {
+      // v500.30: 加 updatedAt 比對
+      if (Number(allCust[idx].updatedAt || 0) > ts) return;
+      // 已存在、套用 payload
+      if ('firstSeen' in payload)  allCust[idx].firstSeen = Number(payload.firstSeen) || allCust[idx].firstSeen;
+      if ('lastSeen' in payload)   allCust[idx].lastSeen = Number(payload.lastSeen) || allCust[idx].lastSeen;
+      if ('isStopWord' in payload) allCust[idx].isStopWord = payload.isStopWord === true;
+      allCust[idx].updatedAt = ts;
+    } else {
+      allCust.push({
+        name: name,
+        firstSeen: Number(payload.firstSeen) || ts,
+        lastSeen: Number(payload.lastSeen) || ts,
+        taskCount: 0,  // 本機派生、不從 op 拿
+        updatedAt: ts,
+        isStopWord: payload.isStopWord === true
+      });
+    }
+  } else if (op.op === 'update') {
+    const c = allCust.find(c => c.name === name);
+    if (!c) return;
+    // v500.30: 加 updatedAt 比對
+    if (Number(c.updatedAt || 0) > ts) return;
+    if ('firstSeen' in payload)  c.firstSeen = Number(payload.firstSeen) || c.firstSeen;
+    if ('lastSeen' in payload)   c.lastSeen = Number(payload.lastSeen) || c.lastSeen;
+    if ('isStopWord' in payload) c.isStopWord = payload.isStopWord === true;
+    c.updatedAt = ts;
+  } else if (op.op === 'delete') {
+    const idx = allCust.findIndex(c => c.name === name);
+    if (idx >= 0) allCust.splice(idx, 1);
+  }
+}
+
+// 拉雲端 TaskOps
+// v500.30 設計：拉全部（不過濾自己）
+//   別人的 op → applyToLocal
+//   自己的 op → 識別 + 從 opLog 移除（已確認雲端收到）
+async function pullOps(fetchFn) {
+  const _fetch = fetchFn || ((url) => fetch(url));
+  try {
+    const url = `${GAS_URL}?action=getOps&since=${lastSyncOpSeq}&clientId=${getClientId()}`;
+    const res = await _fetch(url);
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      console.log('[pullOps] 回應非陣列:', data);
+      return { ops: [], applied: 0 };
+    }
+    // 排序（保險）
+    data.sort((a, b) => (a.cloudSeq || 0) - (b.cloudSeq || 0));
+
+    const myCid = getClientId();
+    const seenSelfOpIds = new Set();
+    let applied = 0;
+
+    for (const op of data) {
+      if (op.clientId === myCid) {
+        // 自己的 op 回來了、標記、之後清掉
+        seenSelfOpIds.add(op.opId);
+      } else {
+        // 別人的 op、套用
+        applyOpToLocal(op);
+        applied++;
+      }
+    }
+
+    // 更新 lastSyncOpSeq
+    if (data.length > 0) {
+      lastSyncOpSeq = data[data.length - 1].cloudSeq;
+    }
+
+    // 清掉本機已被雲端確認的 op
+    if (seenSelfOpIds.size > 0) {
+      const before = opLog.length;
+      opLog = opLog.filter(o => !seenSelfOpIds.has(o.opId));
+      const removed = before - opLog.length;
+      if (removed > 0) {
+        console.log(`[pullOps] 清掉 ${removed} 個雲端已確認的自己 op`);
+      }
+    }
+
+    // v500.30: 套用了任何 op、就更新 lastSyncTime（讓 checkSync 知道本機已對齊雲端）
+    if (data.length > 0) {
+      lastSyncTime = Date.now();
+      localStorage.setItem('lastSyncTime', String(lastSyncTime));
+    }
+
+    saveOpLog();
+
+    // Reconcile pending op（剩下的 pending 重新檢驗）
+    reconcilePendingOps(data);
+
+    return { ops: data, applied, selfOpsCleaned: seenSelfOpIds.size };
+  } catch (e) {
+    console.log('[pullOps] error: ' + e);
+    throw e;
+  }
+}
+
+// Reconcile：拉完雲端後、處理本機 pending op
+// 規則：
+//   - acked 的 op：保留、不參與 reconcile（等下次 pullOps 看到自己 op 回來才清）
+//   - 雲端有「同 taskId 同欄位 + 較新 timestamp」的 op → pending 已過時、丟棄
+//   - 否則：pending 仍有效、重新套用到本機（救回被雲端較舊 op 蓋掉的狀態）
+function reconcilePendingOps(cloudOps) {
+  if (!cloudOps || cloudOps.length === 0) return;
+
+  const survivedOps = [];
+  let discardedCount = 0;
+  let reapplied = 0;
+
+  for (const pop of opLog) {
+    // v500.30 修正：acked op 保留、不參與 reconcile
+    if (pop.status === 'acked') {
+      survivedOps.push(pop);
+      continue;
+    }
+    if (pop.status !== 'pending') {
+      survivedOps.push(pop);
+      continue;
+    }
+
+    // 找雲端「同 task + payload overlap + timestamp 更新」的 op
+    const cloudOverride = cloudOps.find(co =>
+      co.clientId !== getClientId() &&
+      String(co.taskId) === String(pop.taskId) &&
+      hasOverlapField(co.payload, pop.payload) &&
+      (Number(co.timestamp) || 0) > (Number(pop.timestamp) || 0)
+    );
+
+    if (cloudOverride) {
+      // 雲端較新、pending 過時、丟棄
+      discardedCount++;
+      continue;
+    }
+
+    // pending 仍有效、重新套用（救回被雲端較舊 op 蓋掉的狀態）
+    applyOpToLocal(pop);
+    survivedOps.push(pop);
+    reapplied++;
+  }
+
+  if (discardedCount > 0 || reapplied > 0) {
+    console.log(`[reconcile] 丟棄 ${discardedCount} 個過時 pending、重套 ${reapplied} 個`);
+  }
+
+  opLog = survivedOps;
+  saveOpLog();
+}
+
+// 判斷兩個 payload 是否有欄位重疊
+function hasOverlapField(p1, p2) {
+  if (!p1 || !p2) return false;
+  const k1 = Object.keys(p1);
+  for (const k of k1) {
+    if (k in p2) return true;
+  }
+  return false;
+}
+
+// 推送 TaskOps
+async function pushOpsToCloud(fetchFn) {
+  const _fetch = fetchFn || ((url, opts) => fetch(url, opts));
+  // 只推 pending（acked 在 reconcile 時繼續參與、直到自己的 op 拉回來才清）
+  const pendingOps = opLog.filter(o => o.status === 'pending');
+  if (pendingOps.length === 0) return { acked: [], rejected: [] };
+
+  try {
+    const res = await _fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'pushOps', ops: pendingOps }),
+      redirect: 'follow'
+    });
+    const data = await res.json();
+    if (data.status !== 'success') {
+      console.log('[pushOps] failed: ' + (data.message || 'unknown'));
+      return { acked: [], rejected: [] };
+    }
+
+    const acked = data.acked || [];
+    const rejected = data.rejected || [];
+
+    // 標記為 acked、但不立即刪除（等下次 pullOps 看到自己 op 回來才清）
+    for (const op of opLog) {
+      if (acked.includes(op.opId)) {
+        op.status = 'acked';
+        op.ackedAt = Date.now();
+      }
+    }
+    saveOpLog();
+
+    if (rejected.length > 0) {
+      console.log('[pushOps] rejected ops:', rejected);
+    }
+
+    return { acked, rejected };
+  } catch (e) {
+    console.log('[pushOps] error: ' + e);
+    throw e;
+  }
+}
+
+// 拉雲端 CustomerOps（同樣不過濾、識別自己）
+async function pullCustomerOps(fetchFn) {
+  const _fetch = fetchFn || ((url) => fetch(url));
+  try {
+    const url = `${GAS_URL}?action=getCustomerOps&since=${lastSyncCusOpSeq}&clientId=${getClientId()}`;
+    const res = await _fetch(url);
+    const data = await res.json();
+    if (!Array.isArray(data)) return { ops: [], applied: 0 };
+    data.sort((a, b) => (a.cloudSeq || 0) - (b.cloudSeq || 0));
+
+    const myCid = getClientId();
+    const seenSelfOpIds = new Set();
+    let applied = 0;
+
+    for (const op of data) {
+      if (op.clientId === myCid) {
+        seenSelfOpIds.add(op.opId);
+      } else {
+        applyOpToLocalCustomer(op);
+        applied++;
+      }
+    }
+
+    if (data.length > 0) {
+      lastSyncCusOpSeq = data[data.length - 1].cloudSeq;
+    }
+
+    if (seenSelfOpIds.size > 0) {
+      cusOpLog = cusOpLog.filter(o => !seenSelfOpIds.has(o.opId));
+    }
+
+    saveOpLog();
+    return { ops: data, applied, selfOpsCleaned: seenSelfOpIds.size };
+  } catch (e) {
+    console.log('[pullCustomerOps] error: ' + e);
+    throw e;
+  }
+}
+
+// 推送 CustomerOps
+async function pushCustomerOpsToCloud(fetchFn) {
+  const _fetch = fetchFn || ((url, opts) => fetch(url, opts));
+  const pendingOps = cusOpLog.filter(o => o.status === 'pending');
+  if (pendingOps.length === 0) return { acked: [], rejected: [] };
+
+  try {
+    const res = await _fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'pushCustomerOps', ops: pendingOps }),
+      redirect: 'follow'
+    });
+    const data = await res.json();
+    if (data.status !== 'success') return { acked: [], rejected: [] };
+
+    const acked = data.acked || [];
+    for (const op of cusOpLog) {
+      if (acked.includes(op.opId)) {
+        op.status = 'acked';
+        op.ackedAt = Date.now();
+      }
+    }
+    saveOpLog();
+    return { acked, rejected: data.rejected || [] };
+  } catch (e) {
+    console.log('[pushCustomerOps] error: ' + e);
+    throw e;
+  }
+}
+
+// 拉自己 op 後、把對應 acked op 從 opLog 移除
+// 在 pullOps 內呼叫
+function cleanupAckedOpsByCloudResponse(cloudOps) {
+  if (!cloudOps || cloudOps.length === 0) return;
+  const myCid = getClientId();
+  const seenSelfOps = new Set();
+  for (const co of cloudOps) {
+    if (co.clientId === myCid) seenSelfOps.add(co.opId);
+  }
+  if (seenSelfOps.size === 0) return;
+
+  const beforeCount = opLog.length;
+  opLog = opLog.filter(o => !seenSelfOps.has(o.opId));
+  const removed = beforeCount - opLog.length;
+  if (removed > 0) {
+    saveOpLog();
+    console.log(`[op log] 清掉 ${removed} 個雲端已確認的 op`);
+  }
+}
+
 const genID = () => 'T' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
 
 const fmtD = s => s ? String(s).split('T')[0].replace(/\//g, '-') : "";
@@ -1081,6 +1522,43 @@ const loadLocal = () => {
   try { catOrder = JSON.parse(localStorage.getItem('catOrder')) || []; } catch(e) { catOrder = []; }
   lastUsedCat = localStorage.getItem('lastUsedCat') || '';
   try { pendingQueue = JSON.parse(localStorage.getItem('pendingQueue')) || []; } catch(e) { pendingQueue = []; }
+
+  // v500.30: op log state 載入
+  try { opLog = JSON.parse(localStorage.getItem('opLog')) || []; } catch(e) { opLog = []; }
+  try { cusOpLog = JSON.parse(localStorage.getItem('cusOpLog')) || []; } catch(e) { cusOpLog = []; }
+  lastSyncOpSeq = Number(localStorage.getItem('lastSyncOpSeq') || 0);
+  lastSyncCusOpSeq = Number(localStorage.getItem('lastSyncCusOpSeq') || 0);
+  // 觸發 clientId 產生（如果還沒）
+  getClientId();
+
+  // v500.30: opLog 上限防護
+  // 超過 1000 筆 / 7 天的 acked op 自動清理（防無限累積）
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const opLogBefore = opLog.length;
+  opLog = opLog.filter(o => {
+    if (o.status === 'pending') return true;
+    if (o.status === 'acked' && o.ackedAt && o.ackedAt < sevenDaysAgo) return false;
+    return true;
+  });
+  // 還是太多（>1000）→ 強制限制保留最近 1000 筆
+  if (opLog.length > 1000) {
+    opLog.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    opLog = opLog.slice(0, 1000);
+  }
+  if (opLogBefore !== opLog.length) {
+    console.log(`[loadLocal] opLog 清理：${opLogBefore} → ${opLog.length}`);
+  }
+  // 同樣處理 cusOpLog
+  const cusOpLogBefore = cusOpLog.length;
+  cusOpLog = cusOpLog.filter(o => {
+    if (o.status === 'pending') return true;
+    if (o.status === 'acked' && o.ackedAt && o.ackedAt < sevenDaysAgo) return false;
+    return true;
+  });
+  if (cusOpLog.length > 500) {
+    cusOpLog.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    cusOpLog = cusOpLog.slice(0, 500);
+  }
 
   // ── 升級相容處理（v500 新增） ──
   let needSave = false;
@@ -1130,6 +1608,80 @@ const loadLocal = () => {
   if (orphanToggleCount > 0) {
     pushLog(`升級：移除 ${orphanToggleCount} 筆找不到任務的舊操作`, 'warn');
   }
+
+  // v500.30: 舊版升級時、把 pendingQueue 轉成 opLog
+  if (pendingQueue.length > 0 && opLog.length === 0) {
+    let convertedToOp = 0;
+    pendingQueue.forEach(item => {
+      try {
+        // 舊 pendingQueue 結構：{ action, payload, _opId, ... }
+        const act = item.action;
+        if (act === 'updateTask' && item.payload && item.payload.id) {
+          const p = item.payload.data || item.payload;
+          opLog.push(createOp({
+            taskId: p.id || item.payload.id,
+            op: 'update',
+            payload: {
+              Task: p.task,
+              Category: p.category,
+              DueDate: p.dueDate,
+              Status: p.status,
+              Priority: p.priority,
+              Note: p.note,
+              Customer: p.customer,
+              CustomerHint: p.customerHint
+            },
+            timestamp: p.mTime || Date.now()
+          }));
+          convertedToOp++;
+        }
+        else if (act === 'addTask' && item.payload) {
+          const p = item.payload.data || item.payload;
+          opLog.push(createOp({
+            taskId: p.id || genID(),
+            op: 'add',
+            payload: {
+              Task: p.task, Category: p.category, DueDate: p.dueDate,
+              Status: p.status || 'Pending', Priority: p.priority || 99,
+              Note: p.note || '', Customer: p.customer || '',
+              CustomerHint: p.customerHint || ''
+            },
+            timestamp: p.mTime || Date.now()
+          }));
+          convertedToOp++;
+        }
+        else if (act === 'setTaskStatus' && item.payload && item.payload.id) {
+          opLog.push(createOp({
+            taskId: item.payload.id,
+            op: 'update',
+            payload: { Status: item.payload.status },
+            timestamp: item.payload.mTime || Date.now()
+          }));
+          convertedToOp++;
+        }
+        else if (act === 'deleteTask' && item.payload && item.payload.id) {
+          opLog.push(createOp({
+            taskId: item.payload.id,
+            op: 'delete',
+            payload: {},
+            timestamp: Date.now()
+          }));
+          convertedToOp++;
+        }
+      } catch (e) {
+        console.log('[op log] pendingQueue 轉 op 失敗: ' + e);
+      }
+    });
+
+    if (convertedToOp > 0) {
+      pendingQueue = [];  // 清掉舊 queue
+      saveQueue();
+      saveOpLog();
+      pushLog(`v500.30 升級：將 ${convertedToOp} 筆 pending 操作轉為 op log`, 'success');
+      needSave = true;
+    }
+  }
+
   if (needSave) saveLocal();
 };
 
@@ -1748,7 +2300,16 @@ function updateBanner() {
   const fab = document.getElementById('fab');
   const badge = document.getElementById('fabBadge');
   if (!fab || !badge) return;
-  const pending = pendingQueue.length;
+  // v500.30: 未同步 = pendingQueue（只算分類等舊路徑）+ opLog pending + cusOpLog pending
+  // 任務 / 客戶操作走 opLog、不該在 pendingQueue 重複計數
+  const taskCusActions = new Set([
+    'addTask','updateTask','setTaskStatus','toggleTask','deleteTask',
+    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats'
+  ]);
+  const nonOpLogPending = pendingQueue.filter(q => !taskCusActions.has(q.action)).length;
+  const pendingTaskOps = opLog.filter(o => o.status === 'pending').length;
+  const pendingCusOps = cusOpLog.filter(o => o.status === 'pending').length;
+  const pending = nonOpLogPending + pendingTaskOps + pendingCusOps;
   if (isSyncRunning) {
     fab.classList.add('syncing');
     fab.classList.remove('offline');
@@ -1784,7 +2345,18 @@ function updateSyncMeta() {
   if (!badge) return;
   if (isOnline()) { badge.className = 'sync-badge online'; if(tag) tag.textContent = '[連線]'; document.getElementById('syncNetTxt').textContent = '網路連線正常'; }
   else { badge.className = 'sync-badge offline'; if(tag) tag.textContent = '[離線]'; document.getElementById('syncNetTxt').textContent = '目前離線'; }
-  if (pendingQueue.length > 0) { pill.className = 'qpill pending'; pill.textContent = `佇列 ${pendingQueue.length} 筆未同步`; }
+
+  // v500.30: pendingQueue 只算非任務/客戶操作（任務/客戶在 opLog 內、避免雙算）
+  const taskCusActions = new Set([
+    'addTask','updateTask','setTaskStatus','toggleTask','deleteTask',
+    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats'
+  ]);
+  const nonOpLogPending = pendingQueue.filter(q => !taskCusActions.has(q.action)).length;
+  const pendingTaskOps = opLog.filter(o => o.status === 'pending').length;
+  const pendingCusOps = cusOpLog.filter(o => o.status === 'pending').length;
+  const totalPending = nonOpLogPending + pendingTaskOps + pendingCusOps;
+
+  if (totalPending > 0) { pill.className = 'qpill pending'; pill.textContent = `佇列 ${totalPending} 筆未同步`; }
   else { pill.className = 'qpill ok'; pill.textContent = '全部已同步 ✓'; }
 
   // 最後同步時間
@@ -1814,7 +2386,16 @@ function updateBannerStale() {
   const fab = document.getElementById('fab');
   const badge = document.getElementById('fabBadge');
   if (!fab || !badge) return;
-  const isStale = pendingQueue.length > 0 && lastSyncTime > 0 &&
+  // v500.30: 計入 opLog（避免雙算）
+  const taskCusActions = new Set([
+    'addTask','updateTask','setTaskStatus','toggleTask','deleteTask',
+    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats'
+  ]);
+  const nonOpLogPending = pendingQueue.filter(q => !taskCusActions.has(q.action)).length;
+  const totalPending = nonOpLogPending
+    + opLog.filter(o => o.status === 'pending').length
+    + cusOpLog.filter(o => o.status === 'pending').length;
+  const isStale = totalPending > 0 && lastSyncTime > 0 &&
                   !isSyncRunning &&
                   Date.now() - lastSyncTime > 30 * 60 * 1000;
   if (isStale) {
@@ -1833,6 +2414,8 @@ function openSyncLog() {
   if (badge) badge.textContent = APP_VERSION;
 }
 
+// v500.30: enqueue 改造、(action, payload) 轉 op、加進 opLog
+// pendingQueue 仍保留、作為 UI 顯示用（顯示「N 筆未同步」）
 function enqueue(action, payload, label) {
   // ── 空 Task 攔截（v500 新增） ──
   if (action === 'addTask' || action === 'updateTask') {
@@ -1842,48 +2425,195 @@ function enqueue(action, payload, label) {
     }
   }
 
-  // ── 合併邏輯：只在「非 inflight 項目」之間合併 ──
-  const nonInflight = pendingQueue.filter(q => !q.inflight);
-
-  // setTaskStatus 同 id：後者覆蓋前者
-  if (action === 'setTaskStatus') {
-    const idx = nonInflight.findIndex(q => q.action === 'setTaskStatus' && q.payload.id === payload.id);
-    if (idx > -1) {
-      const targetOpId = nonInflight[idx]._opId;
-      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
-      pushLog(`覆蓋佇列：${label}`, 'warn');
-    }
+  // v500.30: 轉成 op、加進 opLog
+  const op = convertActionToOp(action, payload);
+  if (op) {
+    // opLog 合併邏輯：同 taskId 同欄位、後者覆蓋前者（合併 payload）
+    mergeOpIntoOpLog(op);
   }
 
-  if (action === 'updateTask') {
-    // 同 id 的 updateTask → 覆蓋
-    const uIdx = nonInflight.findIndex(q => q.action === 'updateTask' && q.payload.id === payload.id);
-    if (uIdx > -1) {
-      const targetOpId = nonInflight[uIdx]._opId;
-      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
-      pushLog(`覆蓋佇列：${label}`, 'warn');
-    }
-    // 同 id 的 setTaskStatus → 把 status 合進 updateTask
-    const sIdx = nonInflight.findIndex(q => q.action === 'setTaskStatus' && q.payload.id === payload.id);
-    if (sIdx > -1) {
-      const status = nonInflight[sIdx].payload.status;
-      payload.data = {...payload.data, status};
-      const targetOpId = nonInflight[sIdx]._opId;
-      pendingQueue = pendingQueue.filter(q => q._opId !== targetOpId);
-      pushLog(`合併 status+update：${label}`, 'warn');
-    }
-  }
-
+  // 保留 pendingQueue（UI 計數用、實際推送靠 opLog）
   pendingQueue.push({
     action,
     payload,
     label,
     addedAt: Date.now(),
-    _opId: `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+    _opId: op ? op.opId : `op_${Date.now()}_${Math.random().toString(36).slice(2,8)}`
   });
   pushLog(`佇列：${label}`, 'warn');
   saveLocal();
+  saveOpLog();
   updateBanner();
+}
+
+// 把 (action, payload) 轉成 op（v500.30 新增）
+function convertActionToOp(action, payload) {
+  const data = payload.data || payload;
+  // 抓 ID（相容多種命名：data.ID、data.id、payload.id）
+  const id = data.ID || data.id || payload.id;
+
+  if (action === 'addTask') {
+    return createOp({
+      taskId: id || genID(),
+      op: 'add',
+      payload: {
+        Task: String(data.task || ''),
+        Category: String(data.category || ''),
+        DueDate: String(data.dueDate || ''),
+        Status: String(data.status || 'Pending'),
+        Priority: Number(data.priority) || 99,
+        Note: String(data.note || ''),
+        Customer: String(data.customer || ''),
+        CustomerHint: String(data.customerHint || '')
+      },
+      timestamp: data.mTime || Date.now()
+    });
+  }
+  if (action === 'updateTask') {
+    // v500.30: 用 diff 找出「實際改了哪些欄位」、只推這些
+    // 注意：caller 通常已先改 allT、再 enqueue
+    //   所以「比對 allT」可能算不出 diff
+    //   策略：用 payload 內所有「caller 傳了的」欄位都當改動
+    //   但跳過「caller 沒傳的」（payload.data 沒這個 key）
+    const taskId = id;
+
+    // payload 內 caller 傳了哪些欄位
+    const fieldMap = {
+      'task': 'Task',
+      'category': 'Category',
+      'dueDate': 'DueDate',
+      'status': 'Status',
+      'priority': 'Priority',
+      'note': 'Note',
+      'customer': 'Customer',
+      'customerHint': 'CustomerHint'
+    };
+
+    const diff = {};
+    for (const lowerKey in fieldMap) {
+      if (!(lowerKey in data)) continue;  // caller 沒傳這個欄位、跳過
+      const upperKey = fieldMap[lowerKey];
+      const val = lowerKey === 'priority' ? (Number(data[lowerKey]) || 99) : String(data[lowerKey] || '');
+      diff[upperKey] = val;
+    }
+
+    // 如果 diff 為空（caller 什麼都沒傳）、不產生 op
+    if (Object.keys(diff).length === 0) {
+      return null;
+    }
+
+    return createOp({
+      taskId: taskId,
+      op: 'update',
+      payload: diff,
+      timestamp: data.mTime || Date.now()
+    });
+  }
+  if (action === 'setTaskStatus') {
+    return createOp({
+      taskId: id,
+      op: 'update',
+      payload: { Status: String(payload.status || 'Pending') },
+      timestamp: payload.mTime || Date.now()
+    });
+  }
+  if (action === 'deleteTask') {
+    return createOp({
+      taskId: id,
+      op: 'delete',
+      payload: {},
+      timestamp: Date.now()
+    });
+  }
+
+  // 客戶相關（轉成 cusOpLog）
+  if (action === 'addCustomer') {
+    mergeCusOpIntoLog(createCusOp({
+      customerName: payload.name,
+      op: 'add',
+      payload: { firstSeen: Date.now(), lastSeen: Date.now() },
+      timestamp: Date.now()
+    }));
+    return null;
+  }
+  if (action === 'markAsStopWord') {
+    mergeCusOpIntoLog(createCusOp({
+      customerName: payload.name,
+      op: 'update',
+      payload: { isStopWord: true },
+      timestamp: Date.now()
+    }));
+    return null;
+  }
+  if (action === 'unmarkStopWord') {
+    mergeCusOpIntoLog(createCusOp({
+      customerName: payload.name,
+      op: 'update',
+      payload: { isStopWord: false },
+      timestamp: Date.now()
+    }));
+    return null;
+  }
+  if (action === 'deleteCustomer') {
+    mergeCusOpIntoLog(createCusOp({
+      customerName: payload.name,
+      op: 'delete',
+      payload: {},
+      timestamp: Date.now()
+    }));
+    return null;
+  }
+  // 其他 action（分類等）暫不轉 op、走舊路徑
+  return null;
+}
+
+// 合併 cusOp 到 cusOpLog（v500.30 新增、減少多餘 op）
+function mergeCusOpIntoLog(newOp) {
+  if (!newOp) return;
+  // delete 跟其他不合併（特殊操作）
+  if (newOp.op === 'delete') {
+    cusOpLog.push(newOp);
+    return;
+  }
+  // 同 customerName 的 pending update / add → 合併
+  const idx = cusOpLog.findIndex(o =>
+    o.status === 'pending' &&
+    o.op === newOp.op &&
+    String(o.customerName) === String(newOp.customerName)
+  );
+  if (idx >= 0) {
+    cusOpLog[idx].payload = { ...cusOpLog[idx].payload, ...newOp.payload };
+    cusOpLog[idx].timestamp = Math.max(cusOpLog[idx].timestamp, newOp.timestamp);
+    cusOpLog[idx].opId = newOp.opId;
+  } else {
+    cusOpLog.push(newOp);
+  }
+}
+
+// 合併 op 到 opLog（同 taskId 同欄位、後者覆蓋）
+function mergeOpIntoOpLog(newOp) {
+  if (!newOp) return;
+  // 不合併 add / delete（特殊）
+  if (newOp.op !== 'update') {
+    opLog.push(newOp);
+    return;
+  }
+
+  // 同 taskId 的 pending update op → 合併 payload
+  const idx = opLog.findIndex(o =>
+    o.status === 'pending' &&
+    o.op === 'update' &&
+    String(o.taskId) === String(newOp.taskId)
+  );
+  if (idx >= 0) {
+    // 合併 payload（newOp 覆蓋舊的同欄位）
+    opLog[idx].payload = { ...opLog[idx].payload, ...newOp.payload };
+    opLog[idx].timestamp = Math.max(opLog[idx].timestamp, newOp.timestamp);
+    // opId 用新的（給日誌追蹤）
+    opLog[idx].opId = newOp.opId;
+  } else {
+    opLog.push(newOp);
+  }
 }
 async function flushQueue() {
   // 清除超過 7 天的佇列項目（跳過 inflight）
@@ -1896,7 +2626,7 @@ async function flushQueue() {
     saveLocal();
   }
 
-  // 偵測 inflight 卡住超過 5 分鐘（網路 timeout 或上次中斷）→ 重置
+  // 偵測 inflight 卡住超過 5 分鐘 → 重置
   const inflightTimeout = 5 * 60 * 1000;
   const stuck = pendingQueue.filter(i => i.inflight && Date.now() - (i.inflightAt || 0) > inflightTimeout);
   if (stuck.length > 0) {
@@ -1908,40 +2638,20 @@ async function flushQueue() {
     saveLocal();
   }
 
-  if (!pendingQueue.length) return true;
+  // v500.30: 檢查是否真的有東西要推（opLog / cusOpLog / pendingQueue 任一非空）
+  const pendingOps = opLog.filter(o => o.status === 'pending');
+  const pendingCusOps = cusOpLog.filter(o => o.status === 'pending');
+
+  if (!pendingQueue.length && !pendingOps.length && !pendingCusOps.length) return true;
   if (!isOnline()) { pushLog('離線，佇列等待','warn'); return false; }
 
-  // 推送前讀一次 session token，所有請求共用
+  // 推送前讀一次 session token（v500.30 測試版無需 token、保留結構）
   const sessionToken = getSession();
   if (!sessionToken) {
     pushLog('登入已過期，請重新登入', 'error');
     setTimeout(() => doLogout(), 2000);
     return false;
   }
-
-  // 取出非 inflight 的項目來推送
-  const toProcess = pendingQueue.filter(i => !i.inflight);
-  if (!toProcess.length) return true;
-
-  pushLog(`推送 ${toProcess.length} 筆…`, 'info');
-
-  // ★ 標記 inflight 而非清空（v500 核心改動）
-  const inflightTime = Date.now();
-  const processingIds = new Set();
-  toProcess.forEach(item => {
-    item.inflight = true;
-    item.inflightAt = inflightTime;
-    processingIds.add(item._opId);
-  });
-  saveLocal();  // 立即寫入 localStorage，被殺也救得回來
-
-  const catActions = ['addCategory','deleteCategory','renameCategory','reorderCategories','updateCategoryColor'];
-  const catQueue = toProcess.filter(i => catActions.includes(i.action));
-  const taskQueue = toProcess.filter(i => !catActions.includes(i.action));
-
-  // 用 Set 追蹤推送結果
-  const successIds = new Set();
-  const failedIds = new Set();
 
   // 統一的 fetch with timeout（25秒）
   const batchFetch = (body, ms=25000) => {
@@ -1950,169 +2660,166 @@ async function flushQueue() {
     return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
   };
 
+  // ════════════════════════════════════════
+  // v500.30 PART A：推送 TaskOps（任務改動）
+  // ════════════════════════════════════════
+  let opsPushed = 0, opsRejected = 0;
+  if (pendingOps.length > 0) {
+    pushLog(`推送 ${pendingOps.length} 個任務 op…`, 'info');
+    try {
+      const result = await pushOpsToCloud(async (url, opts) => {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 25000);
+        const res = await fetch(url, {
+          method: opts.method,
+          body: opts.body,
+          signal: ctrl.signal
+        });
+        clearTimeout(tid);
+        return res;
+      });
+      opsPushed = result.acked.length;
+      opsRejected = (result.rejected || []).length;
+      if (opsPushed > 0) pushLog(`✓ ${opsPushed} 個 op 已確認`, 'success');
+      if (opsRejected > 0) pushLog(`⚠️ ${opsRejected} 個 op 被拒絕`, 'warn');
+    } catch (e) {
+      pushLog(`✗ TaskOps 推送失敗: ${e.message || e}`, 'error');
+    }
+  }
+
+  // ════════════════════════════════════════
+  // v500.30 PART B：推送 CustomerOps（客戶改動）
+  // ════════════════════════════════════════
+  let cusOpsPushed = 0;
+  if (pendingCusOps.length > 0) {
+    pushLog(`推送 ${pendingCusOps.length} 個客戶 op…`, 'info');
+    try {
+      const result = await pushCustomerOpsToCloud(async (url, opts) => {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 25000);
+        const res = await fetch(url, {
+          method: opts.method,
+          body: opts.body,
+          signal: ctrl.signal
+        });
+        clearTimeout(tid);
+        return res;
+      });
+      cusOpsPushed = result.acked.length;
+      if (cusOpsPushed > 0) pushLog(`✓ ${cusOpsPushed} 個客戶 op 已確認`, 'success');
+    } catch (e) {
+      pushLog(`✗ CustomerOps 推送失敗: ${e.message || e}`, 'error');
+    }
+  }
+
+  // ════════════════════════════════════════
+  // v500.30 PART C：分類操作（保留舊路徑、Categories 不上 op log）
+  // ════════════════════════════════════════
+  const catActions = ['addCategory','deleteCategory','renameCategory','reorderCategories','updateCategoryColor'];
+  const catQueue = pendingQueue.filter(i => !i.inflight && catActions.includes(i.action));
+
+  const catSuccessIds = new Set();
+  const catFailedIds = new Set();
   let unauthorizedDetected = false;
 
-  // 分類操作：序列推送（避免 deleteRow 列號錯位）
-  for (const item of catQueue) {
-    if (unauthorizedDetected) break;
-    try {
-      const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.status === 'error' && json.message === 'unauthorized') {
-        unauthorizedDetected = true;
-        pushLog('登入已過期，請重新登入', 'error');
-        setTimeout(() => doLogout(), 2000);
-        break;
-      }
-      successIds.add(item._opId);
-      pushLog(`✓ ${item.label}`, 'success');
-    } catch(e) {
-      failedIds.add(item._opId);
-      pushLog(`✗ ${item.label}: ${e.message||'錯誤'}`, 'error');
-    }
-  }
+  if (catQueue.length > 0) {
+    const inflightTime = Date.now();
+    catQueue.forEach(item => {
+      item.inflight = true;
+      item.inflightAt = inflightTime;
+    });
+    saveLocal();
 
-  // 任務操作：addTask 獨立批次，其他操作分批平行推送
-  const addTaskQueue = taskQueue.filter(i => i.action === 'addTask');
-  const otherTaskQueue = taskQueue.filter(i => i.action !== 'addTask');
-
-  // addTask：合併成一次 batchAddTasks
-  if (addTaskQueue.length > 0 && !unauthorizedDetected) {
-    try {
-      const tasks = addTaskQueue.map(item => {
-        const d = item.payload.data;
-        return {
-          ID: d?.ID || item.payload.id,
-          task: d?.task || '',
-          category: d?.category || '',
-          dueDate: d?.dueDate || '',
-          priority: d?.priority || 99,
-          note: d?.note || '',
-          mTime: d?.mTime || Date.now(),
-        };
-      });
-      const res = await batchFetch(JSON.stringify({
-        action: 'batchAddTasks',
-        token: sessionToken,
-        tasks
-      }));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      if (json.status === 'error' && json.message === 'unauthorized') {
-        throw new Error('unauthorized');
-      }
-      if (json.status === 'success') {
-        const writtenIds = new Set((json.written || []).map(String));
-        const skippedIds = new Set((json.skipped || []).map(String));
-        const classified = new Set([...writtenIds, ...skippedIds]);
-
-        addTaskQueue.forEach(item => {
-          const id = String(item.payload.id || item.payload.data?.ID || '');
-          if (writtenIds.has(id)) {
-            successIds.add(item._opId);
-            pushLog(`✓ ${item.label}`, 'success');
-          } else if (skippedIds.has(id)) {
-            // 雲端已有此 ID（重複略過），視為成功
-            successIds.add(item._opId);
-            pushLog(`⚠️ ${item.label} 已存在，略過`, 'warn');
-          } else if (!classified.has(id)) {
-            // 未明確成功也未明確 skip → 視為失敗
-            failedIds.add(item._opId);
-            pushLog(`✗ ${item.label} 未確認，將重試`, 'warn');
-          }
-        });
-      }
-    } catch(e) {
-      if (e.message === 'unauthorized') {
-        unauthorizedDetected = true;
-        pushLog('登入已過期，請重新登入', 'error');
-        setTimeout(() => doLogout(), 2000);
-      } else {
-        pushLog(`✗ 批次新增失敗：${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
-        addTaskQueue.forEach(item => failedIds.add(item._opId));
-      }
-    }
-  }
-
-  // 其他任務操作（updateTask, setTaskStatus, toggleTask, deleteTask）：分批平行推送
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < otherTaskQueue.length; i += BATCH_SIZE) {
-    if (unauthorizedDetected) break;
-    const batch = otherTaskQueue.slice(i, i + BATCH_SIZE);
-    await Promise.all(batch.map(async item => {
+    // 分類操作：序列推送
+    for (const item of catQueue) {
+      if (unauthorizedDetected) break;
       try {
         const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         if (json.status === 'error' && json.message === 'unauthorized') {
-          throw new Error('unauthorized');
-        }
-        if (json.status === 'error') {
-          // GAS 端錯誤（例如 task is empty、id not found）
-          pushLog(`✗ ${item.label}: ${json.message || '錯誤'}`, 'error');
-          // 邏輯錯誤不重試（避免無限循環）
-          successIds.add(item._opId);  // 標記為「處理完成、不重試」
-        } else {
-          successIds.add(item._opId);
-          pushLog(`✓ ${item.label}`, 'success');
-        }
-      } catch(e) {
-        if (e.message === 'unauthorized') {
           unauthorizedDetected = true;
           pushLog('登入已過期，請重新登入', 'error');
           setTimeout(() => doLogout(), 2000);
-        } else {
-          failedIds.add(item._opId);
-          pushLog(`✗ ${item.label}: ${e.name === 'AbortError' ? '請求超時' : (e.message||'錯誤')}`, 'error');
+          break;
         }
+        catSuccessIds.add(item._opId);
+        pushLog(`✓ ${item.label}`, 'success');
+      } catch(e) {
+        catFailedIds.add(item._opId);
+        pushLog(`✗ ${item.label}: ${e.message||'錯誤'}`, 'error');
       }
-    }));
-    if (i + BATCH_SIZE < otherTaskQueue.length && !unauthorizedDetected) await new Promise(r => setTimeout(r, 500));
+    }
   }
 
-  // ★ 處理推送結果：更新 pendingQueue
+  // ════════════════════════════════════════
+  // v500.30 PART D：更新 pendingQueue
+  // ════════════════════════════════════════
+  // 規則：
+  //   - 分類成功的 _opId → 移除
+  //   - 任務 / 客戶操作：看 opLog 對應 op 是否仍 pending（fail）或已 acked / 不存在（success）
+  //     - acked 或不存在（雲端確認）→ 移除 pendingQueue
+  //     - pending（推送失敗）→ 保留 pendingQueue（UI 顯示「未同步」）
+  //   - 分類失敗的 _opId → 保留 pendingQueue
+  const taskActions = new Set(['addTask','updateTask','setTaskStatus','toggleTask','deleteTask']);
+  const cusActions = new Set(['addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats']);
+
+  // 建立 opLog 內 pending opId 的索引（O(1) 查詢）
+  const pendingOpIdSet = new Set(opLog.filter(o => o.status === 'pending').map(o => o.opId));
+  const pendingCusOpIdSet = new Set(cusOpLog.filter(o => o.status === 'pending').map(o => o.opId));
+
   pendingQueue = pendingQueue.filter(item => {
-    if (successIds.has(item._opId)) {
-      return false;  // 成功：移除
+    // 任務操作
+    if (taskActions.has(item.action)) {
+      // 對應 op 仍 pending（推送失敗）→ 保留
+      if (pendingOpIdSet.has(item._opId)) {
+        if (item.inflight) {
+          delete item.inflight;
+          delete item.inflightAt;
+        }
+        return true;
+      }
+      // 已 acked 或不存在（成功）→ 移除
+      return false;
     }
-    if (failedIds.has(item._opId)) {
-      // 失敗：取消 inflight 標記，留在佇列
+    // 客戶操作
+    if (cusActions.has(item.action)) {
+      if (pendingCusOpIdSet.has(item._opId)) {
+        if (item.inflight) {
+          delete item.inflight;
+          delete item.inflightAt;
+        }
+        return true;
+      }
+      return false;
+    }
+    // 分類成功：移除
+    if (catSuccessIds.has(item._opId)) return false;
+    // 分類失敗：保留、清 inflight
+    if (catFailedIds.has(item._opId)) {
       delete item.inflight;
       delete item.inflightAt;
       return true;
     }
-    // 沒明確結果（中斷、unauthorized）：取消 inflight，留在佇列
-    if (processingIds.has(item._opId)) {
+    // 其他（沒處理到、可能還在 inflight）：清 inflight 保留
+    if (item.inflight) {
       delete item.inflight;
       delete item.inflightAt;
     }
     return true;
   });
   saveLocal();
-
-  // 記錄成功推送的操作，供驗證使用
-  if (toProcess.length > 0) {
-    const succeeded = toProcess.filter(i => successIds.has(i._opId));
-    const importOps = succeeded.filter(op => op.label && op.label.startsWith('匯入'));
-
-    if (importOps.length > 0 && failedIds.size === 0) {
-      _lastFlushedOps = importOps;
-      _pendingVerify = true;
-    } else if (importOps.length > 0 && failedIds.size > 0) {
-      _lastFlushedOps = importOps;
-    } else {
-      _lastFlushedOps = succeeded;
-    }
-  }
+  saveOpLog();
 
   updateBanner();
   updateSyncMeta();
 
-  if (failedIds.size > 0) {
-    pushLog(`${failedIds.size} 筆未成功，30 秒後自動重試`, 'warn');
+  // 失敗回報
+  const totalFailed = catFailedIds.size + opsRejected;
+  if (totalFailed > 0) {
+    pushLog(`${totalFailed} 筆未成功，30 秒後自動重試`, 'warn');
     setTimeout(() => {
-      if (pendingQueue.length && isOnline()) {
+      if ((pendingQueue.length || opLog.filter(o => o.status === 'pending').length) && isOnline()) {
         pushLog('自動重試…', 'info');
         schedulePush(true);
       }
@@ -2252,7 +2959,10 @@ async function verifyFlushedOps(cloudTasks, cloudCats) {
     pushLog(`${retryOps.length} 筆驗證失敗，30 秒後自動重試`, 'warn');
     if (_importTotal > 0) importProgressVerifyDone(retryOps.length);
     setTimeout(() => {
-      if (pendingQueue.length && isOnline()) schedulePush(true);
+      const hasAnyPending = pendingQueue.length
+        || opLog.some(o => o.status === 'pending')
+        || cusOpLog.some(o => o.status === 'pending');
+      if (hasAnyPending && isOnline()) schedulePush(true);
     }, 30000);
   } else {
     if (_importTotal > 0) importProgressVerifyDone(0);
@@ -2274,6 +2984,32 @@ async function pullFromCloud(reason, attempt=1) {
     _prePullLocalTasks = allT.map(t => ({...t}));
   } else {
     pushLog(`重試第 ${attempt} 次…`, 'info');
+  }
+
+  // ════════════════════════════════════════
+  // v500.30 NEW：先拉 TaskOps + CustomerOps（增量同步、極快）
+  // ════════════════════════════════════════
+  try {
+    const fetchOps = (url, ms=15000) => {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), ms);
+      return fetch(url, {signal: ctrl.signal}).finally(() => clearTimeout(tid));
+    };
+    const opsResult = await pullOps(fetchOps);
+    const cusOpsResult = await pullCustomerOps(fetchOps);
+
+    if (opsResult.applied > 0 || cusOpsResult.applied > 0) {
+      pushLog(`拉到 ${opsResult.applied} 個任務 op + ${cusOpsResult.applied} 個客戶 op`, 'info');
+      saveLocal();
+      // v500.30: 套用了 op、render 讓 UI 跟上（避免 UI 落後 allT）
+      renderAll();
+    }
+    if (opsResult.selfOpsCleaned > 0) {
+      console.log(`[pullFromCloud] 清掉 ${opsResult.selfOpsCleaned} 個自己已確認的 op`);
+    }
+  } catch (e) {
+    console.log('[pullFromCloud] pullOps error:', e);
+    // 不致命、繼續走全量 / 增量同步
   }
 
   try {
@@ -2431,6 +3167,53 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
         });
         cloudIds.add(id);
       }
+    });
+
+    // v500.30: 合併保護也要從 opLog 補回 pending add op
+    opLog.filter(o => o.status === 'pending' && o.op === 'add').forEach(o => {
+      const id = String(o.taskId);
+      if (!cloudIds.has(id)) {
+        const p = o.payload || {};
+        allT.push({
+          ID: id,
+          Task: String(p.Task || ''),
+          Category: String(p.Category || ''),
+          DueDate: String(p.DueDate || ''),
+          Status: String(p.Status || 'Pending'),
+          Priority: Number(p.Priority) || 99,
+          Note: String(p.Note || ''),
+          Customer: String(p.Customer || ''),
+          CustomerHint: String(p.CustomerHint || ''),
+          mTime: Number(o.timestamp) || Date.now(),
+        });
+        cloudIds.add(id);
+      }
+    });
+
+    // v500.30: 合併保護、從 opLog pending 重套 update op（救回沒推到的改動）
+    opLog.filter(o => o.status === 'pending' && o.op === 'update').forEach(o => {
+      const id = String(o.taskId);
+      const task = allT.find(t => String(t.ID) === id);
+      if (!task) return;
+      const p = o.payload || {};
+      // 只有「op timestamp 更新」才覆蓋
+      if (Number(o.timestamp) > Number(task.mTime || 0)) {
+        if ('Task' in p) task.Task = p.Task;
+        if ('Category' in p) task.Category = p.Category;
+        if ('DueDate' in p) task.DueDate = p.DueDate;
+        if ('Status' in p) task.Status = p.Status;
+        if ('Priority' in p) task.Priority = p.Priority;
+        if ('Note' in p) task.Note = p.Note;
+        if ('Customer' in p) task.Customer = p.Customer;
+        if ('CustomerHint' in p) task.CustomerHint = p.CustomerHint;
+        task.mTime = Number(o.timestamp);
+      }
+    });
+
+    // v500.30: pending delete op：從本機移除
+    opLog.filter(o => o.status === 'pending' && o.op === 'delete').forEach(o => {
+      const id = String(o.taskId);
+      allT = allT.filter(t => String(t.ID) !== id);
     });
 
     // 合併保護：以本機較新的 mTime 為準
@@ -2774,9 +3557,12 @@ async function fullSync(reason) {
     }
   } finally {
     isSyncRunning = false; updateBanner(); updateSyncMeta();
-    // 同步期間若有新操作加入佇列，立即觸發推送
-    if (pendingQueue.length > 0) {
-      pushLog(`同步完成後發現 ${pendingQueue.length} 筆新操作，立即推送`, 'info');
+    // v500.30: 同步期間若有新操作（pendingQueue / opLog / cusOpLog）→ 立即觸發推送
+    const newPendingTotal = pendingQueue.length
+      + opLog.filter(o => o.status === 'pending').length
+      + cusOpLog.filter(o => o.status === 'pending').length;
+    if (newPendingTotal > 0) {
+      pushLog(`同步完成後發現 ${newPendingTotal} 筆新操作，立即推送`, 'info');
       schedulePush(true); // 立即推送，不等 10 秒
     }
   }
@@ -2793,7 +3579,12 @@ function schedulePush(immediate = false) {
     // 清除強制計時器
     if (_pushForceTimer) { clearTimeout(_pushForceTimer); _pushForceTimer = null; }
     _pushDebounceTimer = null;
-    if (!isOnline() || !pendingQueue.length) return;
+    if (!isOnline()) return;
+    // v500.30: 看 opLog / cusOpLog / pendingQueue 任一非空
+    const hasPending = pendingQueue.length > 0
+      || opLog.some(o => o.status === 'pending')
+      || cusOpLog.some(o => o.status === 'pending');
+    if (!hasPending) return;
     if (isSyncRunning) return;
     const flushed = await flushQueue();
     if (_pendingVerify) {
@@ -2862,6 +3653,23 @@ async function openReconcile() {
   }
   
   try {
+    // v500.30: 對帳前先拉 op log（確保本機 allT 已套用最新雲端改動）
+    statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">⏳</div><div>同步最新 op log...</div>';
+    try {
+      const fetchOps = (url, ms=15000) => {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), ms);
+        return fetch(url, {signal: ctrl.signal}).finally(() => clearTimeout(tid));
+      };
+      await pullOps(fetchOps);
+      await pullCustomerOps(fetchOps);
+      saveLocal();
+    } catch (e) {
+      console.log('[openReconcile] pullOps 失敗、繼續對帳: ' + e);
+    }
+
+    statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">⏳</div><div>拉取雲端任務中...</div>';
+
     // 2. 拉雲端全量
     const res = await fetch(`${GAS_URL}?action=getTasks&token=${sessionToken}`);
     const cloudTasks = await res.json();
@@ -3166,63 +3974,59 @@ async function scanFillCustomers() {
       if (!existsInCust && !newCustomersDetected.has(det.customer)) {
         newCustomersDetected.add(det.customer);
       }
-      // 推送 updateTask
-      await pushOp('updateTask', {
-        id: t.ID,
-        data: {
-          task: t.Task,
-          dueDate: fmtD(t.DueDate),
-          category: t.Category,
-          priority: t.Priority,
-          note: t.Note || '',
-          mTime: now,
-          ID: t.ID,
-          status: t.Status || 'Pending',
-          customer: det.customer,
-          customerHint: ''
-        }
-      }, `補客戶「${t.Task}」→ ${det.customer}`);
+      // v500.30: 推 op、只動 Customer 欄位（不整筆推、避免誤蓋）
+      const op = createOp({
+        taskId: t.ID,
+        op: 'update',
+        payload: { Customer: det.customer },
+        timestamp: now
+      });
+      mergeOpIntoOpLog(op);
+      pushLog(`補客戶「${t.Task}」→ ${det.customer}`, 'info');
     } else if (det.isAmbiguous) {
       // 補曖昧 Hint
       t.CustomerHint = det.hint;
       t.mTime = now;
       countAmb++;
-      await pushOp('updateTask', {
-        id: t.ID,
-        data: {
-          task: t.Task,
-          dueDate: fmtD(t.DueDate),
-          category: t.Category,
-          priority: t.Priority,
-          note: t.Note || '',
-          mTime: now,
-          ID: t.ID,
-          status: t.Status || 'Pending',
-          customer: '',
-          customerHint: det.hint
-        }
-      }, `補 Hint「${t.Task}」→ ${det.hint}?`);
+      const op = createOp({
+        taskId: t.ID,
+        op: 'update',
+        payload: { CustomerHint: det.hint },
+        timestamp: now
+      });
+      mergeOpIntoOpLog(op);
+      pushLog(`補 Hint「${t.Task}」→ ${det.hint}?`, 'info');
     }
   }
 
-  // 新客戶加進 allCust + 推送 addCustomer
+  // 新客戶加進 allCust + 推 addCustomer op
   newCustomersDetected.forEach(name => {
     const existing = (allCust || []).find(c => c.name === name);
     if (!existing) {
-      allCust.push({ name, firstSeen: now, lastSeen: now, taskCount: 1, updatedAt: now });
+      allCust.push({ name, firstSeen: now, lastSeen: now, taskCount: 1, updatedAt: now, isStopWord: false });
     }
   });
   if (newCustomersDetected.size > 0) {
     saveLocal();
     for (const name of newCustomersDetected) {
-      await pushOp('addCustomer', { name }, `新客戶「${name}」`);
+      cusOpLog.push(createCusOp({
+        customerName: name,
+        op: 'add',
+        payload: { firstSeen: now, lastSeen: now },
+        timestamp: now
+      }));
+      pushLog(`新客戶「${name}」`, 'info');
     }
+    saveOpLog();
   }
 
   if (countOk > 0 || countAmb > 0) {
     saveLocal();
+    saveOpLog();
     renderAll();
     pushLog(`掃描補回：明確 ${countOk} 筆、曖昧 ${countAmb} 筆${newCustomersDetected.size > 0 ? `、新客戶 ${newCustomersDetected.size} 個` : ''}`, 'success');
+    // v500.30: 立即排推送（讓 op 送上去）
+    schedulePush(true);
   } else {
     pushLog('掃描補回：無任務需要補', 'info');
   }
@@ -3232,9 +4036,14 @@ async function scanFillCustomers() {
 // v500: 離開超過 5 分鐘 → 自動 fullSync 拉取最新資料
 let _lastBgTime = 0;
 document.addEventListener('visibilitychange', () => {
+  // v500.30: 看 pendingQueue + opLog + cusOpLog 任一非空
+  const hasAnyPending = pendingQueue.length > 0
+    || opLog.some(o => o.status === 'pending')
+    || cusOpLog.some(o => o.status === 'pending');
+
   if (document.visibilityState === 'hidden') {
     _lastBgTime = Date.now();
-    if (pendingQueue.length > 0 && isOnline() && !isSyncRunning) {
+    if (hasAnyPending && isOnline() && !isSyncRunning) {
       // 取消 debounce，立即推送（用 immediate 模式）
       schedulePush(true);
     }
@@ -3244,7 +4053,7 @@ document.addEventListener('visibilitychange', () => {
       if (isOnline() && !isSyncRunning) {
         fullSync('回前景檢查');
       }
-    } else if (pendingQueue.length > 0 && isOnline()) {
+    } else if (hasAnyPending && isOnline()) {
       // 短時間切回，只推送佇列（既有行為）
       schedulePush(true);
     }
@@ -3642,19 +4451,48 @@ async function save() {
     if (!existing) {
       // 新客戶、加本機
       allCust.push({ name: customer, firstSeen: Date.now(), lastSeen: Date.now(), taskCount: 1, updatedAt: Date.now() });
-      // 推送到 GAS
+      // 推送到 GAS（new add op）
       await pushOp('addCustomer', { name: customer }, `新增客戶「${customer}」`);
     } else {
-      // 已知客戶、更新本機統計
+      // v500.30: 已知客戶、只更新本機統計（taskCount 是派生資料、不推 op）
       existing.lastSeen = Date.now();
       if (isNew) existing.taskCount = (existing.taskCount || 0) + 1;
-      // 推送 addCustomer（GAS 端會做累加邏輯）
-      if (isNew) await pushOp('addCustomer', { name: customer }, `客戶「${customer}」+1`);
     }
   }
 
   saveLocal(); renderAll(); closeM('taskM');
-  await pushOp(isNew?'addTask':'updateTask', {id,data}, isNew?`新增「${data.task}」`:`更新「${data.task}」`);
+
+  // v500.30: updateTask 時、用 orig 算 diff、只推改了的欄位
+  if (isNew) {
+    await pushOp('addTask', {id, data}, `新增「${data.task}」`);
+  } else {
+    // 算 diff（orig 是改之前的快照）
+    const diff = {};
+    if (orig) {
+      if (data.task !== (orig.Task || '')) diff.task = data.task;
+      if (data.dueDate !== (fmtD(orig.DueDate) || '')) diff.dueDate = data.dueDate;
+      if (data.category !== (orig.Category || '')) diff.category = data.category;
+      if (data.priority !== (orig.Priority || 99)) diff.priority = data.priority;
+      if (data.note !== (orig.Note || '')) diff.note = data.note;
+      if (data.customer !== (orig.Customer || '')) diff.customer = data.customer;
+      if (data.customerHint !== (orig.CustomerHint || '')) diff.customerHint = data.customerHint;
+    } else {
+      // 沒 orig（不該發生、但保險）→ 全推
+      Object.assign(diff, {
+        task: data.task, dueDate: data.dueDate, category: data.category,
+        priority: data.priority, note: data.note,
+        customer: data.customer, customerHint: data.customerHint
+      });
+    }
+    diff.mTime = mTime;
+    diff.ID = id;
+    // Status 通常編輯彈窗不會改、但保險
+    if (data.status !== (orig?.Status || 'Pending')) diff.status = data.status;
+
+    if (Object.keys(diff).length > 2) {  // 不只 mTime + ID
+      await pushOp('updateTask', {id, data: diff}, `更新「${data.task}」`);
+    }
+  }
 }
 async function toggleT(id) {
   const t = allT.find(x => String(x.ID) === String(id)); if (!t) return;
@@ -3676,6 +4514,8 @@ async function delTask() {
   pendingQueue = pendingQueue.filter(q =>
     String(q.payload?.id) !== String(id) && String(q.payload?.data?.ID) !== String(id)
   );
+  // v500.30: 清掉 opLog 內同 taskId 的 pending op（被刪掉的、之前的改動沒意義了）
+  opLog = opLog.filter(o => !(o.status === 'pending' && String(o.taskId) === String(id)));
   saveLocal(); renderAll(); closeM('taskM');
   await pushOp('deleteTask', {id}, `刪除「${t?t.Task:id}」`);
 }
@@ -3943,7 +4783,8 @@ async function ctxSetToday() {
   const t = allT.find(x => String(x.ID) === String(id)); if (!t) return;
   const today = getToday(); if (fmtD(t.DueDate) === today) return;
   t.DueDate = today; t.mTime = Date.now(); saveLocal(); renderAll();
-  await pushOp('updateTask', {id:t.ID, data:{task:t.Task, dueDate:today, category:t.Category, priority:t.Priority, note:t.Note||'', mTime:t.mTime, status:t.Status||'Pending'}}, `「${t.Task}」設為今天`);
+  // v500.30: 只推 DueDate 欄位
+  await pushOp('updateTask', {id:t.ID, data:{dueDate:today, mTime:t.mTime, ID:t.ID}}, `「${t.Task}」設為今天`);
 }
 async function ctxSetTomorrow() {
   const id = _ctxTaskId; closeCtxMenu();
@@ -3952,7 +4793,8 @@ async function ctxSetTomorrow() {
   const tomorrow = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   if (fmtD(t.DueDate) === tomorrow) return;
   t.DueDate = tomorrow; t.mTime = Date.now(); saveLocal(); renderAll();
-  await pushOp('updateTask', {id:t.ID, data:{task:t.Task, dueDate:tomorrow, category:t.Category, priority:t.Priority, note:t.Note||'', mTime:t.mTime, status:t.Status||'Pending'}}, `「${t.Task}」設為明天`);
+  // v500.30: 只推 DueDate 欄位
+  await pushOp('updateTask', {id:t.ID, data:{dueDate:tomorrow, mTime:t.mTime, ID:t.ID}}, `「${t.Task}」設為明天`);
 }
 
 // ── 快速編輯 ────────────────────────────────────────────────────
@@ -4039,9 +4881,21 @@ async function saveQuickEdit() {
   }
 
   saveLocal(); renderAll();
+  // v500.30: 只推實際改的欄位
+  const diffData = {
+    task,
+    category: cat,
+    mTime: t.mTime,
+    ID: t.ID
+  };
+  // 任務名變了、且重新偵測了客戶 → 推 customer/hint
+  if (taskNameChanged) {
+    diffData.customer = newCustomer;
+    diffData.customerHint = newCustomerHint;
+  }
   await pushOp('updateTask', {
     id: t.ID,
-    data: { task, dueDate: fmtD(t.DueDate), category: cat, priority: t.Priority, note: t.Note||'', mTime: t.mTime, ID: t.ID, status: t.Status||'Pending', customer: newCustomer, customerHint: newCustomerHint }
+    data: diffData
   }, `快速編輯「${task}」`);
 }
 
@@ -4060,9 +4914,10 @@ async function ctxConfirmDate() {
   if (!t || fmtD(t.DueDate) === newDate) return;
   t.DueDate = newDate; t.mTime = Date.now();
   saveLocal(); renderAll();
+  // v500.30: 只推 dueDate 欄位
   await pushOp('updateTask', {
     id: t.ID,
-    data: { task: t.Task, dueDate: newDate, category: t.Category, priority: t.Priority, note: t.Note||'', mTime: t.mTime, status: t.Status||'Pending' }
+    data: { dueDate: newDate, mTime: t.mTime, ID: t.ID }
   }, `「${t.Task}」日期→${newDate}`);
 }
 
@@ -4211,9 +5066,9 @@ async function saveQuick() {
       allCust.push({ name: customer, firstSeen: Date.now(), lastSeen: Date.now(), taskCount: 1, updatedAt: Date.now() });
       await pushOp('addCustomer', { name: customer }, `新增客戶「${customer}」`);
     } else {
+      // v500.30: 已知客戶、只更新本機（taskCount 派生、不推 op）
       existing.lastSeen = Date.now();
       existing.taskCount = (existing.taskCount || 0) + 1;
-      await pushOp('addCustomer', { name: customer }, `客戶「${customer}」+1`);
     }
   }
 
@@ -4575,7 +5430,12 @@ async function confirmImport() {
     saveQueue(); updateBanner();
     importProgressVerifyDone(missingIds.length);
     pushLog(`驗證發現 ${missingIds.length} 筆未寫入，30 秒後自動重試`, 'warn');
-    setTimeout(()=>{ if(pendingQueue.length&&isOnline()) schedulePush(true); }, 30000);
+    setTimeout(()=>{
+      const hasAnyPending = pendingQueue.length
+        || opLog.some(o => o.status === 'pending')
+        || cusOpLog.some(o => o.status === 'pending');
+      if (hasAnyPending && isOnline()) schedulePush(true);
+    }, 30000);
   } else {
     importProgressVerifyDone(0);
     let doneMsg=`匯入完成：新增 ${writtenIds.length} 筆`;
@@ -4676,7 +5536,32 @@ async function init() {
   // v500: 健康檢查（超過 14 天沒全量同步就顯示提醒）
   checkSyncHealth();
 
-  if (pendingQueue.length > 0) pushLog(`發現 ${pendingQueue.length} 筆離線操作待同步`, 'warn');
+  // v500.30: 啟動提示、計入 opLog
+  const totalPending = pendingQueue.length
+    + opLog.filter(o => o.status === 'pending').length
+    + cusOpLog.filter(o => o.status === 'pending').length;
+  if (totalPending > 0) pushLog(`發現 ${totalPending} 筆離線操作待同步`, 'warn');
+
+  // v500.30: 首次安裝（lastSyncOpSeq=0、allT 空）防呆
+  // 跳過 pullOps 直接走 fullSync、避免拉一堆歷史 op
+  // 之後 fullSync 會更新 lastSyncOpSeq 為雲端最大值
+  if (lastSyncOpSeq === 0 && allT.length === 0) {
+    console.log('[init] 首次安裝、跳過 pullOps、直接 fullSync');
+    // 取雲端最新 cloudSeq、設為 lastSyncOpSeq（之後只拉新的）
+    try {
+      const res = await fetch(`${GAS_URL}?action=getOpsLatestSeq`);
+      const data = await res.json();
+      if (data && typeof data.latestSeq === 'number') {
+        lastSyncOpSeq = data.latestSeq;
+        lastSyncCusOpSeq = data.latestCusSeq || 0;
+        saveOpLog();
+        console.log(`[init] 設 lastSyncOpSeq = ${lastSyncOpSeq}`);
+      }
+    } catch (e) {
+      console.log('[init] 取雲端 latestSeq 失敗、保持 0: ' + e);
+    }
+  }
+
   await fullSync('啟動');
 }
 
