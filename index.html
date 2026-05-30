@@ -785,6 +785,8 @@
         <button class="btn-sync" id="syncNowBtn" onclick="doSyncFromModal()">立即同步</button>
         <button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效">🔇</button>
       </div>
+      <!-- v500.27.6: 對帳檢查 -->
+      <button class="btn-sync" style="background:#5856D6;margin-top:6px;width:100%;" onclick="openReconcile()">🔍 對帳檢查（本機 vs 雲端）</button>
       <button class="import-btn" onclick="document.getElementById('importFileInput').click()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         匯入 Excel / CSV
@@ -794,6 +796,23 @@
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
         <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="if(confirm('確定登出？'))doLogout()">登出</button>
         <span id="swVerBadge" style="font-size:11px;font-weight:600;color:#8E8E93;background:#2C2C2E;padding:6px 10px;border-radius:9px;white-space:nowrap;flex-shrink:0;">讀取中…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- v500.27.6: 對帳檢查 modal -->
+<div id="reconcileM" class="modal" onclick="if(event.target===this)closeM('reconcileM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title">🔍 對帳檢查</div>
+    <div class="sh-body">
+      <div id="reconcileStatus" style="text-align:center;padding:24px 16px;color:var(--gray);">
+        <div style="font-size:32px;margin-bottom:12px;">⏳</div>
+        <div>準備檢查...</div>
+      </div>
+      <div id="reconcileResult" style="display:none;">
+        <!-- 動態填入 -->
       </div>
     </div>
   </div>
@@ -2814,6 +2833,220 @@ async function doSyncFromModal() {
   // v500.27: 手動同步額外跑「掃描補回客戶」（自動同步不跑、避免每次都掃）
   await scanFillCustomers();
   btn.textContent = '立即同步'; btn.disabled = false;
+}
+
+// ─────────────────────────────────────────────────────
+// v500.27.6: 對帳檢查（不修改資料、只列差異）
+// ─────────────────────────────────────────────────────
+async function openReconcile() {
+  playSound('tap');
+  openModal('reconcileM');
+  
+  const statusEl = document.getElementById('reconcileStatus');
+  const resultEl = document.getElementById('reconcileResult');
+  
+  statusEl.style.display = 'block';
+  resultEl.style.display = 'none';
+  statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">⏳</div><div>拉取雲端任務中...</div>';
+  
+  // 1. 檢查連線
+  if (!isOnline()) {
+    statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">📡</div><div>離線中、無法對帳</div>';
+    return;
+  }
+  
+  const sessionToken = getSession();
+  if (!sessionToken) {
+    statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">🔒</div><div>登入已過期、請重新登入</div>';
+    return;
+  }
+  
+  try {
+    // 2. 拉雲端全量
+    const res = await fetch(`${GAS_URL}?action=getTasks&token=${sessionToken}`);
+    const cloudTasks = await res.json();
+    
+    if (!Array.isArray(cloudTasks)) {
+      statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">❌</div><div>拉取雲端失敗</div>';
+      return;
+    }
+    
+    // 3. 過濾雲端的 cleanup 範圍（跟本機過濾邏輯一致）
+    const cloudFiltered = cloudTasks.filter(shouldKeep);
+    
+    // 4. 建立比對 Map
+    const localMap = new Map(allT.map(t => [String(t.ID), t]));
+    const cloudMap = new Map(cloudFiltered.map(t => [String(t.ID), t]));
+    
+    // 5. 分類差異
+    const localOnly = [];   // 本機獨有
+    const cloudOnly = [];   // 雲端獨有
+    const conflicts = [];   // 版本衝突（mTime 不同）
+    const identical = [];   // 完全相同
+    
+    for (const [id, local] of localMap) {
+      const cloud = cloudMap.get(id);
+      if (!cloud) {
+        localOnly.push(local);
+      } else {
+        const localM = Number(local.mTime) || 0;
+        const cloudM = Number(cloud.mTime) || 0;
+        if (localM !== cloudM) {
+          conflicts.push({
+            id, local, cloud,
+            newer: localM > cloudM ? 'local' : 'cloud',
+            localM, cloudM
+          });
+        } else {
+          identical.push(id);
+        }
+      }
+    }
+    
+    for (const [id, cloud] of cloudMap) {
+      if (!localMap.has(id)) {
+        cloudOnly.push(cloud);
+      }
+    }
+    
+    // 6. 顯示報告
+    renderReconcileReport({
+      localOnly,
+      cloudOnly,
+      conflicts,
+      identical,
+      totalLocal: allT.length,
+      totalCloud: cloudFiltered.length
+    });
+    
+  } catch (e) {
+    statusEl.innerHTML = `<div style="font-size:32px;margin-bottom:12px;">❌</div><div>對帳失敗：${e.message || '錯誤'}</div>`;
+  }
+}
+
+function renderReconcileReport(r) {
+  const statusEl = document.getElementById('reconcileStatus');
+  const resultEl = document.getElementById('reconcileResult');
+  
+  statusEl.style.display = 'none';
+  resultEl.style.display = 'block';
+  
+  const hasDiff = r.localOnly.length > 0 || r.cloudOnly.length > 0 || r.conflicts.length > 0;
+  
+  // 摘要
+  let html = `
+    <div style="background:${hasDiff ? '#FFE5E5' : '#E8F8EC'};border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:700;color:${hasDiff ? '#D70015' : '#34C759'};margin-bottom:6px;">
+        ${hasDiff ? '⚠️ 發現差異' : '✅ 完全同步'}
+      </div>
+      <div style="font-size:13px;color:#3C3C43;">
+        本機：${r.totalLocal} 筆 / 雲端：${r.totalCloud} 筆<br>
+        相同：${r.identical.length} 筆
+      </div>
+    </div>
+  `;
+  
+  // 本機獨有
+  if (r.localOnly.length > 0) {
+    html += `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:700;color:#FF9500;margin-bottom:8px;">
+          📱 本機獨有（${r.localOnly.length} 筆）
+        </div>
+        <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
+          這些任務在你手機/電腦上、但雲端沒有
+        </div>
+        ${r.localOnly.slice(0, 10).map(t => `
+          <div style="background:#F9F9FB;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;">
+            <div style="font-weight:600;">${escapeHtml(t.Task || '(空)')}</div>
+            <div style="color:#6e6e73;">
+              ${t.Customer ? '客戶：' + escapeHtml(t.Customer) + ' / ' : ''}
+              ${t.Category || ''} / ${t.Status || ''}
+              ${t.mTime ? ' / 改於 ' + new Date(t.mTime).toLocaleString('zh-TW') : ''}
+            </div>
+          </div>
+        `).join('')}
+        ${r.localOnly.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${r.localOnly.length} 筆)</div>` : ''}
+      </div>
+    `;
+  }
+  
+  // 雲端獨有
+  if (r.cloudOnly.length > 0) {
+    html += `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:700;color:#007AFF;margin-bottom:8px;">
+          ☁️ 雲端獨有（${r.cloudOnly.length} 筆）
+        </div>
+        <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
+          雲端有、但本機沒有（可能其他裝置新增的）
+        </div>
+        ${r.cloudOnly.slice(0, 10).map(t => `
+          <div style="background:#F9F9FB;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;">
+            <div style="font-weight:600;">${escapeHtml(t.Task || '(空)')}</div>
+            <div style="color:#6e6e73;">
+              ${t.Customer ? '客戶：' + escapeHtml(t.Customer) + ' / ' : ''}
+              ${t.Category || ''} / ${t.Status || ''}
+              ${t.mTime ? ' / 改於 ' + new Date(t.mTime).toLocaleString('zh-TW') : ''}
+            </div>
+          </div>
+        `).join('')}
+        ${r.cloudOnly.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${r.cloudOnly.length} 筆)</div>` : ''}
+      </div>
+    `;
+  }
+  
+  // 版本衝突
+  if (r.conflicts.length > 0) {
+    html += `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:700;color:#FF3B30;margin-bottom:8px;">
+          ⚡ 版本不同（${r.conflicts.length} 筆）
+        </div>
+        <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
+          同一筆任務、本機和雲端的修改時間不同
+        </div>
+        ${r.conflicts.slice(0, 10).map(c => `
+          <div style="background:#F9F9FB;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;">
+            <div style="font-weight:600;">${escapeHtml(c.local.Task || c.cloud.Task || '(空)')}</div>
+            <div style="color:#6e6e73;">
+              本機 mTime: ${c.localM ? new Date(c.localM).toLocaleString('zh-TW') : '無'}${c.newer==='local' ? ' ✓ 較新' : ''}<br>
+              雲端 mTime: ${c.cloudM ? new Date(c.cloudM).toLocaleString('zh-TW') : '無'}${c.newer==='cloud' ? ' ✓ 較新' : ''}
+            </div>
+          </div>
+        `).join('')}
+        ${r.conflicts.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${r.conflicts.length} 筆)</div>` : ''}
+      </div>
+    `;
+  }
+  
+  // 處理建議
+  if (hasDiff) {
+    html += `
+      <div style="background:#FFF8E1;border-left:4px solid #FF9500;border-radius:6px;padding:12px;margin-top:14px;font-size:13px;">
+        <div style="font-weight:700;margin-bottom:6px;">💡 接下來怎麼做</div>
+        <div style="color:#3C3C43;line-height:1.6;">
+          目前對帳工具只「檢查」、不會自動處理差異。<br>
+          如果差異很多、或想自動合併、請告訴開發者實作「強制全量同步」功能。
+        </div>
+      </div>
+    `;
+  }
+  
+  html += `
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="closeM('reconcileM')">關閉</button>
+      <button class="btn-sync" style="background:#5856D6;flex:1;" onclick="openReconcile()">重新檢查</button>
+    </div>
+  `;
+  
+  resultEl.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s||'').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[m]));
 }
 
 // v500.27: 掃描補回客戶名
