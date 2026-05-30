@@ -1023,9 +1023,57 @@ async function doLogin() {
   btn.disabled = false; btn.textContent = '登入';
 }
 
-// 測試版 v500.24: 不清 token、純重整（因為自動登入會立刻拿回新 token）
-// 避免「按登出 → 沒 token → 自動登入卡住 30 秒」的窘境
-function doLogout() { location.reload(); }
+// v500.30: 登出 + 清除本地所有資料
+// 兩段式確認、避免誤觸
+function doLogout() {
+  // 第一段確認：先警告未同步資料
+  const pendingTaskOps = opLog.filter(o => o.status === 'pending').length;
+  const pendingCusOps = cusOpLog.filter(o => o.status === 'pending').length;
+  const taskCusActions = new Set([
+    'addTask','updateTask','setTaskStatus','toggleTask','deleteTask',
+    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats'
+  ]);
+  const nonOpLogPending = pendingQueue.filter(q => !taskCusActions.has(q.action)).length;
+  const totalUnsynced = pendingTaskOps + pendingCusOps + nonOpLogPending;
+
+  let firstMsg = '確定登出嗎？\n\n登出後將清除本機所有資料（任務、客戶、設定等）。\n下次登入會重新從雲端拉取。';
+  if (totalUnsynced > 0) {
+    firstMsg = `⚠️ 警告：還有 ${totalUnsynced} 筆未同步資料！\n\n如果現在登出、這些改動會永久遺失（雲端沒有）。\n\n建議：先點「立即同步」、確認推送成功後再登出。\n\n仍要強制登出？`;
+  }
+  if (!confirm(firstMsg)) return;
+
+  // 第二段確認（雙重保險）
+  if (!confirm('再次確認：清除本機所有資料？\n\n此動作無法復原。')) return;
+
+  // 清除所有本地資料
+  try {
+    // 清 localStorage（保留少量必要設定也行、但為了徹底清乾淨、全清）
+    const keysToKeep = []; // 若想保留某些設定、加進這裡
+    const allKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && !keysToKeep.includes(key)) allKeys.push(key);
+    }
+    allKeys.forEach(k => localStorage.removeItem(k));
+
+    // 清 sessionStorage
+    sessionStorage.clear();
+
+    // 清快取（解除 Service Worker、雖然測試版已停用）
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      }).catch(() => {});
+    }
+
+    console.log('[doLogout] 本機資料已清除');
+  } catch (e) {
+    console.log('[doLogout] 清除錯誤: ' + e);
+  }
+
+  // reload（重新從乾淨狀態開始）
+  location.reload();
+}
 function shakeInput() {
   const el = document.getElementById('loginPwd');
   el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake');
