@@ -2884,6 +2884,20 @@ async function openReconcile() {
     const conflicts = [];   // 版本衝突（mTime 不同）
     const identical = [];   // 完全相同
     
+    // v500.27.6.1: 比對欄位、區分「只有 mTime 不同」vs「內容真的不一樣」
+    const COMPARE_FIELDS = ['Task', 'Category', 'DueDate', 'Status', 'Priority', 'Note', 'Customer', 'CustomerHint'];
+    function diffFields(a, b) {
+      const diffs = [];
+      for (const f of COMPARE_FIELDS) {
+        const va = String(a[f] ?? '').trim();
+        const vb = String(b[f] ?? '').trim();
+        if (va !== vb) {
+          diffs.push({ field: f, local: va, cloud: vb });
+        }
+      }
+      return diffs;
+    }
+    
     for (const [id, local] of localMap) {
       const cloud = cloudMap.get(id);
       if (!cloud) {
@@ -2892,10 +2906,13 @@ async function openReconcile() {
         const localM = Number(local.mTime) || 0;
         const cloudM = Number(cloud.mTime) || 0;
         if (localM !== cloudM) {
+          const fieldDiffs = diffFields(local, cloud);
           conflicts.push({
             id, local, cloud,
             newer: localM > cloudM ? 'local' : 'cloud',
-            localM, cloudM
+            localM, cloudM,
+            fieldDiffs,
+            isMTimeOnly: fieldDiffs.length === 0  // ← 只有 mTime 差、內容相同
           });
         } else {
           identical.push(id);
@@ -2931,17 +2948,34 @@ function renderReconcileReport(r) {
   statusEl.style.display = 'none';
   resultEl.style.display = 'block';
   
-  const hasDiff = r.localOnly.length > 0 || r.cloudOnly.length > 0 || r.conflicts.length > 0;
+  const realConflictCount = r.conflicts.filter(c => !c.isMTimeOnly).length;
+  const mTimeOnlyCount = r.conflicts.filter(c => c.isMTimeOnly).length;
+  const hasRealDiff = r.localOnly.length > 0 || r.cloudOnly.length > 0 || realConflictCount > 0;
+  const hasMTimeOnly = mTimeOnlyCount > 0;
+  const hasDiff = hasRealDiff || hasMTimeOnly;
   
-  // 摘要
+  // 摘要：根據差異類型顯示不同顏色
+  let bannerColor, bannerBg, bannerIcon, bannerText;
+  if (!hasDiff) {
+    bannerBg = '#E8F8EC'; bannerColor = '#34C759'; bannerIcon = '✅'; bannerText = '完全同步';
+  } else if (!hasRealDiff && hasMTimeOnly) {
+    // 只有 mTime 差異、內容都對 → 黃色（無害）
+    bannerBg = '#FFF8E1'; bannerColor = '#FF9500'; bannerIcon = '🕐'; bannerText = '僅時間戳差異（內容正確）';
+  } else {
+    // 有真實內容差異 → 紅色
+    bannerBg = '#FFE5E5'; bannerColor = '#D70015'; bannerIcon = '⚠️'; bannerText = '發現內容差異';
+  }
+  
   let html = `
-    <div style="background:${hasDiff ? '#FFE5E5' : '#E8F8EC'};border-radius:10px;padding:14px;margin-bottom:14px;">
-      <div style="font-size:14px;font-weight:700;color:${hasDiff ? '#D70015' : '#34C759'};margin-bottom:6px;">
-        ${hasDiff ? '⚠️ 發現差異' : '✅ 完全同步'}
+    <div style="background:${bannerBg};border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-size:14px;font-weight:700;color:${bannerColor};margin-bottom:6px;">
+        ${bannerIcon} ${bannerText}
       </div>
       <div style="font-size:13px;color:#3C3C43;">
         本機：${r.totalLocal} 筆 / 雲端：${r.totalCloud} 筆<br>
         相同：${r.identical.length} 筆
+        ${realConflictCount > 0 ? ` / 內容差異：${realConflictCount} 筆` : ''}
+        ${mTimeOnlyCount > 0 ? ` / 僅時間差異：${mTimeOnlyCount} 筆` : ''}
       </div>
     </div>
   `;
@@ -2998,39 +3032,93 @@ function renderReconcileReport(r) {
   
   // 版本衝突
   if (r.conflicts.length > 0) {
-    html += `
-      <div style="margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:700;color:#FF3B30;margin-bottom:8px;">
-          ⚡ 版本不同（${r.conflicts.length} 筆）
-        </div>
-        <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
-          同一筆任務、本機和雲端的修改時間不同
-        </div>
-        ${r.conflicts.slice(0, 10).map(c => `
-          <div style="background:#F9F9FB;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;">
-            <div style="font-weight:600;">${escapeHtml(c.local.Task || c.cloud.Task || '(空)')}</div>
-            <div style="color:#6e6e73;">
-              本機 mTime: ${c.localM ? new Date(c.localM).toLocaleString('zh-TW') : '無'}${c.newer==='local' ? ' ✓ 較新' : ''}<br>
-              雲端 mTime: ${c.cloudM ? new Date(c.cloudM).toLocaleString('zh-TW') : '無'}${c.newer==='cloud' ? ' ✓ 較新' : ''}
-            </div>
+    const realConflicts = r.conflicts.filter(c => !c.isMTimeOnly);
+    const mTimeOnlyConflicts = r.conflicts.filter(c => c.isMTimeOnly);
+    
+    // 真實內容差異（資料不一樣）
+    if (realConflicts.length > 0) {
+      html += `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:14px;font-weight:700;color:#FF3B30;margin-bottom:8px;">
+            ⚡ 內容不同（${realConflicts.length} 筆）
           </div>
-        `).join('')}
-        ${r.conflicts.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${r.conflicts.length} 筆)</div>` : ''}
-      </div>
-    `;
+          <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
+            同一筆任務、本機跟雲端的「內容」不一樣
+          </div>
+          ${realConflicts.slice(0, 10).map(c => `
+            <div style="background:#FFE5E5;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;border-left:3px solid #FF3B30;">
+              <div style="font-weight:600;">${escapeHtml(c.local.Task || c.cloud.Task || '(空)')}</div>
+              <div style="color:#6e6e73;margin-top:4px;">
+                ${c.fieldDiffs.map(d => `
+                  <div style="margin:2px 0;">
+                    <strong>${d.field}：</strong>
+                    本機「${escapeHtml(d.local || '(空)')}」 / 
+                    雲端「${escapeHtml(d.cloud || '(空)')}」
+                  </div>
+                `).join('')}
+              </div>
+              <div style="color:#6e6e73;margin-top:4px;font-size:11px;">
+                本機 mTime: ${c.localM ? new Date(c.localM).toLocaleString('zh-TW') : '無'}${c.newer==='local' ? ' ✓ 較新' : ''}<br>
+                雲端 mTime: ${c.cloudM ? new Date(c.cloudM).toLocaleString('zh-TW') : '無'}${c.newer==='cloud' ? ' ✓ 較新' : ''}
+              </div>
+            </div>
+          `).join('')}
+          ${realConflicts.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${realConflicts.length} 筆)</div>` : ''}
+        </div>
+      `;
+    }
+    
+    // 只有 mTime 不同、內容相同（無害差異）
+    if (mTimeOnlyConflicts.length > 0) {
+      html += `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:14px;font-weight:700;color:#FF9500;margin-bottom:8px;">
+            🕐 mTime 不同（${mTimeOnlyConflicts.length} 筆、內容相同）
+          </div>
+          <div style="font-size:12px;color:#6e6e73;margin-bottom:6px;">
+            這些任務「內容相同」、只是「修改時間」不一致<br>
+            可能是某次推送沒成功、但資料其實沒問題
+          </div>
+          ${mTimeOnlyConflicts.slice(0, 10).map(c => `
+            <div style="background:#FFF8E1;padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;border-left:3px solid #FF9500;">
+              <div style="font-weight:600;">${escapeHtml(c.local.Task || c.cloud.Task || '(空)')}</div>
+              <div style="color:#6e6e73;font-size:11px;margin-top:2px;">
+                本機 mTime: ${c.localM ? new Date(c.localM).toLocaleString('zh-TW') : '無'}${c.newer==='local' ? ' ✓ 較新' : ''}<br>
+                雲端 mTime: ${c.cloudM ? new Date(c.cloudM).toLocaleString('zh-TW') : '無'}${c.newer==='cloud' ? ' ✓ 較新' : ''}
+              </div>
+            </div>
+          `).join('')}
+          ${mTimeOnlyConflicts.length > 10 ? `<div style="font-size:12px;color:#6e6e73;text-align:center;padding:6px;">(僅顯示前 10 筆、共 ${mTimeOnlyConflicts.length} 筆)</div>` : ''}
+        </div>
+      `;
+    }
   }
   
   // 處理建議
   if (hasDiff) {
-    html += `
-      <div style="background:#FFF8E1;border-left:4px solid #FF9500;border-radius:6px;padding:12px;margin-top:14px;font-size:13px;">
-        <div style="font-weight:700;margin-bottom:6px;">💡 接下來怎麼做</div>
-        <div style="color:#3C3C43;line-height:1.6;">
-          目前對帳工具只「檢查」、不會自動處理差異。<br>
-          如果差異很多、或想自動合併、請告訴開發者實作「強制全量同步」功能。
+    if (!hasRealDiff && hasMTimeOnly) {
+      html += `
+        <div style="background:#FFF8E1;border-left:4px solid #FF9500;border-radius:6px;padding:12px;margin-top:14px;font-size:13px;">
+          <div style="font-weight:700;margin-bottom:6px;">🕐 這些差異無害</div>
+          <div style="color:#3C3C43;line-height:1.6;">
+            本機跟雲端的「資料內容」完全一樣、只是「mTime」（最後修改時間）不一致。<br>
+            可能原因：某次修改更新了 mTime、但推送沒成功（資料其實沒變）。<br><br>
+            <strong>對你沒影響</strong>、不需要處理。系統下次完整同步時會自動校正。
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      html += `
+        <div style="background:#FFE5E5;border-left:4px solid #D70015;border-radius:6px;padding:12px;margin-top:14px;font-size:13px;">
+          <div style="font-weight:700;margin-bottom:6px;">⚠️ 需要處理</div>
+          <div style="color:#3C3C43;line-height:1.6;">
+            有實質的內容差異、可能影響你的資料。<br>
+            目前對帳工具只「檢查」、不會自動處理。<br><br>
+            建議告訴開發者實作「強制全量同步」、自動以較新版本為準。
+          </div>
+        </div>
+      `;
+    }
   }
   
   html += `
