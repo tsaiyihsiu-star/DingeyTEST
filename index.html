@@ -4456,6 +4456,9 @@ async function save() {
   else allT.push({ID:id, Status:'Pending', Task:data.task, DueDate:data.dueDate, Category:data.category, Priority:data.priority, Note:data.note, Customer:customer, CustomerHint:customerHint, mTime});
   lastUsedCat = data.category;
 
+  // v500.30: 先關鍵盤、再做 await（避免 UI 殘留）
+  saveLocal(); renderAll(); closeM('taskM');
+
   // v500.27: 若 customer 是新客戶、本機加進 allCust、推送到 GAS
   if (customer) {
     const existing = (allCust || []).find(c => c.name === customer);
@@ -4470,8 +4473,6 @@ async function save() {
       if (isNew) existing.taskCount = (existing.taskCount || 0) + 1;
     }
   }
-
-  saveLocal(); renderAll(); closeM('taskM');
 
   // v500.30: updateTask 時、用 orig 算 diff、只推改了的欄位
   if (isNew) {
@@ -5070,6 +5071,9 @@ async function saveQuick() {
   allT.push({ ID:id, Task:task, Category:category, DueDate:getToday(), Status:'Pending', Priority:99, Note:'', Customer:customer, CustomerHint:customerHint, mTime });
   lastUsedCat = category;
 
+  // v500.30: 先關鍵盤、再做後續（避免 UI 殘留）
+  saveLocal(); renderAll(); closeQuick();
+
   // v500.27: 若 customer 是新客戶、本機加進 allCust、推送到 GAS
   if (customer) {
     const existing = (allCust || []).find(c => c.name === customer);
@@ -5083,7 +5087,6 @@ async function saveQuick() {
     }
   }
 
-  saveLocal(); renderAll(); closeQuick();
   await pushOp('addTask', {id, data:{task, category, dueDate:getToday(), priority:99, note:'', mTime, ID:id, customer, customerHint}}, `新增「${task}」`);
 }
 
