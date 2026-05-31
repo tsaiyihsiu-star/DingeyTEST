@@ -902,7 +902,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.30"; // op log 同步架構
+const APP_VERSION = "TESTtodo-v500.30.3"; // 修 catSelect + markAsStopWord + updateTask 空 Task 攔截
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2020,17 +2020,39 @@ async function askMarkAsStopWord() {
   }
 
   // 本機清空所有 allT 內 Customer = target 或 CustomerHint = target 的欄位
+  // v500.30.2: 同時寫 update op、確保雲端最終一致（避免 markAsStopWord op race condition）
   let cleared = 0;
+  const now = Date.now();
   allT.forEach(t => {
     if (String(t.Customer || '') === target || String(t.CustomerHint || '') === target) {
-      if (String(t.Customer || '') === target) t.Customer = '';
-      if (String(t.CustomerHint || '') === target) t.CustomerHint = '';
-      t.mTime = Date.now();
+      const payload = {};
+      if (String(t.Customer || '') === target) {
+        t.Customer = '';
+        payload.Customer = '';
+      }
+      if (String(t.CustomerHint || '') === target) {
+        t.CustomerHint = '';
+        payload.CustomerHint = '';
+      }
+      t.mTime = now;
       cleared++;
+
+      // 寫 update op、確保雲端 Tasks 表也清空對應欄位
+      // 即使 markAsStopWord op race condition、這個 update op 也能補上
+      if (t.ID && Object.keys(payload).length > 0) {
+        const op = createOp({
+          taskId: t.ID,
+          op: 'update',
+          payload: payload,
+          timestamp: now
+        });
+        mergeOpIntoOpLog(op);
+      }
     }
   });
 
   saveLocal();
+  saveOpLog();  // v500.30.2: 確保 opLog 也存
   renderAll();
   pushLog(`「${target}」加入停用詞、清空 ${cleared} 筆任務`, 'success');
 
@@ -2476,9 +2498,19 @@ function openSyncLog() {
 // v500.30: enqueue 改造、(action, payload) 轉 op、加進 opLog
 // pendingQueue 仍保留、作為 UI 顯示用（顯示「N 筆未同步」）
 function enqueue(action, payload, label) {
-  // ── 空 Task 攔截（v500 新增） ──
-  if (action === 'addTask' || action === 'updateTask') {
+  // ── 空 Task 攔截（v500 新增、v500.30.3 修正） ──
+  // addTask：必須有 task 名稱（新增任務不能沒名字）
+  // updateTask：只推 diff、task 可能不在 diff 內（只改日期/分類等）→ 不能因 task 缺失就拒推
+  //            只有「明確要把 task 改為空字串」才拒推
+  if (action === 'addTask') {
     if (!payload.data?.task || !String(payload.data.task).trim()) {
+      pushLog('空 Task 拒絕推送', 'warn');
+      return;
+    }
+  } else if (action === 'updateTask') {
+    // task 存在但是空字串 → 拒推（防止意外清空）
+    // task 沒包含在 diff 內 → 允許（用戶只改其他欄位）
+    if ('task' in (payload.data || {}) && !String(payload.data.task || '').trim()) {
       pushLog('空 Task 拒絕推送', 'warn');
       return;
     }
@@ -4241,7 +4273,13 @@ function renderSidebar() {
       <span class="scat-count" style="${cntStyle}">${ov>0?ov+'/':''}${cnt}</span>
     </div>`;
   }).join('');
-  document.getElementById('catSelect').innerHTML = allC.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  // v500.30.1: 重建 options 前、保留當前選的值（避免被重置為第一個分類）
+  const catSel = document.getElementById('catSelect');
+  const prevCatVal = catSel.value;
+  catSel.innerHTML = allC.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+  if (prevCatVal && allC.some(c => c.name === prevCatVal)) {
+    catSel.value = prevCatVal;
+  }
 }
 
 function render() {
