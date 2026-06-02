@@ -183,7 +183,7 @@
     }
     #sidebar.wide #sideFoot { display:flex; }
     /* v500.27.5: foot-row 橫排（分類按鈕 + 字級按鈕同列）*/
-    .foot-row{display:flex;flex-direction:row;align-items:center;gap:6px;}
+    .foot-row{display:flex;flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;}
     .foot-row .density-btn{width:auto;min-width:44px;padding:0 10px;height:36px;}
     /* v500.14: 桌面版 Tab/拖曳提示（手機隱藏） */
     #sideHint{
@@ -640,11 +640,11 @@
           <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
       </button>
-      <!-- v500.27.5: 字級切換（只手機顯示、跟分類按鈕同列）-->
-      <button class="sbtn density-btn" onclick="toggleDensity()" aria-label="字級">
-        <span id="densityBtn" style="font-size:11px;font-weight:700;letter-spacing:.5px;">標準</span>
-      </button>
     </div>
+    <!-- v500.27.5: 字級切換（只手機顯示）v500.31: 移出 foot-row 獨立一列，避免擠掉 -->
+    <button class="sbtn density-btn" onclick="toggleDensity()" aria-label="字級">
+      <span id="densityBtn" style="font-size:11px;font-weight:700;letter-spacing:.5px;">標準</span>
+    </button>
     <button class="sbtn" onclick="openSyncLog()" aria-label="同步">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/>
@@ -4808,6 +4808,7 @@ function renderCusList() {
       <div class="cat-acts">
         <span class="cat-act" style="color:var(--primary)" onclick="editCusContacts('${escapeAttr(c.name)}')">✎ 聯絡資料</span>
         <span class="cat-act" style="color:var(--primary)" onclick="renameCust('${escapeAttr(c.name)}')">改名</span>
+        <span class="cat-act" style="color:#FF9500" onclick="stopCust('${escapeAttr(c.name)}')">停用</span>
         <span class="cat-act" style="color:var(--red)" onclick="delCust('${escapeAttr(c.name)}')">刪除</span>
       </div>
     </div>`;
@@ -4854,6 +4855,38 @@ async function delCust(name) {
   allT.forEach(t => { if (t.Customer === name) t.Customer = ''; });
   saveLocal(); renderCusList(); render();
   await pushOp('deleteCustomer', { name }, `刪除客戶「${name}」`);
+}
+// v500.31: 在客戶管理裡把某客戶標記為停用詞
+// （標停用 + 清空相關任務的客戶欄 + 推送），用於「襪子和咖啡」這種被誤判成客戶的詞
+async function stopCust(name) {
+  if (!confirm(`把「${name}」加入停用詞？\n\n這個詞以後不會再被當客戶偵測，並會從客戶清單移除。已關聯此客戶的任務，其客戶標記會被清空（任務本身不受影響）。`)) return;
+  playSound('delete');
+  const now = Date.now();
+  // 本機：allCust 標 isStopWord
+  const existing = allCust.find(c => c.name === name);
+  if (existing) {
+    existing.isStopWord = true;
+    existing.taskCount = 0;
+    existing.updatedAt = now;
+  } else {
+    allCust.push({ name, firstSeen:now, lastSeen:now, taskCount:0, updatedAt:now, isStopWord:true });
+  }
+  // 本機：清空相關任務的 Customer / CustomerHint，並寫 update op
+  allT.forEach(t => {
+    if (String(t.Customer||'') === name || String(t.CustomerHint||'') === name) {
+      const payload = {};
+      if (String(t.Customer||'') === name)     { t.Customer = '';     payload.Customer = ''; }
+      if (String(t.CustomerHint||'') === name) { t.CustomerHint = ''; payload.CustomerHint = ''; }
+      t.mTime = now;
+      if (t.ID && Object.keys(payload).length > 0) {
+        const op = createOp({ taskId:t.ID, op:'update', payload, timestamp:now });
+        mergeOpIntoOpLog(op);
+      }
+    }
+  });
+  saveLocal(); saveOpLog();
+  renderCusList(); render();
+  await pushOp('markAsStopWord', { name }, `停用詞「${name}」`);
 }
 // 階段二會實作：管理該客戶的多筆聯絡項
 function editCusContacts(name) {
