@@ -5033,22 +5033,30 @@ async function doGroupWith(targetName) {
   if (!name || !targetName) return;
   closeM('groupPickM');
   playSound('tap');
-  // 本機先套用：決定 gid（target 有就用 target 的，否則新建）
   const src = allCust.find(c => c.name === name);
   const tgt = allCust.find(c => c.name === targetName);
-  let gid = (tgt && tgt.groupId) || (src && src.groupId) || ('g' + Date.now() + Math.floor(Math.random()*1000));
-  const now = Date.now();
-  if (src) { src.groupId = gid; src.updatedAt = now; }
-  if (tgt) { tgt.groupId = gid; tgt.updatedAt = now; }
-  saveLocal();
-  renderCusList(); render();
-  // 直接呼叫後端（不走 op log）：後端會把兩者設同組、並搬移既有聯絡資料到 gid
+  // 直接呼叫後端（不走 op log）：後端會把兩者設同組、回傳真正的 gid
   try {
-    await callGasAction('setCustomerGroup', { name, targetName });
+    const res = await callGasAction('setCustomerGroup', { name, targetName });
+    if (!res || res.status !== 'success' || !res.groupId) {
+      // 後端回錯誤 → 不要假裝成功，顯示真實訊息
+      const msg = (res && res.message) ? res.message : '未知錯誤';
+      alert(`分組失敗：${msg}\n（name=${name}, target=${targetName}）`);
+      pushLog && pushLog(`分組失敗：${msg}`, 'error');
+      return;
+    }
+    // 用後端回傳的 gid 同步本機（確保前後端一致）
+    const gid = res.groupId;
+    const now = Date.now();
+    if (src) { src.groupId = gid; src.updatedAt = now; }
+    if (tgt) { tgt.groupId = gid; tgt.updatedAt = now; }
+    saveLocal();
+    renderCusList(); render();
     if (typeof refreshContactsCache === 'function') await refreshContactsCache();
     pushLog && pushLog(`分組成功：${name} + ${targetName}`, 'success');
   } catch(e) {
-    pushLog && pushLog(`分組推送失敗（已存本機，下次同步重試）：${e.message}`, 'warn');
+    alert(`分組推送失敗（網路問題）：${e.message}`);
+    pushLog && pushLog(`分組推送失敗：${e.message}`, 'error');
   }
 }
 async function leaveCust(name) {
