@@ -819,6 +819,46 @@
   </div>
 </div>
 
+<!-- 聯絡資料管理 v500.31 -->
+<div id="contactM" class="modal" onclick="if(event.target===this)closeM('contactM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title" id="contactMTitle">聯絡資料</div>
+    <div class="sh-body">
+      <div id="contactList"></div>
+    </div>
+    <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
+      <button class="btn-p" onclick="addContactItem()">+ 新增聯絡項</button>
+      <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeM('contactM')">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 聯絡項編輯表單 v500.31 -->
+<div id="contactFormM" class="modal" onclick="if(event.target===this)closeM('contactFormM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title" id="contactFormTitle">新增聯絡項</div>
+    <div class="sh-body">
+      <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">類型</label>
+      <select id="cfType" onchange="updateContactFormHint()" style="width:100%;padding:10px;border:1px solid #D1D1D6;border-radius:10px;font-size:15px;background:var(--card);color:var(--text);margin-bottom:12px;">
+        <option value="phone">電話</option>
+        <option value="address">地址</option>
+        <option value="note">備註</option>
+      </select>
+      <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">稱呼／提示</label>
+      <input type="text" id="cfLabel" class="cat-add-input" style="width:100%;box-sizing:border-box;margin-bottom:12px;" placeholder="稱呼/提示">
+      <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">內容</label>
+      <textarea id="cfContent" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #D1D1D6;border-radius:10px;font-size:15px;background:var(--card);color:var(--text);min-height:60px;resize:vertical;" placeholder="內容"></textarea>
+      <div id="cfContentHint" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
+    </div>
+    <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
+      <button class="btn-p" onclick="saveContactItem()">儲存</button>
+      <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeM('contactFormM')">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 同步記錄 -->
 
 <div id="syncM" class="modal" onclick="if(event.target===this)closeM('syncM')">
@@ -1133,6 +1173,7 @@ function shakeInput() {
 }
 
 let allT = [], allC = [], allCust = [], currentF = '今天';
+let allContacts = [];  // v500.31: 客戶聯絡資料快取（CustomerContacts）
 let syncLogs = [], pendingQueue = [];
 let isSyncRunning = false, sideState = 1;
 let lastSyncTime = parseInt(localStorage.getItem('lastSyncTime') || '0');
@@ -1630,6 +1671,7 @@ const loadLocal = () => {
   loadCatColors();
   try { const raw = JSON.parse(localStorage.getItem('cats')) || []; allC = raw.map(c => typeof c === 'string' ? {name:c, rowId:null, color:'', sortOrder:0} : c); } catch(e) { allC = []; }
   try { allCust = JSON.parse(localStorage.getItem('customers')) || []; } catch(e) { allCust = []; }  // v500.27
+  try { allContacts = JSON.parse(localStorage.getItem('contactsCache')) || []; } catch(e) { allContacts = []; }  // v500.31
   try { catOrder = JSON.parse(localStorage.getItem('catOrder')) || []; } catch(e) { catOrder = []; }
   lastUsedCat = localStorage.getItem('lastUsedCat') || '';
   try { pendingQueue = JSON.parse(localStorage.getItem('pendingQueue')) || []; } catch(e) { pendingQueue = []; }
@@ -3280,6 +3322,8 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
     if (Array.isArray(resCust)) {
       allCust = resCust;
     }
+    // v500.31: 背景刷新聯絡資料快取（不阻塞載入）
+    refreshContactsCache();
 
     // ★ filter：只保留近 6 個月內已完成 + 所有 Pending
     allT = resT.filter(shouldKeep).map(t => ({
@@ -3780,6 +3824,8 @@ async function doSyncFromModal() {
   await fullSync('手動');
   // v500.27: 手動同步額外跑「掃描補回客戶」（自動同步不跑、避免每次都掃）
   await scanFillCustomers();
+  // v500.31: 手動同步刷新聯絡資料快取
+  await refreshContactsCache();
   btn.textContent = '立即同步'; btn.disabled = false;
 }
 
@@ -4997,9 +5043,169 @@ async function restoreCust(name) {
   await pushOp('unmarkStopWord', { name }, `恢復客戶「${name}」`);
 }
 
-// 階段二會實作：管理該客戶的多筆聯絡項
+// ── v500.31: 客戶聯絡資料管理 ─────────────────────────────
+// GroupKey：有 groupId 用 groupId、否則用客戶名
+function _groupKeyOf(name) {
+  const c = allCust.find(x => x.name === name);
+  return (c && c.groupId) ? c.groupId : name;
+}
+// 取得某 groupKey 下的所有聯絡項（依 sortOrder 排序）
+function _contactsOf(groupKey) {
+  return allContacts
+    .filter(c => String(c.groupKey) === String(groupKey))
+    .sort((a,b) => (Number(a.sortOrder)||0) - (Number(b.sortOrder)||0));
+}
+// 從雲端抓整份 CustomerContacts、存本地快取
+async function refreshContactsCache() {
+  try {
+    const token = getSession();
+    const res = await fetchWithTimeout(`${GAS_URL}?action=getContacts&token=${token}`);
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      allContacts = data;
+      localStorage.setItem('contactsCache', JSON.stringify(allContacts));
+    }
+  } catch(e) {
+    console.log('[refreshContactsCache] 失敗，沿用本地快取: ' + e.message);
+  }
+}
+
+const CONTACT_TYPES = { note:'備註', phone:'電話', address:'地址' };
+
+let _contactEditGroupKey = null;   // 目前編輯中的 groupKey
+let _contactEditCustName = null;   // 進入時的客戶名（顯示用）
+
 function editCusContacts(name) {
-  alert('「聯絡資料」功能（階段二）開發中：' + name);
+  _contactEditCustName = name;
+  _contactEditGroupKey = _groupKeyOf(name);
+  renderContactMng();
+  openModal('contactM');
+}
+function renderContactMng() {
+  const titleEl = document.getElementById('contactMTitle');
+  const listEl = document.getElementById('contactList');
+  // 群組標示：若此客戶在群組內，列出同組成員讓你知道是共用的
+  const members = allCust.filter(c => !c.isStopWord && _groupKeyOf(c.name) === _contactEditGroupKey).map(c => c.name);
+  let sub = '';
+  if (members.length > 1) {
+    sub = `<div style="font-size:12px;color:var(--primary);margin-bottom:8px;">共用群組：${members.map(escapeHtml).join('、')}</div>`;
+  }
+  titleEl.textContent = `${_contactEditCustName} 的聯絡資料`;
+  const contacts = _contactsOf(_contactEditGroupKey);
+  let rows = '';
+  if (!contacts.length) {
+    rows = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">尚無聯絡資料，點下方新增</p>';
+  } else {
+    rows = contacts.map(c => {
+      const typeLabel = CONTACT_TYPES[c.type] || '備註';
+      const typeColor = c.type==='phone' ? '#34C759' : (c.type==='address' ? '#FF9500' : '#8E8E93');
+      return `
+      <div class="cat-row" style="align-items:flex-start;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+            <span style="font-size:11px;font-weight:700;color:#fff;background:${typeColor};border-radius:4px;padding:1px 6px;">${typeLabel}</span>
+            ${c.label ? `<span style="font-size:13px;color:var(--text);font-weight:600;">${escapeHtml(c.label)}</span>` : ''}
+          </div>
+          <div style="font-size:14px;color:var(--text);word-break:break-all;">${escapeHtml(c.content)}</div>
+        </div>
+        <div class="cat-acts" style="flex-shrink:0;">
+          <span class="cat-act" style="color:var(--primary)" onclick="editContactItem('${escapeAttr(c.rowId)}')">編輯</span>
+          <span class="cat-act" style="color:var(--red)" onclick="delContactItem('${escapeAttr(c.rowId)}')">刪除</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  listEl.innerHTML = sub + rows;
+}
+
+// 開新增/編輯聯絡項的小表單
+let _editingContactRowId = null;
+function addContactItem() {
+  _editingContactRowId = null;
+  document.getElementById('contactFormTitle').textContent = '新增聯絡項';
+  document.getElementById('cfType').value = 'phone';
+  document.getElementById('cfLabel').value = '';
+  document.getElementById('cfContent').value = '';
+  updateContactFormHint();
+  openModal('contactFormM');
+}
+function editContactItem(rowId) {
+  const c = allContacts.find(x => String(x.rowId) === String(rowId));
+  if (!c) return;
+  _editingContactRowId = rowId;
+  document.getElementById('contactFormTitle').textContent = '編輯聯絡項';
+  document.getElementById('cfType').value = c.type || 'note';
+  document.getElementById('cfLabel').value = c.label || '';
+  document.getElementById('cfContent').value = c.content || '';
+  updateContactFormHint();
+  openModal('contactFormM');
+}
+function updateContactFormHint() {
+  const t = document.getElementById('cfType').value;
+  const hint = document.getElementById('cfContentHint');
+  const labelInput = document.getElementById('cfLabel');
+  if (t === 'phone') {
+    hint.textContent = '內容填可撥打的號碼（如 04-23456789）；稱呼可填「李小姐#123」當提示';
+    labelInput.placeholder = '稱呼/提示（如 李小姐#123）';
+    document.getElementById('cfContent').placeholder = '電話號碼';
+  } else if (t === 'address') {
+    hint.textContent = '內容填地址，點按會用 Apple 地圖開啟';
+    labelInput.placeholder = '地點名（如 台中辦公室）';
+    document.getElementById('cfContent').placeholder = '地址';
+  } else {
+    hint.textContent = '備註純文字顯示，不可點按';
+    labelInput.placeholder = '標題（選填）';
+    document.getElementById('cfContent').placeholder = '備註內容';
+  }
+}
+async function saveContactItem() {
+  const type = document.getElementById('cfType').value;
+  const label = document.getElementById('cfLabel').value.trim();
+  const content = document.getElementById('cfContent').value.trim();
+  if (!content) { alert('請填寫內容'); return; }
+  const existing = _editingContactRowId ? allContacts.find(x => String(x.rowId)===String(_editingContactRowId)) : null;
+  const rowId = _editingContactRowId || ('C' + Date.now() + Math.floor(Math.random()*1000));
+  const contact = {
+    groupKey: _contactEditGroupKey,
+    type, label, content,
+    sortOrder: existing ? existing.sortOrder : _contactsOf(_contactEditGroupKey).length,
+    rowId,
+    updatedAt: Date.now()
+  };
+  playSound('add');
+  // 本機先套用
+  if (existing) {
+    Object.assign(existing, contact);
+  } else {
+    allContacts.push(contact);
+  }
+  localStorage.setItem('contactsCache', JSON.stringify(allContacts));
+  closeM('contactFormM');
+  renderContactMng();
+  // 推送雲端
+  try {
+    const res = await callGasAction('saveContact', { contact });
+    if (!res || (res.status !== 'added' && res.status !== 'updated')) {
+      pushLog && pushLog(`聯絡資料儲存失敗：${res && res.message ? res.message : '未知'}`, 'error');
+    } else {
+      pushLog && pushLog(`聯絡資料已儲存`, 'success');
+    }
+  } catch(e) {
+    pushLog && pushLog(`聯絡資料推送失敗：${e.message}`, 'error');
+  }
+}
+async function delContactItem(rowId) {
+  if (!confirm('刪除這筆聯絡項？')) return;
+  playSound('delete');
+  allContacts = allContacts.filter(x => String(x.rowId) !== String(rowId));
+  localStorage.setItem('contactsCache', JSON.stringify(allContacts));
+  renderContactMng();
+  try {
+    await callGasAction('deleteContact', { rowId });
+    pushLog && pushLog('聯絡項已刪除', 'success');
+  } catch(e) {
+    pushLog && pushLog(`刪除推送失敗：${e.message}`, 'error');
+  }
 }
 
 // v500.31: 分組 —— 點某客戶「分組」，跳出其他客戶清單選要跟誰同組
