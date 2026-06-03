@@ -3763,6 +3763,8 @@ async function fullSync(reason) {
     }
   } finally {
     isSyncRunning = false; updateBanner(); updateSyncMeta();
+    // v500.31: 同步成功後刷新聯絡資料快取（涵蓋啟動/回前景/網路恢復/手動等所有路徑）
+    if (success) { try { await refreshContactsCache(); } catch(e){} }
     // v500.30: 同步期間若有新操作（pendingQueue / opLog / cusOpLog）→ 立即觸發推送
     const newPendingTotal = pendingQueue.length
       + opLog.filter(o => o.status === 'pending').length
@@ -3843,8 +3845,7 @@ async function doSyncFromModal() {
   await fullSync('手動');
   // v500.27: 手動同步額外跑「掃描補回客戶」（自動同步不跑、避免每次都掃）
   await scanFillCustomers();
-  // v500.31: 手動同步刷新聯絡資料快取
-  await refreshContactsCache();
+  // v500.31: 聯絡資料快取已由 fullSync 內部刷新，這裡不重複
   btn.textContent = '立即同步'; btn.disabled = false;
 }
 
