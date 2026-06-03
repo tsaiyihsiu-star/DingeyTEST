@@ -5486,7 +5486,7 @@ function ctxOpenContacts() {
     el.innerHTML = contacts.map(c => {
       const label = c.label ? escapeHtml(c.label) : '';
       if (c.type === 'phone') {
-        const tel = String(c.content).replace(/[^0-9+]/g, '');
+        const tel = String(c.content).replace(/[^0-9+,#*]/g, '');
         return `<a href="tel:${tel}" style="display:block;text-decoration:none;" onclick="playSound('tap')">
           <div class="cat-row" style="cursor:pointer;">
             <div style="flex:1;min-width:0;">
