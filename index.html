@@ -5078,12 +5078,21 @@ function _contactsOf(groupKey) {
 // 從雲端抓整份 CustomerContacts、存本地快取
 async function refreshContactsCache() {
   try {
+    if (!isOnline || !isOnline()) return;
     const token = getSession();
-    const res = await fetchWithTimeout(`${GAS_URL}?action=getContacts&token=${token}`);
-    const data = await res.json();
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 15000);
+    let data;
+    try {
+      const res = await fetch(`${GAS_URL}?action=getContacts&token=${token}`, { signal: ctrl.signal });
+      data = await res.json();
+    } finally {
+      clearTimeout(tid);
+    }
     if (Array.isArray(data)) {
       allContacts = data;
       localStorage.setItem('contactsCache', JSON.stringify(allContacts));
+      console.log('[refreshContactsCache] 已更新 ' + allContacts.length + ' 筆');
     }
   } catch(e) {
     console.log('[refreshContactsCache] 失敗，沿用本地快取: ' + e.message);
