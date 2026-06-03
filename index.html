@@ -4455,13 +4455,15 @@ function render() {
   const getWeekDay = s => { if (!s) return ''; const [y,m,d] = s.split('-').map(Number); return weekDays[new Date(y,m-1,d).getDay()]; };
   // v500.27.5 效能優化：預計算「客戶名 → Pending 任務數」Map
   // 避免每張卡片都 filter 整個 allT、把 O(N²) 降為 O(N)
+  // v500.31: 改用 groupKey 聚合（同群組客戶任務算在一起）
   const customerCountMap = new Map();
   for (let i = 0; i < allT.length; i++) {
     const ti = allT[i];
     if (ti.Status === 'Done') continue;
     const c = ti.Customer;
     if (!c) continue;
-    customerCountMap.set(c, (customerCountMap.get(c) || 0) + 1);
+    const gk = _groupKeyOf(c);
+    customerCountMap.set(gk, (customerCountMap.get(gk) || 0) + 1);
   }
   const fmtDoneTime = ts => {
     if (!ts) return '';
@@ -4486,8 +4488,9 @@ function render() {
       : renderTaskTitleWithCust(t.Task, t.Customer, t.CustomerHint);
     // v500.27.5: 同客戶數量 = customer 的總 pending 數 - 1（自己）
     // 條件：自己不能是 Done、且必須有 Customer
+    // v500.31: 依群組鍵聚合
     const sameCusN = (!isDone && t.Customer)
-      ? Math.max(0, (customerCountMap.get(t.Customer) || 0) - 1)
+      ? Math.max(0, (customerCountMap.get(_groupKeyOf(t.Customer)) || 0) - 1)
       : 0;
     const cusBadge = sameCusN >= 1 ? `<span class="cust-badge" onclick="event.stopPropagation();toggleSameCust('${t.ID}')" data-cust-id="${t.ID}"><span class="cust-dot"></span><span class="cust-n">${sameCusN+1}</span></span>` : '';
     const isExpanded = (_expandedSameCustId === t.ID);
@@ -4556,11 +4559,14 @@ function renderTaskTitleWithCust(taskName, customer, customerHint) {
 }
 
 // v500.27: 計算同客戶任務數（未完成、不含自己）
+// v500.31: 依群組聚合
 function countSameCustomerTasks(customer, selfId) {
   if (!customer) return 0;
+  const gk = _groupKeyOf(customer);
   return allT.filter(t =>
     t.Status !== 'Done' &&
-    String(t.Customer || '') === String(customer) &&
+    t.Customer &&
+    _groupKeyOf(t.Customer) === gk &&
     String(t.ID) !== String(selfId)
   ).length;
 }
@@ -4591,11 +4597,14 @@ function toggleSameCust(taskId) {
 }
 
 // v500.27: 渲染同客戶展開區塊
+// v500.31: 依群組聚合（同群組的客戶任務都算進來）
 function renderSameCustExpansion(customer, selfId) {
   if (!customer) return '';
+  const gk = _groupKeyOf(customer);
   const sameTasks = allT.filter(t =>
     t.Status !== 'Done' &&
-    String(t.Customer || '') === String(customer) &&
+    t.Customer &&
+    _groupKeyOf(t.Customer) === gk &&
     String(t.ID) !== String(selfId)
   );
   if (sameTasks.length === 0) return '';
