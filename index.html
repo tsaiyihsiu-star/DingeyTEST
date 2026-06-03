@@ -800,6 +800,11 @@
         <input type="text" id="newCus" class="cat-add-input" placeholder="新增客戶…" onkeydown="if(event.key==='Enter'&&!event.isComposing)addCust()">
         <button class="cat-add-btn" onclick="addCust()">新增</button>
       </div>
+      <!-- v500.31: 匯入聯絡資料（只電腦版顯示）-->
+      <button class="import-btn" style="margin-top:8px;" onclick="openContactImport()">
+        ⬆ 匯入聯絡資料（Excel）
+      </button>
+      <input type="file" id="cImportFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleContactImport(event)">
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeCusM()">完成</button>
     </div>
   </div>
@@ -938,6 +943,27 @@
     <div class="import-map-btns">
       <button class="import-cancel-btn" onclick="closeImportMap()">取消</button>
       <button class="import-confirm-btn" onclick="confirmImport()">開始匯入</button>
+    </div>
+  </div>
+</div>
+
+<!-- v500.31: 聯絡資料匯入欄位對應 -->
+<div id="cImportMapM" class="modal" onclick="if(event.target===this)closeM('cImportMapM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title">匯入聯絡資料 — 欄位對應</div>
+    <div class="sh-body">
+      <div class="import-map-sub" id="cImportSub" style="margin-bottom:10px;">請選擇每個欄位對應 Excel 的哪一欄</div>
+      <div class="import-map-row"><div class="import-map-label">公司簡稱（客戶名）<span>*</span></div><select class="import-map-select" id="ciName"></select></div>
+      <div class="import-map-row"><div class="import-map-label">客戶編號（群組）</div><select class="import-map-select" id="ciCode"></select></div>
+      <div class="import-map-row"><div class="import-map-label">公司地址</div><select class="import-map-select" id="ciAddress"></select></div>
+      <div class="import-map-row"><div class="import-map-label">電話1（市話）</div><select class="import-map-select" id="ciPhone"></select></div>
+      <div class="import-map-row"><div class="import-map-label">行動電話</div><select class="import-map-select" id="ciMobile"></select></div>
+      <div style="font-size:12px;color:var(--gray);margin-top:8px;line-height:1.5;">電話會自動清掉人名/註記只留號碼；同編號的多個客戶會共用群組；已存在的聯絡項會自動跳過。</div>
+    </div>
+    <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
+      <button class="btn-p" onclick="confirmContactImport()">開始匯入</button>
+      <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeM('cImportMapM')">取消</button>
     </div>
   </div>
 </div>
@@ -5243,6 +5269,101 @@ async function delContactItem(rowId) {
     pushLog && pushLog('聯絡項已刪除', 'success');
   } catch(e) {
     pushLog && pushLog(`刪除推送失敗：${e.message}`, 'error');
+  }
+}
+
+// ── v500.31: 聯絡資料匯入（只電腦版）─────────────────────────────
+// 清洗電話：保留數字、+、逗號、井號、星號（節費撥號用），其餘（人名/註記/括號）去掉
+// 清完不含任何數字 → 回空字串（呼叫端據此忽略）
+function cleanPhone(raw) {
+  if (!raw) return '';
+  const cleaned = String(raw).replace(/[^0-9+,#*\-]/g, '').replace(/-/g, '');
+  return /[0-9]/.test(cleaned) ? cleaned : '';
+}
+
+let _cImportRows = [], _cImportHeaders = [];
+function openContactImport() {
+  document.getElementById('cImportFileInput').click();
+}
+async function handleContactImport(event) {
+  const file = event.target.files[0]; if (!file) return; event.target.value = '';
+  try {
+    let rows = [];
+    if (file.name.endsWith('.csv')) rows = await parseCsv(file); else rows = await parseXlsx(file);
+    if (!rows.length || !rows[0].length) { alert('檔案內容為空'); return; }
+    _cImportRows = rows;
+    _cImportHeaders = rows[0].map(h => String(h).trim());
+    // 欄位自動對應
+    const selects = {
+      ciName:    ['公司簡稱','客戶','客戶名','名稱','公司'],
+      ciCode:    ['客戶編號','編號','代號','code'],
+      ciAddress: ['公司地址','地址','address'],
+      ciMobile:  ['行動電話','手機','行動'],
+      ciPhone:   ['電話1','電話','市話','phone','tel']
+    };
+    Object.keys(selects).forEach(id => {
+      const sel = document.getElementById(id);
+      sel.innerHTML = '<option value="-1">— 不匯入 —</option>' +
+        _cImportHeaders.map((h,i) => `<option value="${i}">${h}</option>`).join('');
+      const autoIdx = _cImportHeaders.findIndex(h => selects[id].some(k => h === k));
+      sel.value = autoIdx >= 0 ? autoIdx : -1;
+    });
+    document.getElementById('cImportSub').textContent = `共 ${rows.length - 1} 筆資料，請確認欄位對應`;
+    openModal('cImportMapM');
+  } catch(e) { alert('解析失敗：' + (e.message || '未知錯誤')); }
+}
+// 預覽：根據欄位對應，算出會建立哪些聯絡項
+function buildContactImportItems() {
+  const iName = parseInt(document.getElementById('ciName').value);
+  const iCode = parseInt(document.getElementById('ciCode').value);
+  const iAddr = parseInt(document.getElementById('ciAddress').value);
+  const iMob  = parseInt(document.getElementById('ciMobile').value);
+  const iPhone= parseInt(document.getElementById('ciPhone').value);
+  const items = [];
+  const dataRows = _cImportRows.slice(1).filter(r => r.some(c => String(c).trim()));
+  dataRows.forEach(r => {
+    const custName = iName >= 0 ? String(r[iName] || '').trim() : '';
+    if (!custName) return;
+    const code = iCode >= 0 ? String(r[iCode] || '').trim() : '';
+    // 地址
+    if (iAddr >= 0) {
+      const addr = String(r[iAddr] || '').trim();
+      if (addr) items.push({ custName, groupId: code, type:'address', label: custName, content: addr });
+    }
+    // 電話1（市話）
+    if (iPhone >= 0) {
+      const p = cleanPhone(r[iPhone]);
+      if (p) items.push({ custName, groupId: code, type:'phone', label:'市話', content: p });
+    }
+    // 行動電話
+    if (iMob >= 0) {
+      const m = cleanPhone(r[iMob]);
+      if (m) items.push({ custName, groupId: code, type:'phone', label:'行動', content: m });
+    }
+  });
+  return items;
+}
+async function confirmContactImport() {
+  const iName = parseInt(document.getElementById('ciName').value);
+  if (iName < 0) { alert('請選擇「公司簡稱（客戶名）」對應的欄位'); return; }
+  const items = buildContactImportItems();
+  if (!items.length) { alert('沒有可匯入的資料'); return; }
+  if (!confirm(`即將匯入 ${items.length} 筆聯絡項（已存在的會自動跳過）。確定匯入？`)) return;
+  closeM('cImportMapM');
+  pushLog && pushLog(`匯入中…共 ${items.length} 筆`, 'info');
+  try {
+    const res = await callGasAction('importContacts', { items }, 60000);
+    if (res && res.status === 'success') {
+      await refreshContactsCache();
+      await fullSync('匯入後');
+      const msg = `匯入完成！\n新增聯絡項：${res.added} 筆\n跳過（已存在）：${res.skipped} 筆\n新建客戶：${res.newCust} 個` + (res.normalized ? `\n更新編號：${res.normalized} 個` : '') + (res.unstopped ? `\n解除停用：${res.unstopped} 個` : '');
+      alert(msg);
+      pushLog && pushLog(`匯入完成：新增${res.added}、跳過${res.skipped}、新客戶${res.newCust}`, 'success');
+    } else {
+      alert('匯入失敗：' + (res && res.message ? res.message : '未知錯誤'));
+    }
+  } catch(e) {
+    alert('匯入推送失敗：' + e.message);
   }
 }
 
