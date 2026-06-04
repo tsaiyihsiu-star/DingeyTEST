@@ -509,7 +509,8 @@
     .import-btn{background:#2C2C2E;color:#fff;border:none;font-weight:700;padding:11px;border-radius:11px;width:100%;font-size:15px;cursor:pointer;flex-shrink:0;font-family:inherit;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;}
     .import-btn:active{opacity:.8;}
     #importFileInput{display:none;}
-    @media (hover:none) and (pointer:coarse){.import-btn{display:none !important;}.import-result{display:none !important;}}
+    @media (hover:none) and (pointer:coarse){.import-btn{display:none !important;}.import-result{display:none !important;}.import-guide-btn{display:none !important;}}
+    .import-guide-btn{background:none;color:var(--primary);border:1px solid var(--primary);font-weight:600;padding:8px;border-radius:9px;width:100%;font-size:13px;cursor:pointer;font-family:inherit;margin-top:6px;}
     .import-result{font-size:12px;padding:8px 10px;border-radius:8px;margin-top:6px;display:none;line-height:1.6;}
     .import-result.ok{background:#E8F8ED;color:#1A7A35;}
     .import-result.err{background:#FFE5E5;color:#C0392B;}
@@ -820,6 +821,7 @@
       <button class="import-btn" style="margin-top:8px;" onclick="openContactImport()">
         ⬆ 匯入聯絡資料（Excel）
       </button>
+      <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
       <input type="file" id="cImportFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleContactImport(event)">
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeCusM()">完成</button>
     </div>
@@ -919,6 +921,7 @@
         匯入 Excel / CSV
       </button>
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.csv" onchange="handleImport(event)">
+      <button class="import-guide-btn" onclick="showImportGuide('task')">📋 匯入前要準備哪些欄位？</button>
       <div class="import-result" id="importResult"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
         <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="if(confirm('確定登出？'))doLogout()">登出</button>
@@ -981,6 +984,18 @@
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <button class="btn-p" onclick="confirmContactImport()">開始匯入</button>
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeM('cImportMapM')">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- v500.31fix: 匯入準備說明視窗（任務匯入 / 聯絡資料匯入 共用，內容由 showImportGuide 動態填入）-->
+<div id="importGuideM" class="modal" onclick="if(event.target===this)closeM('importGuideM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title" id="importGuideTitle">匯入準備</div>
+    <div class="sh-body" id="importGuideBody" style="font-size:14px;line-height:1.7;color:var(--label);"></div>
+    <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
+      <button class="btn-p" style="background:#636366;" onclick="closeM('importGuideM')">知道了</button>
     </div>
   </div>
 </div>
@@ -4578,6 +4593,11 @@ function render() {
 // v500.27.2: 客戶名沒出現時、找「最長共同前綴」上色（例：客戶「正泰台中」、任務「正泰 X」上色「正泰」）
 function renderTaskTitleWithCust(taskName, customer, customerHint) {
   if (!taskName) return '';
+  // v500.31fix: 若 customer/customerHint 已被設為停用詞，視為無關聯、不上色
+  //（停用詞可能殘留在任務 Customer 欄，尤其在別台裝置停用、同步過來時本機任務欄沒被清）
+  const _isStopName = (n) => n && (allCust || []).some(c => c.name === n && c.isStopWord === true);
+  if (_isStopName(customer)) customer = '';
+  if (_isStopName(customerHint)) customerHint = '';
   const escaped = String(taskName);
   if (customer) {
     // 已關聯：客戶名綠色
@@ -5372,8 +5392,15 @@ function updateContactFormHint() {
 async function saveContactItem() {
   const type = document.getElementById('cfType').value;
   const label = document.getElementById('cfLabel').value.trim();
-  const content = document.getElementById('cfContent').value.trim();
+  let content = document.getElementById('cfContent').value.trim();
   if (!content) { alert('請填寫內容'); return; }
+  // v500.31fix: 電話類型自動清理符號（與匯入同一套 cleanPhone：只留數字/+/,/#/*，去掉橫線、空格、括號等）
+  // 只在儲存當下清理新輸入的，不動舊資料
+  if (type === 'phone') {
+    const cleaned = cleanPhone(content);
+    if (!cleaned) { alert('電話號碼無效（清理後沒有數字）'); return; }
+    content = cleaned;
+  }
   const existing = _editingContactRowId ? allContacts.find(x => String(x.rowId)===String(_editingContactRowId)) : null;
   const rowId = _editingContactRowId || ('C' + Date.now() + Math.floor(Math.random()*1000));
   const contact = {
@@ -5741,7 +5768,17 @@ function ctxShowMenu(e, id) {
     contactItem.style.display = hasContacts ? '' : 'none';
   }
   _ctxRect = e.currentTarget.getBoundingClientRect();
+  // v500.31fix: 點任務跳選單時，若有同客戶的其他未完成任務，順便展開聚合（提醒別漏掉）
+  const _t2 = allT.find(x => String(x.ID) === String(id));
+  if (_t2 && _t2.Customer && !_isStopName2(_t2.Customer) &&
+      countSameCustomerTasks(_t2.Customer, id) >= 1) {
+    if (_expandedSameCustId !== id) { _expandedSameCustId = id; render(); }
+  }
   showCtxMenu(_ctxRect);
+}
+// v500.31fix: 判斷某名稱是否為停用詞（ctxShowMenu 展開聚合時用，避免對停用客戶展開）
+function _isStopName2(n) {
+  return n && (allCust || []).some(c => c.name === n && c.isStopWord === true);
 }
 function showCtxMenu(rect) {
   document.getElementById('ctxOverlay').classList.add('open');
@@ -6281,6 +6318,51 @@ function switchToEdit() {
 
 // ── Excel / CSV 批次匯入 ─────────────────────────────────────
 let _importRows=[], _importHeaders=[];
+// v500.31fix: 匯入準備說明（任務匯入 / 聯絡資料匯入）
+function showImportGuide(type) {
+  const titleEl = document.getElementById('importGuideTitle');
+  const bodyEl = document.getElementById('importGuideBody');
+  if (!bodyEl) return;
+  const star = '<span style="color:var(--red);font-weight:700;">*</span>';
+  if (type === 'contact') {
+    titleEl.textContent = '聯絡資料匯入 — 準備說明';
+    bodyEl.innerHTML = `
+      <p style="margin:0 0 10px;">用 Excel 或 CSV 檔，<b>第一列放欄位標題</b>，一列代表一個客戶。匯入時再把每個欄位對應到你 Excel 的哪一欄即可。</p>
+      <p style="margin:0 0 6px;font-weight:700;">可準備的欄位：</p>
+      <ul style="margin:0 0 10px;padding-left:20px;">
+        <li><b>公司簡稱（客戶名）</b> ${star} 必備，會比對現有客戶，沒有就自動建立</li>
+        <li><b>客戶編號</b>：同編號的多個客戶會自動併組、共用聯絡資料</li>
+        <li><b>公司地址</b>：可點開地圖導航</li>
+        <li><b>電話1（市話）</b></li>
+        <li><b>行動電話</b></li>
+        <li><b>節費電話</b>（含 0809 前置碼那種）</li>
+      </ul>
+      <p style="margin:0;color:var(--gray);font-size:13px;line-height:1.6;">
+        • 電話會自動清掉人名、註記、括號，只留號碼（逗號和 # 會保留，給節費撥號用）<br>
+        • 已存在的聯絡項會自動跳過，可以重複匯入不會變兩筆<br>
+        • 一列可以建立多筆聯絡項（地址＋各電話分開存）<br>
+        • 只有電腦版才有匯入功能
+      </p>`;
+  } else {
+    titleEl.textContent = '任務匯入 — 準備說明';
+    bodyEl.innerHTML = `
+      <p style="margin:0 0 10px;">用 Excel 或 CSV 檔，<b>第一列放欄位標題</b>，一列代表一筆任務。匯入時再把每個欄位對應到你 Excel 的哪一欄即可。</p>
+      <p style="margin:0 0 6px;font-weight:700;">可準備的欄位：</p>
+      <ul style="margin:0 0 10px;padding-left:20px;">
+        <li><b>任務名稱</b> ${star} 必備</li>
+        <li><b>分類</b>：對應到你的分類頁籤，沒有的分類會自動建立</li>
+        <li><b>截止日期</b>：建議用 2025-06-30 這種格式，或 Excel 的日期格式</li>
+        <li><b>優先級</b>：數字，越小越優先</li>
+        <li><b>備註</b></li>
+      </ul>
+      <p style="margin:0;color:var(--gray);font-size:13px;line-height:1.6;">
+        • 沒有名稱的列會被略過<br>
+        • 只有電腦版才有匯入功能
+      </p>`;
+  }
+  if (typeof openModal === 'function') openModal('importGuideM');
+  else document.getElementById('importGuideM').classList.add('open');
+}
 async function handleImport(event) {
   const file=event.target.files[0]; if(!file) return; event.target.value='';
   const resultEl=document.getElementById('importResult');
