@@ -4989,12 +4989,18 @@ function renderCusList() {
     const cnt = Number(c.taskCount) || 0;
     const inGroup = c.groupId && groupCount[c.groupId] > 1;
     const dot = inGroup ? `<span title="同組" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${gidColor[c.groupId]};margin-right:6px;vertical-align:middle;"></span>` : '';
+    // v500.31fix: 有聯絡資料的客戶，名稱可點開聯絡資訊視窗（撥號/導航）
+    const gk = _groupKeyOf(c.name);
+    const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
+    const nameCell = hasContacts
+      ? `<span class="cat-name" style="cursor:pointer;color:var(--primary);" onclick="openContactView('${escapeAttr(c.name)}')">${dot}📞 ${escapeHtml(c.name)}<span style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px;">${cnt} 筆</span></span>`
+      : `<span class="cat-name">${dot}${escapeHtml(c.name)}<span style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px;">${cnt} 筆</span></span>`;
     const groupAct = inGroup
       ? `<span class="cat-act" style="color:var(--gray)" onclick="leaveCust('${escapeAttr(c.name)}')">離組</span>`
       : `<span class="cat-act" style="color:var(--primary)" onclick="groupCust('${escapeAttr(c.name)}')">分組</span>`;
     return `
     <div class="cat-row">
-      <span class="cat-name">${dot}${escapeHtml(c.name)}<span style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px;">${cnt} 筆</span></span>
+      ${nameCell}
       <div class="cat-acts">
         <span class="cat-act" style="color:var(--primary)" onclick="editCusContacts('${escapeAttr(c.name)}')">✎ 聯絡資料</span>
         <span class="cat-act" style="color:var(--primary)" onclick="renameCust('${escapeAttr(c.name)}')">改名</span>
@@ -5736,6 +5742,11 @@ function ctxOpenContacts() {
   const id = _ctxTaskId; closeCtxMenu();
   const t = allT.find(x => String(x.ID) === String(id)); if (!t) return;
   const cust = t.Customer || t.CustomerHint || '';
+  if (!cust) return;
+  openContactView(cust);
+}
+// v500.31fix: 依客戶名開聯絡資訊視窗（撥號/FaceTime/導航），給任務選單與客戶管理共用
+function openContactView(cust) {
   if (!cust) return;
   const gk = _groupKeyOf(cust);
   const contacts = allContacts
