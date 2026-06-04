@@ -783,10 +783,15 @@
 <div id="cusM" class="modal" onclick="if(event.target===this)closeCusM()">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
-    <div class="sh-title">客戶管理</div>
+    <div class="sh-title" style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
+      客戶管理
+      <button onclick="toggleCusSearch()" aria-label="搜尋客戶" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;padding:6px;cursor:pointer;color:var(--primary);display:flex;align-items:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+      </button>
+    </div>
     <div class="sh-body">
-      <!-- v500.31: 客戶搜尋框（只比對客戶名、只找啟用中）-->
-      <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="🔍 搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="renderCusList()">
+      <!-- v500.31: 客戶搜尋框（預設收起，點放大鏡才展開；只比對客戶名、只找啟用中）-->
+      <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" oninput="renderCusList()">
       <div id="cusList"></div>
       <!-- v500.31: 已停用的詞（可展開、可恢復）-->
       <div id="stopWordSection" style="margin-top:14px;border-top:.5px solid #E5E5EA;padding-top:10px;">
@@ -4928,6 +4933,9 @@ function renameC(oldN) {
 // 後端 API 現成：addCustomer / renameCustomer / deleteCustomer。
 // 注意：改名走 renameCustomer（會連動 Tasks 表的 Customer 欄）。
 function openCusM() {
+  // v500.31: 每次打開先清空搜尋並收起搜尋框（避免殘留關鍵字導致找不到客戶）
+  const si = document.getElementById('cusSearchInput');
+  if (si) { si.value = ''; si.style.display = 'none'; }
   renderCusList();
   // v500.31: 重設停用清單為收合狀態、更新標題數量
   const sl = document.getElementById('stopWordList');
@@ -4936,6 +4944,22 @@ function openCusM() {
   if (arrow) arrow.style.transform = 'rotate(0deg)';
   updateStopWordTitle();
   openModal('cusM');
+}
+// v500.31: 切換客戶搜尋框（像任務搜尋——平時收起、點放大鏡展開）
+function toggleCusSearch() {
+  const si = document.getElementById('cusSearchInput');
+  if (!si) return;
+  if (si.style.display === 'none') {
+    playSound && playSound('swipe');
+    si.style.display = '';
+    setTimeout(() => si.focus(), 100);
+  } else {
+    playSound && playSound('close');
+    si.value = '';
+    si.style.display = 'none';
+    renderCusList();  // 清空搜尋、恢復完整清單
+    si.blur();
+  }
 }
 function closeCusM() {
   closeM('cusM');
