@@ -1179,12 +1179,25 @@ async function doLogin() {
 
 // v500.30: 登出 + 清除本地所有資料
 // 兩段式確認、避免誤觸
-// v500.31fix: 統一的「排程自動登出」——加旗標防止同一批多筆 unauthorized 連環跳出登出確認框
+// v500.31fix: 統一的「排程自動登出」——token 失效時用「軟登出」（只回登入畫面、保留本機資料），
+// 不再像手動登出那樣清空全部資料；加旗標防止同一批多筆 unauthorized 連環觸發
 let _logoutScheduled = false;
 function scheduleLogout() {
-  if (_logoutScheduled) return;   // 已排程，避免登出確認框重複跳出、關不掉
+  if (_logoutScheduled) return;
   _logoutScheduled = true;
-  setTimeout(() => { _logoutScheduled = false; doLogout(); }, 2000);
+  setTimeout(() => { _logoutScheduled = false; softLogout(); }, 2000);
+}
+// v500.31fix: 軟登出 —— token 過期/失效時只跳回登入畫面，本機資料（任務/客戶/設定）完整保留
+// 重新輸入密碼登入後可直接繼續使用、不會遺失任何資料。只有使用者主動點「登出」按鈕才會清空。
+function softLogout() {
+  try {
+    localStorage.removeItem('authToken');  // 清掉失效 token，停止後續同步嘗試（不動其他資料）
+    const ls = document.getElementById('loginScreen');
+    if (ls) ls.classList.remove('hidden');
+    const pwd = document.getElementById('loginPwd');
+    if (pwd) { pwd.value = ''; try { pwd.focus(); } catch(e){} }
+    pushLog && pushLog('登入已過期，請重新登入（本機資料已保留）', 'warn');
+  } catch(e) {}
 }
 function doLogout() {
   // 第一段確認：先警告未同步資料
