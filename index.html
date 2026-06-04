@@ -961,6 +961,7 @@
       <div class="import-map-row"><div class="import-map-label">公司地址</div><select class="import-map-select" id="ciAddress"></select></div>
       <div class="import-map-row"><div class="import-map-label">電話1（市話）</div><select class="import-map-select" id="ciPhone"></select></div>
       <div class="import-map-row"><div class="import-map-label">行動電話</div><select class="import-map-select" id="ciMobile"></select></div>
+      <div class="import-map-row"><div class="import-map-label">節費電話</div><select class="import-map-select" id="ciSaving"></select></div>
       <div style="font-size:12px;color:var(--gray);margin-top:8px;line-height:1.5;">電話會自動清掉人名/註記只留號碼；同編號的多個客戶會共用群組；已存在的聯絡項會自動跳過。</div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
@@ -5117,6 +5118,29 @@ function isAppleDevice() {
   return false;
 }
 
+// v500.31: 開 Google 地圖——手機優先開 App、沒裝則退回網頁
+function openGoogleMap(addr) {
+  playSound('tap');
+  const q = encodeURIComponent(addr);
+  const ua = navigator.userAgent || '';
+  const web = 'https://www.google.com/maps/search/?api=1&query=' + q;
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    let opened = false;
+    const onHide = () => { opened = true; };
+    document.addEventListener('visibilitychange', onHide, { once: true });
+    window.location.href = 'comgooglemaps://?q=' + q;  // iOS Google 地圖 App
+    setTimeout(() => {
+      document.removeEventListener('visibilitychange', onHide);
+      if (!opened && document.visibilityState === 'visible') window.location.href = web;  // 沒裝 App → 網頁
+    }, 1200);
+  } else if (/Android/.test(ua)) {
+    window.location.href = 'geo:0,0?q=' + q;  // Android intent，會用 Google 地圖 App
+    setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = web; }, 1500);
+  } else {
+    window.open(web, '_blank', 'noopener');  // 電腦 → 網頁
+  }
+}
+
 function _groupKeyOf(name) {
   const c = allCust.find(x => x.name === name);
   return (c && c.groupId) ? c.groupId : name;
@@ -5338,7 +5362,8 @@ async function handleContactImport(event) {
       ciCode:    ['客戶編號','編號','代號','code'],
       ciAddress: ['公司地址','地址','address'],
       ciMobile:  ['行動電話','手機','行動'],
-      ciPhone:   ['電話1','電話','市話','phone','tel']
+      ciPhone:   ['電話1','電話','市話','phone','tel'],
+      ciSaving:  ['節費','節費電話','省錢電話']
     };
     Object.keys(selects).forEach(id => {
       const sel = document.getElementById(id);
@@ -5358,6 +5383,10 @@ function buildContactImportItems() {
   const iAddr = parseInt(document.getElementById('ciAddress').value);
   const iMob  = parseInt(document.getElementById('ciMobile').value);
   const iPhone= parseInt(document.getElementById('ciPhone').value);
+  const savEl = document.getElementById('ciSaving');
+  const iSav  = savEl ? parseInt(savEl.value) : -1;
+  // v500.31: 自動判斷節費電話——0809071999 開頭 → Label 標「節費」
+  const labelOf = (content, def) => /^0809071999/.test(String(content)) ? '節費' : def;
   const items = [];
   const dataRows = _cImportRows.slice(1).filter(r => r.some(c => String(c).trim()));
   dataRows.forEach(r => {
@@ -5369,15 +5398,20 @@ function buildContactImportItems() {
       const addr = String(r[iAddr] || '').trim();
       if (addr) items.push({ custName, groupId: code, type:'address', label: custName, content: addr });
     }
-    // 電話1（市話）
+    // 節費電話（保留 0809071999, 前置碼）
+    if (iSav >= 0) {
+      const s = cleanPhone(r[iSav]);
+      if (s) items.push({ custName, groupId: code, type:'phone', label:'節費', content: s });
+    }
+    // 電話1（市話；若內容是節費號碼則自動標節費）
     if (iPhone >= 0) {
       const p = cleanPhone(r[iPhone]);
-      if (p) items.push({ custName, groupId: code, type:'phone', label:'市話', content: p });
+      if (p) items.push({ custName, groupId: code, type:'phone', label: labelOf(p, '市話'), content: p });
     }
-    // 行動電話
+    // 行動電話（若內容是節費號碼則自動標節費）
     if (iMob >= 0) {
       const m = cleanPhone(r[iMob]);
-      if (m) items.push({ custName, groupId: code, type:'phone', label:'行動', content: m });
+      if (m) items.push({ custName, groupId: code, type:'phone', label: labelOf(m, '行動'), content: m });
     }
   });
   return items;
@@ -5684,28 +5718,41 @@ function ctxOpenContacts() {
       if (c.type === 'phone') {
         const tel = String(c.content).replace(/[^0-9+,#*]/g, '');
         const isMobile = /^09/.test(tel);  // 行動電話
-        // v500.31: 只有「行動電話 + 蘋果系裝置」才顯示 FaceTime（PC/Android 沒 FaceTime）
-        const ftBtn = (isMobile && isAppleDevice()) ? `<a href="facetime:${tel}" style="text-decoration:none;color:#007AFF;font-size:13px;" onclick="playSound('tap')">FaceTime</a>` : '';
+        // v500.31: FaceTime 改語音(facetime-audio)、純圖示；只行動電話+蘋果系才顯示
+        const ftBtn = (isMobile && isAppleDevice())
+          ? `<a href="facetime-audio:${tel}" onclick="playSound('tap')" aria-label="FaceTime語音" style="display:flex;align-items:center;color:#007AFF;text-decoration:none;padding:4px;">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#007AFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </a>`
+          : '';
         return `<div class="cat-row" style="align-items:center;">
             <div style="flex:1;min-width:0;">
               ${label?`<div style="font-size:13px;color:var(--gray);">${label}</div>`:''}
               <div style="font-size:17px;color:#34C759;font-weight:600;">📞 ${escapeHtml(c.content)}</div>
             </div>
-            <div style="display:flex;gap:14px;flex-shrink:0;align-items:center;">
+            <div style="display:flex;gap:10px;flex-shrink:0;align-items:center;">
               ${ftBtn}
-              <a href="tel:${tel}" style="text-decoration:none;color:#34C759;font-size:13px;font-weight:600;" onclick="playSound('tap')">撥號 ›</a>
+              <a href="tel:${tel}" onclick="playSound('tap')" aria-label="撥號" style="display:flex;align-items:center;text-decoration:none;padding:4px;">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="#34C759"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+              </a>
             </div>
           </div>`;
       } else if (c.type === 'address') {
-        const q = encodeURIComponent(c.content);
-        const gmap = `<a href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener" style="text-decoration:none;color:#4285F4;font-size:13px;" onclick="playSound('tap')">Google地圖</a>`;
-        const amap = isAppleDevice() ? `<a href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener" style="text-decoration:none;color:#FF9500;font-size:13px;" onclick="playSound('tap')">Apple地圖</a>` : '';
+        const amap = isAppleDevice()
+          ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(c.content)}" target="_blank" rel="noopener" onclick="playSound('tap')" aria-label="Apple地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FF9500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              <span style="font-size:10px;color:#FF9500;">Apple</span>
+            </a>`
+          : '';
+        const gmap = `<a href="javascript:void(0)" onclick="openGoogleMap('${escapeAttr(c.content)}')" aria-label="Google地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#4285F4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              <span style="font-size:10px;color:#4285F4;">Google</span>
+            </a>`;
         return `<div class="cat-row" style="align-items:flex-start;">
             <div style="flex:1;min-width:0;">
               ${label?`<div style="font-size:13px;color:var(--gray);">${label}</div>`:''}
               <div style="font-size:15px;color:#FF9500;font-weight:600;word-break:break-all;">📍 ${escapeHtml(c.content)}</div>
             </div>
-            <div style="display:flex;gap:12px;flex-shrink:0;align-items:flex-start;padding-top:2px;">
+            <div style="display:flex;gap:10px;flex-shrink:0;align-items:flex-start;padding-top:2px;">
               ${amap}
               ${gmap}
             </div>
