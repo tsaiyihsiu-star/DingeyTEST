@@ -23,7 +23,7 @@
       --cat-h:48px;
     }
     *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-    html{height:100%;overflow:hidden;}
+    html{height:100%;overflow:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
     body{
       position:fixed;inset:0;
       display:flex;flex-direction:row;
@@ -785,6 +785,8 @@
     <div class="sh-handle"></div>
     <div class="sh-title">客戶管理</div>
     <div class="sh-body">
+      <!-- v500.31: 客戶搜尋框（只比對客戶名、只找啟用中）-->
+      <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="🔍 搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="renderCusList()">
       <div id="cusList"></div>
       <!-- v500.31: 已停用的詞（可展開、可恢復）-->
       <div id="stopWordSection" style="margin-top:14px;border-top:.5px solid #E5E5EA;padding-top:10px;">
@@ -4940,9 +4942,13 @@ function closeCusM() {
 function renderCusList() {
   const el = document.getElementById('cusList');
   // 過濾掉停用詞（停用詞不是真客戶，不列在客戶管理）
-  const list = allCust.filter(c => !c.isStopWord).sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
+  let list = allCust.filter(c => !c.isStopWord).sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
+  // v500.31: 搜尋過濾（只比對客戶名）
+  const kwEl = document.getElementById('cusSearchInput');
+  const kw = kwEl ? kwEl.value.trim() : '';
+  if (kw) list = list.filter(c => String(c.name).includes(kw));
   if (!list.length) {
-    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">尚無客戶，可在下方新增</p>';
+    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">' + (kw ? '找不到符合的客戶' : '尚無客戶，可在下方新增') + '</p>';
     return;
   }
   // v500.31: 算出每個 groupId 有幾個成員，>1 才算「真的有分組」
@@ -4967,6 +4973,7 @@ function renderCusList() {
       <div class="cat-acts">
         <span class="cat-act" style="color:var(--primary)" onclick="editCusContacts('${escapeAttr(c.name)}')">✎ 聯絡資料</span>
         <span class="cat-act" style="color:var(--primary)" onclick="renameCust('${escapeAttr(c.name)}')">改名</span>
+        <span class="cat-act" style="color:var(--primary)" onclick="editCusCode('${escapeAttr(c.name)}')">編號</span>
         ${groupAct}
         <span class="cat-act" style="color:#FF9500" onclick="stopCust('${escapeAttr(c.name)}')">停用</span>
       </div>
@@ -5100,6 +5107,16 @@ async function restoreCust(name) {
 
 // ── v500.31: 客戶聯絡資料管理 ─────────────────────────────
 // GroupKey：有 groupId 用 groupId、否則用客戶名
+// v500.31: 判斷是否蘋果系裝置（iPhone/iPad/Mac）→ 決定要不要顯示 Apple 地圖
+// 注意 iPadOS 13+ 的 Safari UA 會偽裝成 Mac，靠觸控點數補判
+function isAppleDevice() {
+  const ua = navigator.userAgent || '';
+  const plat = navigator.platform || '';
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
+  if (/Mac/.test(plat) || /Macintosh/.test(ua)) return true;
+  return false;
+}
+
 function _groupKeyOf(name) {
   const c = allCust.find(x => x.name === name);
   return (c && c.groupId) ? c.groupId : name;
@@ -5461,6 +5478,31 @@ async function leaveCust(name) {
   }
 }
 
+// v500.31: 手動編輯客戶編號（GroupId）
+async function editCusCode(name) {
+  const c = allCust.find(x => x.name === name);
+  const cur = (c && c.groupId) ? c.groupId : '';
+  const input = prompt(`設定「${name}」的客戶編號（群組編號）\n\n相同編號的客戶會自動同組、共用聯絡資料。\n留空則不分組（單獨一組）。`, cur);
+  if (input === null) return;  // 取消
+  const code = input.trim();
+  if (code === cur) return;    // 沒變
+  playSound('tap');
+  if (c) { c.groupId = code; c.updatedAt = Date.now(); }
+  saveLocal();
+  renderCusList(); render();
+  try {
+    const res = await callGasAction('setCustomerCode', { name, code });
+    if (res && res.status === 'success') {
+      if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+      pushLog && pushLog(`已設定「${name}」編號：${code || '(清除)'}`, 'success');
+    } else {
+      alert('設定編號失敗：' + (res && res.message ? res.message : '未知'));
+    }
+  } catch(e) {
+    alert('設定編號推送失敗：' + e.message);
+  }
+}
+
 // ── 全部長壓日期篩選 ─────────────────────────────
 let _titleFilterDate = null;
 let _scatAllLpTimer = null, _scatAllLpFired = false;
@@ -5639,24 +5681,33 @@ function ctxOpenContacts() {
       const label = c.label ? escapeHtml(c.label) : '';
       if (c.type === 'phone') {
         const tel = String(c.content).replace(/[^0-9+,#*]/g, '');
-        return `<a href="tel:${tel}" style="display:block;text-decoration:none;" onclick="playSound('tap')">
-          <div class="cat-row" style="cursor:pointer;">
+        const isMobile = /^09/.test(tel);  // 行動電話
+        // v500.31: 只有「行動電話 + 蘋果系裝置」才顯示 FaceTime（PC/Android 沒 FaceTime）
+        const ftBtn = (isMobile && isAppleDevice()) ? `<a href="facetime:${tel}" style="text-decoration:none;color:#007AFF;font-size:13px;" onclick="playSound('tap')">FaceTime</a>` : '';
+        return `<div class="cat-row" style="align-items:center;">
             <div style="flex:1;min-width:0;">
               ${label?`<div style="font-size:13px;color:var(--gray);">${label}</div>`:''}
               <div style="font-size:17px;color:#34C759;font-weight:600;">📞 ${escapeHtml(c.content)}</div>
             </div>
-            <span style="color:#34C759;font-size:13px;">撥號 ›</span>
-          </div></a>`;
+            <div style="display:flex;gap:14px;flex-shrink:0;align-items:center;">
+              ${ftBtn}
+              <a href="tel:${tel}" style="text-decoration:none;color:#34C759;font-size:13px;font-weight:600;" onclick="playSound('tap')">撥號 ›</a>
+            </div>
+          </div>`;
       } else if (c.type === 'address') {
         const q = encodeURIComponent(c.content);
-        return `<a href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener" style="display:block;text-decoration:none;" onclick="playSound('tap')">
-          <div class="cat-row" style="cursor:pointer;align-items:flex-start;">
+        const gmap = `<a href="https://www.google.com/maps/search/?api=1&query=${q}" target="_blank" rel="noopener" style="text-decoration:none;color:#4285F4;font-size:13px;" onclick="playSound('tap')">Google地圖</a>`;
+        const amap = isAppleDevice() ? `<a href="https://maps.apple.com/?q=${q}" target="_blank" rel="noopener" style="text-decoration:none;color:#FF9500;font-size:13px;" onclick="playSound('tap')">Apple地圖</a>` : '';
+        return `<div class="cat-row" style="align-items:flex-start;">
             <div style="flex:1;min-width:0;">
               ${label?`<div style="font-size:13px;color:var(--gray);">${label}</div>`:''}
               <div style="font-size:15px;color:#FF9500;font-weight:600;word-break:break-all;">📍 ${escapeHtml(c.content)}</div>
             </div>
-            <span style="color:#FF9500;font-size:13px;flex-shrink:0;">導航 ›</span>
-          </div></a>`;
+            <div style="display:flex;gap:12px;flex-shrink:0;align-items:flex-start;padding-top:2px;">
+              ${amap}
+              ${gmap}
+            </div>
+          </div>`;
       } else {
         return `<div class="cat-row" style="align-items:flex-start;">
           <div style="flex:1;min-width:0;">
