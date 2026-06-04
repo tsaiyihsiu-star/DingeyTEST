@@ -5030,22 +5030,22 @@ function renderCusList() {
     const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
     const nm = escapeAttr(c.name);
     const expanded = (_expandedCusName === c.name);
-    // 名稱列（點一下展開/收合操作鈕）
-    const phoneIcon = hasContacts ? '📞 ' : '';
+    // 名稱列：有聯絡資料 → 名字前放可點的綠色電話圖示（點圖示=撥號/導航），點名字本身=展開管理操作
+    const callIcon = hasContacts
+      ? `<span onclick="event.stopPropagation();openContactView('${nm}')" aria-label="撥號/導航" style="flex-shrink:0;display:inline-flex;align-items:center;padding:2px 4px;margin-right:2px;cursor:pointer;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="var(--green)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+        </span>` : '';
     const nameRow = `<div class="cus-name-row" onclick="toggleCusExpand('${nm}')">
-        ${dot}<span>${phoneIcon}${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
+        ${dot}${callIcon}<span>${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
         <span class="arrow" style="transform:rotate(${expanded?'90':'0'}deg)">▸</span>
       </div>`;
-    // 展開時的操作鈕（大、好點、自動換行）
+    // 展開時的操作鈕（撥號改由名字前的電話圖示觸發，這裡不再放撥號鈕）
     let actsRow = '';
     if (expanded) {
-      const callBtn = hasContacts
-        ? `<button class="cus-act-btn" style="color:var(--green);" onclick="openContactView('${nm}')">撥號/導航</button>` : '';
       const groupBtn = inGroup
         ? `<button class="cus-act-btn" style="color:var(--gray);" onclick="leaveCust('${nm}')">離組</button>`
         : `<button class="cus-act-btn" onclick="groupCust('${nm}')">併組</button>`;
       actsRow = `<div class="cus-acts">
-          ${callBtn}
           <button class="cus-act-btn" onclick="editCusContacts('${nm}')">聯絡資料</button>
           <button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
           <button class="cus-act-btn" onclick="editCusCode('${nm}')">編號</button>
