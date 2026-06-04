@@ -434,8 +434,8 @@
     .cus-name-row{display:flex;align-items:center;gap:6px;padding:13px 4px;cursor:pointer;font-size:16px;font-weight:600;color:var(--label);}
     .cus-name-row .cnt{color:var(--gray);font-size:13px;font-weight:400;margin-left:6px;}
     .cus-name-row .arrow{margin-left:auto;color:var(--gray);font-size:13px;flex-shrink:0;transition:transform .2s;}
-    .cus-acts{display:flex;flex-wrap:wrap;gap:6px;padding:2px 4px 12px;}
-    .cus-act-btn{font-size:13.5px;font-weight:600;padding:7px 12px;border-radius:8px;background:var(--bg);color:var(--primary);border:none;cursor:pointer;touch-action:manipulation;white-space:nowrap;}
+    .cus-acts{display:flex;gap:4px;padding:2px 4px 12px;}
+    .cus-act-btn{flex:1;min-width:0;font-size:13px;font-weight:600;padding:8px 3px;border-radius:8px;background:var(--bg);color:var(--primary);border:none;cursor:pointer;touch-action:manipulation;white-space:nowrap;text-align:center;overflow:hidden;text-overflow:ellipsis;}
     .cat-color-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0;cursor:pointer;border:2px solid transparent;transition:transform .15s;touch-action:manipulation;}
     .cat-color-dot:active{transform:scale(.88);}
     .color-picker-wrap{display:none;position:fixed;z-index:850;background:var(--card);border-radius:14px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);flex-wrap:wrap;gap:8px;width:188px;}
@@ -5020,13 +5020,13 @@ function renderCusList() {
     let actsRow = '';
     if (expanded) {
       const callBtn = hasContacts
-        ? `<button class="cus-act-btn" style="color:var(--green);" onclick="openContactView('${nm}')">📞 撥號/導航</button>` : '';
+        ? `<button class="cus-act-btn" style="color:var(--green);" onclick="openContactView('${nm}')">撥號/導航</button>` : '';
       const groupBtn = inGroup
         ? `<button class="cus-act-btn" style="color:var(--gray);" onclick="leaveCust('${nm}')">離組</button>`
         : `<button class="cus-act-btn" onclick="groupCust('${nm}')">併組</button>`;
       actsRow = `<div class="cus-acts">
           ${callBtn}
-          <button class="cus-act-btn" onclick="editCusContacts('${nm}')">✎ 聯絡資料</button>
+          <button class="cus-act-btn" onclick="editCusContacts('${nm}')">聯絡資料</button>
           <button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
           <button class="cus-act-btn" onclick="editCusCode('${nm}')">編號</button>
           ${groupBtn}
