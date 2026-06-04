@@ -411,6 +411,7 @@
     .sh-body{flex:1;overflow-y:auto;padding:2px 12px 10px;-webkit-overflow-scrolling:touch;transition:max-height .25s cubic-bezier(.32,.72,0,1);touch-action:pan-y;}
     .sh-body::-webkit-scrollbar{display:none;}
     #catM .sheet,#syncM .sheet{max-height:72dvh;}
+    #cusM .sheet{max-height:78dvh;}  /* v500.31fix: 降低客戶管理高度，露出更多背景方便點外面取消 */
     #catM .sheet{padding-bottom:0;}
     #syncM .sh-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
     .f{width:100%;padding:9px 11px;border:none;border-radius:9px;background:var(--bg);font-size:15px;font-family:inherit;color:var(--label);margin-bottom:6px;outline:none;display:block;-webkit-appearance:none;appearance:none;}
@@ -427,6 +428,14 @@
     .cat-name{flex:1;font-size:14px;font-weight:600;color:var(--label);}
     .cat-acts{display:flex;gap:8px;flex-shrink:0;align-items:center;}
     .cat-act{font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation;}
+    /* v500.31fix: 客戶管理「點名字展開操作」用 */
+    .cus-item{border-bottom:.5px solid #E5E5EA;user-select:none;}
+    .cus-item:last-child{border-bottom:none;}
+    .cus-name-row{display:flex;align-items:center;gap:6px;padding:13px 4px;cursor:pointer;font-size:16px;font-weight:600;color:var(--label);}
+    .cus-name-row .cnt{color:var(--gray);font-size:13px;font-weight:400;margin-left:6px;}
+    .cus-name-row .arrow{margin-left:auto;color:var(--gray);font-size:13px;flex-shrink:0;transition:transform .2s;}
+    .cus-acts{display:flex;flex-wrap:wrap;gap:8px;padding:2px 4px 12px;}
+    .cus-act-btn{font-size:15px;font-weight:600;padding:10px 16px;border-radius:10px;background:var(--bg);color:var(--primary);border:none;cursor:pointer;touch-action:manipulation;white-space:nowrap;}
     .cat-color-dot{width:20px;height:20px;border-radius:50%;flex-shrink:0;cursor:pointer;border:2px solid transparent;transition:transform .15s;touch-action:manipulation;}
     .cat-color-dot:active{transform:scale(.88);}
     .color-picker-wrap{display:none;position:fixed;z-index:850;background:var(--card);border-radius:14px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);flex-wrap:wrap;gap:8px;width:188px;}
@@ -4936,6 +4945,7 @@ function openCusM() {
   // v500.31: 每次打開先清空搜尋並收起搜尋框（避免殘留關鍵字導致找不到客戶）
   const si = document.getElementById('cusSearchInput');
   if (si) { si.value = ''; si.style.display = 'none'; }
+  _expandedCusName = '';  // v500.31fix: 每次打開都收合所有展開的操作
   renderCusList();
   // v500.31: 重設停用清單為收合狀態、更新標題數量
   const sl = document.getElementById('stopWordList');
@@ -4952,7 +4962,7 @@ function toggleCusSearch() {
   if (si.style.display === 'none') {
     playSound && playSound('swipe');
     si.style.display = '';
-    setTimeout(() => si.focus(), 100);
+    si.focus();  // v500.31fix: 同步 focus（iOS PWA 程式化 focus 必須在點擊當下同步呼叫，包進 setTimeout 會喚不起鍵盤、游標跑掉）
   } else {
     playSound && playSound('close');
     si.value = '';
@@ -4963,6 +4973,13 @@ function toggleCusSearch() {
 }
 function closeCusM() {
   closeM('cusM');
+}
+// v500.31fix: 客戶管理「點名字展開操作鈕」的展開狀態（一次只展開一個）
+let _expandedCusName = '';
+function toggleCusExpand(name) {
+  _expandedCusName = (_expandedCusName === name) ? '' : name;
+  playSound && playSound('tap');
+  renderCusList();
 }
 function renderCusList() {
   const el = document.getElementById('cusList');
@@ -4988,27 +5005,35 @@ function renderCusList() {
   el.innerHTML = list.map(c => {
     const cnt = Number(c.taskCount) || 0;
     const inGroup = c.groupId && groupCount[c.groupId] > 1;
-    const dot = inGroup ? `<span title="同組" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${gidColor[c.groupId]};margin-right:6px;vertical-align:middle;"></span>` : '';
-    // v500.31fix: 有聯絡資料的客戶，名稱可點開聯絡資訊視窗（撥號/導航）
+    const dot = inGroup ? `<span title="同組" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${gidColor[c.groupId]};margin-right:2px;flex-shrink:0;"></span>` : '';
     const gk = _groupKeyOf(c.name);
     const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
-    const nameCell = hasContacts
-      ? `<span class="cat-name" style="cursor:pointer;color:var(--primary);" onclick="openContactView('${escapeAttr(c.name)}')">${dot}📞 ${escapeHtml(c.name)}<span style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px;">${cnt} 筆</span></span>`
-      : `<span class="cat-name">${dot}${escapeHtml(c.name)}<span style="color:var(--gray);font-size:12px;font-weight:400;margin-left:6px;">${cnt} 筆</span></span>`;
-    const groupAct = inGroup
-      ? `<span class="cat-act" style="color:var(--gray)" onclick="leaveCust('${escapeAttr(c.name)}')">離組</span>`
-      : `<span class="cat-act" style="color:var(--primary)" onclick="groupCust('${escapeAttr(c.name)}')">分組</span>`;
-    return `
-    <div class="cat-row">
-      ${nameCell}
-      <div class="cat-acts">
-        <span class="cat-act" style="color:var(--primary)" onclick="editCusContacts('${escapeAttr(c.name)}')">✎ 聯絡資料</span>
-        <span class="cat-act" style="color:var(--primary)" onclick="renameCust('${escapeAttr(c.name)}')">改名</span>
-        <span class="cat-act" style="color:var(--primary)" onclick="editCusCode('${escapeAttr(c.name)}')">編號</span>
-        ${groupAct}
-        <span class="cat-act" style="color:#FF9500" onclick="stopCust('${escapeAttr(c.name)}')">停用</span>
-      </div>
-    </div>`;
+    const nm = escapeAttr(c.name);
+    const expanded = (_expandedCusName === c.name);
+    // 名稱列（點一下展開/收合操作鈕）
+    const phoneIcon = hasContacts ? '📞 ' : '';
+    const nameRow = `<div class="cus-name-row" onclick="toggleCusExpand('${nm}')">
+        ${dot}<span>${phoneIcon}${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
+        <span class="arrow" style="transform:rotate(${expanded?'90':'0'}deg)">▸</span>
+      </div>`;
+    // 展開時的操作鈕（大、好點、自動換行）
+    let actsRow = '';
+    if (expanded) {
+      const callBtn = hasContacts
+        ? `<button class="cus-act-btn" style="color:var(--green);" onclick="openContactView('${nm}')">📞 撥號/導航</button>` : '';
+      const groupBtn = inGroup
+        ? `<button class="cus-act-btn" style="color:var(--gray);" onclick="leaveCust('${nm}')">離組</button>`
+        : `<button class="cus-act-btn" onclick="groupCust('${nm}')">分組</button>`;
+      actsRow = `<div class="cus-acts">
+          ${callBtn}
+          <button class="cus-act-btn" onclick="editCusContacts('${nm}')">✎ 聯絡資料</button>
+          <button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
+          <button class="cus-act-btn" onclick="editCusCode('${nm}')">編號</button>
+          ${groupBtn}
+          <button class="cus-act-btn" style="color:var(--orange);" onclick="stopCust('${nm}')">停用</button>
+        </div>`;
+    }
+    return `<div class="cus-item">${nameRow}${actsRow}</div>`;
   }).join('');
 }
 async function addCust() {
