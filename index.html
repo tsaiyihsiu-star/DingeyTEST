@@ -5207,11 +5207,20 @@ async function refreshContactsCache() {
         clearTimeout(tid2);
       }
       if (Array.isArray(cust)) {
-        allCust = cust;
+        // v500.31fix: 保留「本機剛新增、cusOpLog 還沒推上後端」的客戶，
+        // 否則手動新增客戶後馬上存聯絡資料，這裡重抓會用尚未含新客戶的後端清單覆蓋、把新客戶吞掉
+        const cloudNames = new Set(cust.map(c => String(c.name)));
+        const pendingNew = (allCust || []).filter(local => {
+          if (cloudNames.has(String(local.name))) return false;       // 後端已有、不需保留
+          // 本機有、後端沒有：只有在「cusOpLog 還有這客戶的 pending add」時才保留
+          return (cusOpLog || []).some(o =>
+            o.status === 'pending' && String(o.customerName) === String(local.name) && o.op === 'add');
+        });
+        allCust = pendingNew.length ? cust.concat(pendingNew) : cust;
         saveLocal();
         if (typeof renderCusList === 'function' && document.getElementById('cusM') && document.getElementById('cusM').classList.contains('open')) renderCusList();
         render();
-        console.log('[refreshContactsCache] 客戶名單已刷新 ' + allCust.length + ' 筆');
+        console.log('[refreshContactsCache] 客戶名單已刷新 ' + allCust.length + ' 筆（保留 pending 新增 ' + pendingNew.length + '）');
       }
     } catch(e2) {
       console.log('[refreshContactsCache] 客戶刷新失敗: ' + e2.message);
@@ -6076,8 +6085,22 @@ async function saveQuick() {
 
 let _soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
 let _audioCtx = null;
-function _getAudioCtx() { if (!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return _audioCtx; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState==='visible' && _audioCtx && _audioCtx.state==='suspended') _audioCtx.resume(); });
+// v500.31: AudioContext 健康檢查——藍牙耳機切換/來電中斷會讓 ctx 進入 interrupted 或 closed 狀態，
+// 這時直接重建一個新的，避免音效永久啞掉
+function _getAudioCtx() {
+  if (_audioCtx && _audioCtx.state === 'closed') _audioCtx = null;
+  if (!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  return _audioCtx;
+}
+// v500.31: 回到前景時，suspended 或 interrupted 都嘗試 resume；resume 失敗則重建
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && _audioCtx) {
+    const st = _audioCtx.state;
+    if (st === 'suspended' || st === 'interrupted') {
+      _audioCtx.resume().catch(() => { try { _audioCtx.close(); } catch(e){} _audioCtx = null; });
+    }
+  }
+});
 
 // 從其他 app 切回來時，若鍵盤已收起則重置 sh-body maxHeight
 document.addEventListener('visibilitychange', () => {
@@ -6097,8 +6120,16 @@ document.addEventListener('visibilitychange', () => {
 function playSound(type) {
   if (!_soundEnabled) return;
   try {
-    const ctx = _getAudioCtx();
-    if (ctx.state === 'suspended') { ctx.resume().then(() => playSound(type)); return; }
+    let ctx = _getAudioCtx();
+    // v500.31: suspended 或 interrupted（藍牙切換/來電後）都嘗試恢復；恢復後重播
+    if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+      ctx.resume().then(() => playSound(type)).catch(() => {
+        try { ctx.close(); } catch(e){}
+        _audioCtx = null;
+        try { _getAudioCtx().resume().then(() => playSound(type)).catch(()=>{}); } catch(e){}
+      });
+      return;
+    }
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     const now = ctx.currentTime;
