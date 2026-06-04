@@ -5481,7 +5481,9 @@ async function leaveCust(name) {
 // v500.31: 手動編輯客戶編號（GroupId）
 async function editCusCode(name) {
   const c = allCust.find(x => x.name === name);
-  const cur = (c && c.groupId) ? c.groupId : '';
+  let cur = (c && c.groupId) ? String(c.groupId) : '';
+  // v500.31: 防護——若 groupId 被誤存成日期字串（舊資料 bug），prompt 預設顯示空白
+  if (/^[A-Z][a-z]{2}\s/.test(cur) || /GMT|\d{2}:\d{2}:\d{2}/.test(cur)) cur = '';
   const input = prompt(`設定「${name}」的客戶編號（群組編號）\n\n相同編號的客戶會自動同組、共用聯絡資料。\n留空則不分組（單獨一組）。`, cur);
   if (input === null) return;  // 取消
   const code = input.trim();
