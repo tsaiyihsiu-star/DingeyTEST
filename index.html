@@ -1179,6 +1179,13 @@ async function doLogin() {
 
 // v500.30: 登出 + 清除本地所有資料
 // 兩段式確認、避免誤觸
+// v500.31fix: 統一的「排程自動登出」——加旗標防止同一批多筆 unauthorized 連環跳出登出確認框
+let _logoutScheduled = false;
+function scheduleLogout() {
+  if (_logoutScheduled) return;   // 已排程，避免登出確認框重複跳出、關不掉
+  _logoutScheduled = true;
+  setTimeout(() => { _logoutScheduled = false; doLogout(); }, 2000);
+}
 function doLogout() {
   // 第一段確認：先警告未同步資料
   const pendingTaskOps = opLog.filter(o => o.status === 'pending').length;
@@ -2896,7 +2903,7 @@ async function flushQueue() {
   const sessionToken = getSession();
   if (!sessionToken) {
     pushLog('登入已過期，請重新登入', 'error');
-    setTimeout(() => doLogout(), 2000);
+    scheduleLogout();
     return false;
   }
 
@@ -2987,7 +2994,7 @@ async function flushQueue() {
         if (json.status === 'error' && json.message === 'unauthorized') {
           unauthorizedDetected = true;
           pushLog('登入已過期，請重新登入', 'error');
-          setTimeout(() => doLogout(), 2000);
+          scheduleLogout();
           break;
         }
         catSuccessIds.add(item._opId);
@@ -3263,7 +3270,7 @@ async function pullFromCloud(reason, attempt=1) {
     const sessionToken = getSession();
     if (!sessionToken) {
       pushLog('登入已過期，請重新登入', 'error');
-      setTimeout(() => doLogout(), 2000);
+      scheduleLogout();
       return false;
     }
 
@@ -3288,7 +3295,7 @@ async function pullFromCloud(reason, attempt=1) {
 
         if (checkRes && checkRes.status === 'error' && checkRes.message === 'unauthorized') {
           pushLog('登入已過期，請重新登入', 'error');
-          setTimeout(() => doLogout(), 2000);
+          scheduleLogout();
           return false;
         }
 
@@ -3367,7 +3374,7 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
     if (!Array.isArray(resT)) {
       if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
         pushLog('登入已過期，請重新登入', 'error');
-        setTimeout(() => doLogout(), 2000);
+        scheduleLogout();
         return false;
       }
       pushLog('拉取失敗：Tasks 資料異常', 'error'); return false;
@@ -3375,7 +3382,7 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
     if (!Array.isArray(resC)) {
       if (resC && resC.status === 'error' && resC.message === 'unauthorized') {
         pushLog('登入已過期，請重新登入', 'error');
-        setTimeout(() => doLogout(), 2000);
+        scheduleLogout();
         return false;
       }
       pushLog('拉取失敗：Categories 資料異常', 'error'); return false;
@@ -3546,7 +3553,7 @@ async function pullFromCloudIncremental(reason, hasCatUpdate, hasCusUpdate, fetc
     if (!Array.isArray(resT)) {
       if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
         pushLog('登入已過期，請重新登入', 'error');
-        setTimeout(() => doLogout(), 2000);
+        scheduleLogout();
         return false;
       }
       pushLog('增量拉取失敗：Tasks 資料異常', 'error');
