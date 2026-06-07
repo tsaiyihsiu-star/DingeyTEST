@@ -5692,15 +5692,44 @@ async function doMoveContact(targetName) {
   if (!rowId || !targetName) return;
   closeM('groupPickM');
   playSound('tap');
-  const ok = await _ensureCustomerSynced(targetName);
-  if (!ok) { alert('移轉無法進行：「' + targetName + '」尚未同步到雲端，請先連線同步後再試'); return; }
-  try {
-    const res = await callGasAction('moveContact', { rowId, targetName, sourceName: _contactEditCustName });
-    if (!res || res.status !== 'success') { alert('移轉失敗：' + (res && res.message ? res.message : '未知')); return; }
-    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+  const c = allContacts.find(x => String(x.rowId) === String(rowId));
+  if (!c) return;
+  const target = allCust.find(x => x.name === targetName);
+  const targetKey = target ? _groupKeyOf(target.name) : targetName;
+  const sourceName = _contactEditCustName;
+
+  // 樂觀更新：本機先搬好、畫面立即更新
+  const snapshot = JSON.parse(JSON.stringify(allContacts));   // 失敗還原用
+  const dupLocal = allContacts.some(x =>
+    String(x.groupKey) === String(targetKey) && x.type === c.type &&
+    String(x.content) === String(c.content) && String(x.rowId) !== String(rowId));
+  if (dupLocal) {
+    allContacts = allContacts.filter(x => String(x.rowId) !== String(rowId));  // 目標已有 → 移除來源重複筆
+  } else {
+    c.groupKey = targetKey;
+    if (!c.origin && sourceName) c.origin = sourceName;  // 空來源才標
+  }
+  try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
+  renderContactMng();
+
+  // 雲端背景送
+  const _rollback = (msg) => {
+    allContacts = snapshot;
+    try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
     renderContactMng();
+    if (msg) alert(msg);
+  };
+  try {
+    const ok = await _ensureCustomerSynced(targetName);
+    if (!ok) { _rollback('移轉無法進行：「' + targetName + '」尚未同步到雲端，請先連線同步後再試'); return; }
+    const res = await callGasAction('moveContact', { rowId, targetName, sourceName });
+    if (!res || res.status !== 'success') { _rollback('移轉失敗：' + (res && res.message ? res.message : '未知')); return; }
     pushLog && pushLog(`已移轉一筆聯絡資料 → ${targetName}` + (res.dedup ? '（目標已有、移除重複）' : ''), 'success');
-  } catch(e) { alert('移轉推送失敗：' + e.message); }
+    // 成功 → 背景悄悄對齊雲端（不擋畫面，處理 g-id 補發、dedup 等差異）
+    if (typeof refreshContactsCache === 'function') {
+      refreshContactsCache().then(() => { try { renderContactMng(); } catch(e) {} }).catch(() => {});
+    }
+  } catch(e) { _rollback('移轉推送失敗：' + e.message); }
 }
 
 async function delContactItem(rowId) {
