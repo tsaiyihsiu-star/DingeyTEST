@@ -5437,6 +5437,7 @@ function renderContactMng() {
         </div>
         <div class="cat-acts" style="flex-shrink:0;">
           <span class="cat-act" style="color:var(--primary)" onclick="editContactItem('${escapeAttr(c.rowId)}')">編輯</span>
+          <span class="cat-act" style="color:#FF9500" onclick="moveContactItem('${escapeAttr(c.rowId)}')">移轉</span>
           <span class="cat-act" style="color:var(--red)" onclick="delContactItem('${escapeAttr(c.rowId)}')">刪除</span>
         </div>
       </div>`;
@@ -5504,7 +5505,8 @@ async function saveContactItem() {
     type, label, content,
     sortOrder: existing ? existing.sortOrder : _contactsOf(_contactEditGroupKey).length,
     rowId,
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    origin: existing ? (existing.origin || '') : ''   // v500.32: 編輯保留原來源、新建留空（=主客戶自己建的）
   };
   playSound('add');
   // 本機先套用
@@ -5530,6 +5532,45 @@ async function saveContactItem() {
     if (typeof refreshContactsCache === 'function') refreshContactsCache();
   }
 }
+// v500.32: 把單一筆聯絡項移轉給其他獨立/主客戶
+let _moveContactRowId = null;
+function moveContactItem(rowId) {
+  _moveContactRowId = rowId;
+  // 候選 = 未停用、非子、且不在目前這一組的客戶（獨立或主）
+  const candidates = allCust
+    .filter(c => !c.isStopWord && c.role !== 'sub' && _groupKeyOf(c.name) !== _contactEditGroupKey)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hant'));
+  const listEl = document.getElementById('groupPickList');
+  if (!candidates.length) {
+    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">沒有可移轉的客戶</p>';
+  } else {
+    listEl.innerHTML = candidates.map(c => {
+      const tag = c.role === 'master' ? '<span style="color:#5856D6;font-size:12px;margin-left:6px;">（主）</span>' : '';
+      return `<div class="cat-row" style="cursor:pointer" onclick="doMoveContact('${escapeAttr(c.name)}')">
+        <span class="cat-name">${escapeHtml(c.name)}${tag}</span>
+        <span class="cat-act" style="color:#FF9500">移轉到這 ›</span>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('groupPickTitle').textContent = '把這筆聯絡資料移轉給？';
+  openModal('groupPickM');
+}
+async function doMoveContact(targetName) {
+  const rowId = _moveContactRowId;
+  if (!rowId || !targetName) return;
+  closeM('groupPickM');
+  playSound('tap');
+  const ok = await _ensureCustomerSynced(targetName);
+  if (!ok) { alert('移轉無法進行：「' + targetName + '」尚未同步到雲端，請先連線同步後再試'); return; }
+  try {
+    const res = await callGasAction('moveContact', { rowId, targetName, sourceName: _contactEditCustName });
+    if (!res || res.status !== 'success') { alert('移轉失敗：' + (res && res.message ? res.message : '未知')); return; }
+    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+    renderContactMng();
+    pushLog && pushLog(`已移轉一筆聯絡資料 → ${targetName}` + (res.dedup ? '（目標已有、移除重複）' : ''), 'success');
+  } catch(e) { alert('移轉推送失敗：' + e.message); }
+}
+
 async function delContactItem(rowId) {
   if (!confirm('刪除這筆聯絡項？')) return;
   playSound('delete');
@@ -6085,9 +6126,11 @@ function openContactView(cust) {
   document.getElementById('contactViewTitle').textContent = cust;
   // v500.32: 子客戶 → 標示聯絡資料繼承來源
   let inheritNote = '';
+  let _selfName = cust;  // 這組「本尊(主)」的名字；來源==自己就不標
   const _cObj = allCust.find(x => x.name === cust);
   if (_cObj && _cObj.role === 'sub' && _cObj.masterKey) {
     const _m = allCust.find(x => x.role === 'master' && String(x.groupId) === String(_cObj.masterKey));
+    if (_m) _selfName = _m.name;
     inheritNote = `<div style="font-size:12px;color:#5856D6;background:rgba(88,86,214,.08);border-radius:8px;padding:6px 10px;margin-bottom:8px;">↳ 繼承自主客戶「${escapeHtml(_m ? _m.name : '主')}」的聯絡資料</div>`;
   }
   const el = document.getElementById('contactViewList');
@@ -6095,7 +6138,8 @@ function openContactView(cust) {
     el.innerHTML = inheritNote + '<p style="color:var(--gray);text-align:center;padding:16px 0;">無聯絡資料</p>';
   } else {
     el.innerHTML = inheritNote + contacts.map(c => {
-      const label = c.label ? escapeHtml(c.label) : '';
+      const label = (c.label ? escapeHtml(c.label) : '')
+        + ((c.origin && c.origin !== _selfName) ? ` <span style="color:#FF9500;font-weight:400;font-size:11px;">· 來源：${escapeHtml(c.origin)}</span>` : '');
       if (c.type === 'phone') {
         const tel = String(c.content).replace(/[^0-9+,#*]/g, '');
         const isMobile = /^09/.test(tel);  // 行動電話
