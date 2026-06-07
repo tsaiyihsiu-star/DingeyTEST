@@ -797,12 +797,20 @@
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title" style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
+      <button onclick="toggleCusAdd()" aria-label="新增客戶" style="position:absolute;left:4px;top:50%;transform:translateY(-50%);background:none;border:none;padding:6px;cursor:pointer;color:var(--primary);display:flex;align-items:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" width="22" height="22"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
       客戶管理
       <button onclick="toggleCusSearch()" aria-label="搜尋客戶" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;padding:6px;cursor:pointer;color:var(--primary);display:flex;align-items:center;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
       </button>
     </div>
     <div class="sh-body">
+      <!-- v500.32: 新增客戶（預設收起，點左上＋才展開；輸入框右邊放新增鈕）-->
+      <div id="cusAddRow" class="cat-add-row" style="display:none;margin-top:0;padding-top:0;border-top:none;margin-bottom:10px;">
+        <input type="text" id="newCus" class="cat-add-input" placeholder="新增客戶名…" onkeydown="if(event.key==='Enter'&&!event.isComposing)addCust()">
+        <button class="cat-add-btn" onclick="addCust()">新增</button>
+      </div>
       <!-- v500.31: 客戶搜尋框（預設收起，點放大鏡才展開；只比對客戶名、只找啟用中）-->
       <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" oninput="renderCusList()">
       <div id="cusList"></div>
@@ -816,10 +824,6 @@
       </div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
-      <div class="cat-add-row" style="margin-top:0;padding-top:0;border-top:none;">
-        <input type="text" id="newCus" class="cat-add-input" placeholder="新增客戶…" onkeydown="if(event.key==='Enter'&&!event.isComposing)addCust()">
-        <button class="cat-add-btn" onclick="addCust()">新增</button>
-      </div>
       <!-- v500.31: 匯入聯絡資料（只電腦版顯示）-->
       <button class="import-btn" style="margin-top:8px;" onclick="openContactImport()">
         ⬆ 匯入聯絡資料（Excel）
@@ -835,8 +839,15 @@
 <div id="groupPickM" class="modal" onclick="if(event.target===this)closeM('groupPickM')">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
-    <div class="sh-title" id="groupPickTitle">選擇要併組的客戶</div>
+    <div class="sh-title" style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
+      <span id="groupPickTitle">選擇客戶</span>
+      <button onclick="toggleGroupPickSearch()" aria-label="搜尋客戶" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;padding:6px;cursor:pointer;color:var(--primary);display:flex;align-items:center;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="20" height="20"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+      </button>
+    </div>
     <div class="sh-body">
+      <!-- v500.32: 選客戶搜尋（照客戶管理：預設收起、點放大鏡展開、只比名字）-->
+      <input type="text" id="groupPickSearch" class="cat-add-input" placeholder="搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" oninput="renderGroupPick()">
       <div id="groupPickList"></div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
@@ -5003,6 +5014,11 @@ function openCusM() {
   // v500.31: 每次打開先清空搜尋並收起搜尋框（避免殘留關鍵字導致找不到客戶）
   const si = document.getElementById('cusSearchInput');
   if (si) { si.value = ''; si.style.display = 'none'; }
+  // v500.32: 每次打開先收起新增列、清空
+  const ar = document.getElementById('cusAddRow');
+  if (ar) ar.style.display = 'none';
+  const nc = document.getElementById('newCus');
+  if (nc) nc.value = '';
   _expandedCusName = '';  // v500.31fix: 每次打開都收合所有展開的操作
   renderCusList();
   // v500.31: 重設停用清單為收合狀態、更新標題數量
@@ -5013,12 +5029,34 @@ function openCusM() {
   updateStopWordTitle();
   openModal('cusM');
 }
+// v500.32: 切換新增客戶列（像搜尋——平時收起、點左上＋展開；再點一次收起）
+function toggleCusAdd() {
+  const ar = document.getElementById('cusAddRow');
+  if (!ar) return;
+  const inp = document.getElementById('newCus');
+  if (ar.style.display === 'none') {
+    playSound && playSound('swipe');
+    // v500.32: 互斥——展開新增列時收起搜尋框
+    const si = document.getElementById('cusSearchInput');
+    if (si && si.style.display !== 'none') { si.value = ''; si.style.display = 'none'; si.blur(); renderCusList(); }
+    ar.style.display = '';
+    if (inp) inp.focus();  // iOS PWA：focus 必須在點擊當下同步呼叫
+  } else {
+    playSound && playSound('close');
+    if (inp) { inp.value = ''; inp.blur(); }
+    ar.style.display = 'none';
+  }
+}
 // v500.31: 切換客戶搜尋框（像任務搜尋——平時收起、點放大鏡展開）
 function toggleCusSearch() {
   const si = document.getElementById('cusSearchInput');
   if (!si) return;
   if (si.style.display === 'none') {
     playSound && playSound('swipe');
+    // v500.32: 互斥——展開搜尋框時收起新增列
+    const ar = document.getElementById('cusAddRow');
+    const nc = document.getElementById('newCus');
+    if (ar && ar.style.display !== 'none') { ar.style.display = 'none'; if (nc) { nc.value = ''; nc.blur(); } }
     si.style.display = '';
     si.focus();  // v500.31fix: 同步 focus（iOS PWA 程式化 focus 必須在點擊當下同步呼叫，包進 setTimeout 會喚不起鍵盤、游標跑掉）
   } else {
@@ -5544,6 +5582,61 @@ async function saveContactItem() {
     if (typeof refreshContactsCache === 'function') refreshContactsCache();
   }
 }
+// v500.32: 選客戶視窗（設為子 / 移轉共用）——含搜尋（照客戶管理）
+let _groupPickState = { candidates: [], onclick: '', label: '', color: '', emptyMsg: '' };
+function _openGroupPick(opts) {
+  _groupPickState = {
+    candidates: opts.candidates || [],
+    onclick: opts.onclick,
+    label: opts.label,
+    color: opts.color || 'var(--primary)',
+    emptyMsg: opts.emptyMsg || '沒有可選的客戶'
+  };
+  const si = document.getElementById('groupPickSearch');
+  if (si) { si.value = ''; si.style.display = 'none'; }  // 每次打開收起並清空搜尋
+  const t = document.getElementById('groupPickTitle');
+  if (t) t.textContent = opts.title || '選擇客戶';
+  renderGroupPick();
+  openModal('groupPickM');
+}
+function renderGroupPick() {
+  const st = _groupPickState;
+  const listEl = document.getElementById('groupPickList');
+  if (!listEl) return;
+  const si = document.getElementById('groupPickSearch');
+  const q = (si && si.style.display !== 'none') ? si.value.trim().toLowerCase() : '';
+  if (!st.candidates.length) {
+    listEl.innerHTML = `<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">${escapeHtml(st.emptyMsg)}</p>`;
+    return;
+  }
+  const list = q ? st.candidates.filter(c => String(c.name).toLowerCase().includes(q)) : st.candidates;
+  if (!list.length) {
+    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">找不到符合的客戶</p>';
+    return;
+  }
+  listEl.innerHTML = list.map(c => {
+    const tag = c.role === 'master' ? '<span style="color:#5856D6;font-size:12px;margin-left:6px;">（主）</span>' : '';
+    return `<div class="cat-row" style="cursor:pointer" onclick="${st.onclick}('${escapeAttr(c.name)}')">
+      <span class="cat-name">${escapeHtml(c.name)}${tag}</span>
+      <span class="cat-act" style="color:${st.color}">${st.label}</span>
+    </div>`;
+  }).join('');
+}
+function toggleGroupPickSearch() {
+  const si = document.getElementById('groupPickSearch');
+  if (!si) return;
+  if (si.style.display === 'none') {
+    playSound && playSound('swipe');
+    si.style.display = '';
+    si.focus();  // iOS PWA：focus 須在點擊當下同步呼叫
+  } else {
+    playSound && playSound('close');
+    si.value = '';
+    si.style.display = 'none';
+    renderGroupPick();
+    si.blur();
+  }
+}
 // v500.32: 把單一筆聯絡項移轉給其他獨立/主客戶
 let _moveContactRowId = null;
 function moveContactItem(rowId) {
@@ -5552,20 +5645,10 @@ function moveContactItem(rowId) {
   const candidates = allCust
     .filter(c => !c.isStopWord && c.role !== 'sub' && _groupKeyOf(c.name) !== _contactEditGroupKey)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hant'));
-  const listEl = document.getElementById('groupPickList');
-  if (!candidates.length) {
-    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">沒有可移轉的客戶</p>';
-  } else {
-    listEl.innerHTML = candidates.map(c => {
-      const tag = c.role === 'master' ? '<span style="color:#5856D6;font-size:12px;margin-left:6px;">（主）</span>' : '';
-      return `<div class="cat-row" style="cursor:pointer" onclick="doMoveContact('${escapeAttr(c.name)}')">
-        <span class="cat-name">${escapeHtml(c.name)}${tag}</span>
-        <span class="cat-act" style="color:#FF9500">移轉到這 ›</span>
-      </div>`;
-    }).join('');
-  }
-  document.getElementById('groupPickTitle').textContent = '把這筆聯絡資料移轉給？';
-  openModal('groupPickM');
+  _openGroupPick({
+    candidates, onclick: 'doMoveContact', label: '移轉到這 ›', color: '#FF9500',
+    emptyMsg: '沒有可移轉的客戶', title: '把這筆聯絡資料移轉給？'
+  });
 }
 async function doMoveContact(targetName) {
   const rowId = _moveContactRowId;
@@ -5837,20 +5920,10 @@ function setSubCust(name) {
   const candidates = allCust
     .filter(c => !c.isStopWord && c.name !== name && c.role !== 'sub')
     .sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
-  const listEl = document.getElementById('groupPickList');
-  if (!candidates.length) {
-    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">沒有可當主的客戶</p>';
-  } else {
-    listEl.innerHTML = candidates.map(c => {
-      const tag = c.role === 'master' ? '<span style="color:#5856D6;font-size:12px;margin-left:6px;">（主）</span>' : '';
-      return `<div class="cat-row" style="cursor:pointer" onclick="doSetSub('${escapeAttr(c.name)}')">
-        <span class="cat-name">${escapeHtml(c.name)}${tag}</span>
-        <span class="cat-act" style="color:var(--primary)">選為主 ›</span>
-      </div>`;
-    }).join('');
-  }
-  document.getElementById('groupPickTitle').textContent = `「${name}」要成為誰的子？`;
-  openModal('groupPickM');
+  _openGroupPick({
+    candidates, onclick: 'doSetSub', label: '選為主 ›', color: 'var(--primary)',
+    emptyMsg: '沒有可當主的客戶', title: `「${name}」要成為誰的子？`
+  });
 }
 // v500.32: 共用——樂觀更新 + 失敗還原
 // mutate()：在 allCust 上就地改好（立即重畫）；成功後背景校正；失敗還原快照
