@@ -4390,6 +4390,12 @@ setInterval(() => { updateSyncMeta(); }, 60000);
 
 function openModal(id) {
   playSound('tap'); const m = document.getElementById(id);
+  // v500.32fix: 疊在目前已開啟的 modal 之上（避免從某 modal 內叫出的視窗被壓在後面）
+  const opened = Array.from(document.querySelectorAll('.modal.open')).filter(el => el !== m);
+  if (opened.length) {
+    const maxZ = Math.max(...opened.map(el => Number(el.style.zIndex) || 800));
+    m.style.zIndex = String(maxZ + 2);
+  }
   m.style.display = 'flex'; requestAnimationFrame(() => m.classList.add('open'));
   _startHandleDrag(m, id);
 }
@@ -4406,7 +4412,7 @@ function closeModal(id) {
     handle.removeEventListener('touchend',   m._dragEnd);
     delete m._dragStart; delete m._dragMove; delete m._dragEnd;
   }
-  setTimeout(() => { m.style.display = 'none'; }, 280);
+  setTimeout(() => { m.style.display = 'none'; m.style.zIndex = ''; }, 280);
 }
 function closeM(id) { if (id) closeModal(id); else { closeModal('taskM'); closeModal('catM'); } }
 let _isDraggingModal = false; // 拖曳中暫停 visualViewport 處理
@@ -5429,9 +5435,10 @@ function renderContactMng() {
       return `
       <div class="cat-row" style="align-items:flex-start;">
         <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap;">
             <span style="font-size:11px;font-weight:700;color:#fff;background:${typeColor};border-radius:4px;padding:1px 6px;">${typeLabel}</span>
             ${c.label ? `<span style="font-size:13px;color:var(--text);font-weight:600;">${escapeHtml(c.label)}</span>` : ''}
+            ${(c.origin && c.origin !== _contactEditCustName) ? `<span style="font-size:11px;color:#FF9500;">· 來源：${escapeHtml(c.origin)}</span>` : ''}
           </div>
           <div style="font-size:14px;color:var(--text);word-break:break-all;">${escapeHtml(c.content)}</div>
         </div>
