@@ -2435,7 +2435,16 @@ document.addEventListener('focusout', e => {
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
     if (_isDraggingModal) return;
-    const modal = document.querySelector('.modal.open');
+    // v500.32fix: 疊層時要調「游標所在」的視窗，不是 DOM 最前面那個。
+    // 先抓 focus 元素所屬的開啟視窗；沒有再抓最上層(z-index 最大)的。
+    const _fa = document.activeElement;
+    let modal = (_fa && _fa.closest) ? _fa.closest('.modal.open') : null;
+    if (!modal) {
+      const _opens = Array.from(document.querySelectorAll('.modal.open'));
+      if (!_opens.length) return;
+      modal = _opens.reduce((top, el) =>
+        (Number(el.style.zIndex) || 800) >= (Number(top.style.zIndex) || 800) ? el : top, _opens[0]);
+    }
     if (!modal) return;
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
@@ -2462,12 +2471,11 @@ if (window.visualViewport) {
           const maxBodyH = visibleH - handleH - footerH - 16;
           shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
         }
-        // v500.32fix2: 縮小後把視窗上移，讓底部(footer)停在鍵盤正上方。
-        // iOS PWA 不會自動把 fixed 底部視窗抬到鍵盤上 → 必須自己位移。
-        // 用實測 overflow：平台若已自動抬起則 overflow≈0、不會重複抬。
-        const _rect = sheet.getBoundingClientRect();
-        const _ov = _rect.bottom - window.visualViewport.height;
-        sheet.style.transform = _ov > 0 ? `translateY(-${Math.ceil(_ov)}px)` : '';
+        // v500.32fix3: 直接用鍵盤高度 kbH 上移，讓底部停在鍵盤正上方。
+        // 不可用 getBoundingClientRect 量超出量——它會把「目前已套用的 transform」算進去，
+        // 連打注音時候選列變動會連續觸發 resize，第二次量到 ≈0 → 把位移歸零 → 視窗又掉回鍵盤後面
+        // （這正是「只有搜尋打字時才壞」的原因）。
+        sheet.style.transform = `translateY(-${Math.ceil(kbH)}px)`;
       } else {
         const sheetRect = sheet.getBoundingClientRect();
         const visibleH = window.visualViewport.height;
