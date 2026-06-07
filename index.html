@@ -5584,20 +5584,44 @@ async function confirmContactImport() {
   const items = buildContactImportItems();
   if (!items.length) { alert('沒有可匯入的資料'); return; }
   if (!confirm(`即將匯入 ${items.length} 筆聯絡項（已存在的會自動跳過）。確定匯入？`)) return;
-  closeM('cImportMapM');
+
+  const subEl = document.getElementById('cImportSub');
+  const BATCH = 20;  // 每批 20 筆：看得到進度、又避免 GAS 逾時
+  const tot = { added:0, skipped:0, newIndep:0, newSub:0, recoded:0, unstopped:0, conflicts:0 };
+  let aborted = false;
   pushLog && pushLog(`匯入中…共 ${items.length} 筆`, 'info');
   try {
-    const res = await callGasAction('importContacts', { items }, 60000);
-    if (res && res.status === 'success') {
-      await refreshContactsCache();
-      await fullSync('匯入後');
-      const msg = `匯入完成！\n新增聯絡項：${res.added} 筆\n跳過（已存在）：${res.skipped} 筆\n新建客戶：${res.newCust} 個` + (res.normalized ? `\n更新編號：${res.normalized} 個` : '') + (res.unstopped ? `\n解除停用：${res.unstopped} 個` : '');
+    for (let i = 0; i < items.length; i += BATCH) {
+      const chunk = items.slice(i, i + BATCH);
+      const done = Math.min(i + BATCH, items.length);
+      if (subEl) subEl.textContent = `匯入中… ${done} / ${items.length}`;
+      const res = await callGasAction('importContacts', { items: chunk }, 60000);
+      if (!res || res.status !== 'success') {
+        aborted = true;
+        alert(`匯入中斷（第 ${i + 1} 筆起）：` + (res && res.message ? res.message : '未知錯誤') + '\n已匯入的部分仍有效，可修正後重跑（重複會自動跳過）。');
+        break;
+      }
+      tot.added += res.added || 0;
+      tot.skipped += res.skipped || 0;
+      tot.newIndep += res.newIndep || 0;
+      tot.newSub += res.newSub || 0;
+      tot.recoded += res.recoded || 0;
+      tot.unstopped += res.unstopped || 0;
+      tot.conflicts += res.conflicts || 0;
+    }
+    closeM('cImportMapM');
+    await refreshContactsCache();
+    await fullSync('匯入後');
+    if (!aborted) {
+      const msg = `匯入完成！\n新增聯絡項：${tot.added} 筆\n跳過（已存在）：${tot.skipped} 筆\n新建獨立客戶：${tot.newIndep} 個\n新建子客戶：${tot.newSub} 個`
+        + (tot.recoded ? `\n換編號：${tot.recoded} 個` : '')
+        + (tot.unstopped ? `\n解除停用：${tot.unstopped} 個` : '')
+        + (tot.conflicts ? `\n⚠ 衝突需檢視：${tot.conflicts} 筆` : '');
       alert(msg);
-      pushLog && pushLog(`匯入完成：新增${res.added}、跳過${res.skipped}、新客戶${res.newCust}`, 'success');
-    } else {
-      alert('匯入失敗：' + (res && res.message ? res.message : '未知錯誤'));
+      pushLog && pushLog(`匯入完成：新增${tot.added}、跳過${tot.skipped}、新客戶${tot.newIndep + tot.newSub}` + (tot.conflicts ? `、衝突${tot.conflicts}` : ''), 'success');
     }
   } catch(e) {
+    if (subEl) subEl.textContent = '';
     alert('匯入推送失敗：' + e.message);
   }
 }
@@ -5722,40 +5746,73 @@ function setSubCust(name) {
   document.getElementById('groupPickTitle').textContent = `「${name}」要成為誰的子？`;
   openModal('groupPickM');
 }
-async function doSetSub(masterName) {
+// v500.32: 共用——樂觀更新 + 失敗還原
+// mutate()：在 allCust 上就地改好（立即重畫）；成功後背景校正；失敗還原快照
+async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
+  const snapshot = JSON.parse(JSON.stringify(allCust));  // 還原用快照
+  playSound('tap');
+  try { mutate(); } catch(err) { allCust = snapshot; alert(label + '失敗：' + err.message); return; }
+  saveLocal(); renderCusList(); render();   // 先讓畫面瞬間生效
+  const rollback = (msg) => { allCust = snapshot; saveLocal(); renderCusList(); render(); alert(msg); };
+  try {
+    const res = await callGasAction(action, payload);   // 背景送雲端
+    if (!res || res.status !== 'success') {
+      rollback(label + '失敗，已還原：' + (res && res.message ? res.message : '未知'));
+      return;
+    }
+    pushLog && pushLog(label + '完成：' + (payload.name || ''), 'success');
+    // 成功 → 只有動到聯絡資料的操作才背景重抓校正（不 await，不卡畫面）
+    if (needRefresh && typeof refreshContactsCache === 'function') refreshContactsCache();
+  } catch(e) {
+    rollback(label + '推送失敗，已還原：' + e.message);
+  }
+}
+
+function doSetSub(masterName) {
   const name = _setSubSourceName;
   if (!name || !masterName) return;
   closeM('groupPickM');
-  playSound('tap');
-  try {
-    const res = await callGasAction('setAsSub', { name, masterName });
-    if (!res || res.status !== 'success') { alert('設為子失敗：' + (res && res.message ? res.message : '未知錯誤')); return; }
-    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
-    renderCusList(); render();
-    pushLog && pushLog(`已設為子：${name} → 屬於 ${masterName}`, 'success');
-  } catch(e) { alert('設為子推送失敗：' + e.message); }
+  const master = allCust.find(c => c.name === masterName);
+  const sub = allCust.find(c => c.name === name);
+  if (!master || !sub) { alert('找不到客戶'); return; }
+  const mk = master.groupId ? String(master.groupId) : '';
+  _roleOptimistic('設為子',
+    () => {
+      const now = Date.now();
+      if ((master.role || '') !== 'master') { master.role = 'master'; master.updatedAt = now; }
+      sub.role = 'sub'; sub.masterKey = mk; sub.updatedAt = now;
+    },
+    'setAsSub', { name, masterName }, true);
 }
-async function promoteCust(name) {
+
+function promoteCust(name) {
+  const B = allCust.find(c => c.name === name);
+  if (!B || B.role !== 'sub' || !B.masterKey) { alert('此客戶不是子客戶'); return; }
   if (!confirm(`把「${name}」升為主？\n\n原本的主會降為它的子、同組其他客戶改拜它為主，聯絡資料整批接收；編號則在它沒有編號時才接收。`)) return;
-  playSound('tap');
-  try {
-    const res = await callGasAction('promoteToMaster', { name });
-    if (!res || res.status !== 'success') { alert('升為主失敗：' + (res && res.message ? res.message : '未知')); return; }
-    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
-    renderCusList(); render();
-    pushLog && pushLog(`已升為主：${name}`, 'success');
-  } catch(e) { alert('升為主推送失敗：' + e.message); }
+  const oldGid = String(B.masterKey);
+  const A = allCust.find(c => c.role === 'master' && String(c.groupId) === oldGid);
+  _roleOptimistic('升為主',
+    () => {
+      const now = Date.now();
+      if (A && !B.custCode && A.custCode) { B.custCode = A.custCode; A.custCode = ''; }  // 編號：B 沒、A 有 → 搬
+      B.role = 'master'; B.masterKey = ''; B.updatedAt = now;
+      if (A) { A.role = 'sub'; A.masterKey = String(B.groupId); A.updatedAt = now; }
+      allCust.forEach(c => {                       // 其他子改拜 B
+        if (c !== B && c !== A && c.role === 'sub' && String(c.masterKey) === oldGid) {
+          c.masterKey = String(B.groupId); c.updatedAt = now;
+        }
+      });
+    },
+    'promoteToMaster', { name }, true);
 }
-async function detachCust(name) {
+
+function detachCust(name) {
+  const c = allCust.find(x => x.name === name);
+  if (!c || c.role !== 'sub') { alert('此客戶不是子客戶'); return; }
   if (!confirm(`把「${name}」脫離群組、變回獨立客戶？\n（它將不再繼承主的聯絡資料）`)) return;
-  playSound('tap');
-  try {
-    const res = await callGasAction('detachFromMaster', { name });
-    if (!res || res.status !== 'success') { alert('脫離失敗：' + (res && res.message ? res.message : '未知')); return; }
-    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
-    renderCusList(); render();
-    pushLog && pushLog(`已脫離、變獨立：${name}`, 'success');
-  } catch(e) { alert('脫離推送失敗：' + e.message); }
+  _roleOptimistic('脫離',
+    () => { c.role = ''; c.masterKey = ''; c.updatedAt = Date.now(); },
+    'detachFromMaster', { name }, false);   // 脫離不動聯絡資料、不需重抓
 }
 
 // ── 全部長壓日期篩選 ─────────────────────────────
