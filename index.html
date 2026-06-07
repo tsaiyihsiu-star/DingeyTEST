@@ -5748,12 +5748,24 @@ function setSubCust(name) {
 }
 // v500.32: 共用——樂觀更新 + 失敗還原
 // mutate()：在 allCust 上就地改好（立即重畫）；成功後背景校正；失敗還原快照
+let _roleInflight = 0;        // 進行中的雲端角色請求數
+let _roleRefreshTimer = null; // 合併重抓計時器
+// 連續操作時把「背景重抓」合併成一次：等停手約 1.5 秒、且雲端請求都回來了才抓
+function _scheduleRoleRefresh() {
+  if (_roleRefreshTimer) clearTimeout(_roleRefreshTimer);
+  _roleRefreshTimer = setTimeout(function run() {
+    if (_roleInflight > 0) { _roleRefreshTimer = setTimeout(run, 600); return; }  // 還有沒回來的、再等
+    _roleRefreshTimer = null;
+    if (typeof refreshContactsCache === 'function') refreshContactsCache();
+  }, 1500);
+}
 async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
   const snapshot = JSON.parse(JSON.stringify(allCust));  // 還原用快照
   playSound('tap');
   try { mutate(); } catch(err) { allCust = snapshot; alert(label + '失敗：' + err.message); return; }
   saveLocal(); renderCusList(); render();   // 先讓畫面瞬間生效
   const rollback = (msg) => { allCust = snapshot; saveLocal(); renderCusList(); render(); alert(msg); };
+  _roleInflight++;
   try {
     const res = await callGasAction(action, payload);   // 背景送雲端
     if (!res || res.status !== 'success') {
@@ -5761,10 +5773,12 @@ async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
       return;
     }
     pushLog && pushLog(label + '完成：' + (payload.name || ''), 'success');
-    // 成功 → 只有動到聯絡資料的操作才背景重抓校正（不 await，不卡畫面）
-    if (needRefresh && typeof refreshContactsCache === 'function') refreshContactsCache();
+    // 成功 → 動到聯絡資料的操作排一次「合併重抓」（連續操作只會抓最後一次）
+    if (needRefresh) _scheduleRoleRefresh();
   } catch(e) {
     rollback(label + '推送失敗，已還原：' + e.message);
+  } finally {
+    _roleInflight--;
   }
 }
 
