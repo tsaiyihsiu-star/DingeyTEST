@@ -2441,7 +2441,13 @@ if (window.visualViewport) {
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
     if (kbH > 80) {
-      if (modal.id === 'catM' || modal.id === 'taskM') {
+      // v500.32fix: 改用「是否有底部列(footer)」判斷，而非寫死 id。
+      // 有 footer 的高視窗（catM/taskM/cusM/contactM/groupPickM…）一律縮小 sh-body，讓內容在鍵盤上方可捲動，
+      // 避免高視窗用 translateY 移不上去、下半部被鍵盤蓋住。
+      const _shBodyChk = sheet.querySelector('.sh-body');
+      const _footerChk = _shBodyChk ? _shBodyChk.nextElementSibling : null;
+      const _hasFooter = !!(_shBodyChk && _footerChk && _footerChk.tagName === 'DIV');
+      if (_hasFooter) {
         // catM / taskM：縮小 sh-body 讓 footer 保持在鍵盤上方
         // v500.27.5: taskM 加客戶欄位後變高、需要同樣的縮小處理
         const shBody = sheet.querySelector('.sh-body');
@@ -2474,11 +2480,9 @@ if (window.visualViewport) {
       }
     } else {
       sheet.style.transform = '';
-      // catM / taskM：恢復 sh-body 高度
-      if (modal.id === 'catM' || modal.id === 'taskM') {
-        const shBody = sheet.querySelector('.sh-body');
-        if (shBody) shBody.style.maxHeight = '';
-      }
+      // v500.32fix: 一律恢復 sh-body 高度
+      const _shBodyR = sheet.querySelector('.sh-body');
+      if (_shBodyR) _shBodyR.style.maxHeight = '';
     }
   });
 }
