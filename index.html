@@ -5068,6 +5068,10 @@ function toggleCusAdd() {
     // v500.32: 互斥——展開新增列時收起搜尋框
     const si = document.getElementById('cusSearchInput');
     if (si && si.style.display !== 'none') { si.value = ''; si.style.display = 'none'; si.blur(); renderCusList(); }
+    _expandedCusName = '';   // v500.32fix: 收合展開的客戶，避免新增列被擠到看不到
+    renderCusList();
+    const _b = document.getElementById('cusM') && document.getElementById('cusM').querySelector('.sh-body');
+    if (_b) _b.scrollTop = 0;  // 捲回最上方，確保新增列露出
     ar.style.display = '';
     if (inp) inp.focus();  // iOS PWA：focus 必須在點擊當下同步呼叫
   } else {
@@ -5086,6 +5090,10 @@ function toggleCusSearch() {
     const ar = document.getElementById('cusAddRow');
     const nc = document.getElementById('newCus');
     if (ar && ar.style.display !== 'none') { ar.style.display = 'none'; if (nc) { nc.value = ''; nc.blur(); } }
+    _expandedCusName = '';   // v500.32fix: 收合展開的客戶，避免搜尋欄被擠到看不到
+    renderCusList();
+    const _b = document.getElementById('cusM') && document.getElementById('cusM').querySelector('.sh-body');
+    if (_b) _b.scrollTop = 0;  // 捲回最上方，確保搜尋欄露出
     si.style.display = '';
     si.focus();  // v500.31fix: 同步 focus（iOS PWA 程式化 focus 必須在點擊當下同步呼叫，包進 setTimeout 會喚不起鍵盤、游標跑掉）
   } else {
