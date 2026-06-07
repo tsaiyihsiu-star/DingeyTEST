@@ -5509,6 +5509,7 @@ async function saveContactItem() {
   const rowId = _editingContactRowId || ('C' + Date.now() + Math.floor(Math.random()*1000));
   const contact = {
     groupKey: _contactEditGroupKey,
+    custName: _contactEditCustName,   // v500.32fix #5: 帶客戶名，後端據此確保 g-id、綁 g-id 不綁名字
     type, label, content,
     sortOrder: existing ? existing.sortOrder : _contactsOf(_contactEditGroupKey).length,
     rowId,
@@ -5533,6 +5534,10 @@ async function saveContactItem() {
       if (typeof refreshContactsCache === 'function') refreshContactsCache();  // v500.32fix: 對齊雲端，移除本機未成功的暫存
     } else {
       pushLog && pushLog(`聯絡資料已儲存`, 'success');
+      // v500.32fix #5: 後端若幫此客戶補了新 g-id（groupKey 改變）→ 重抓對齊（少見）
+      if (res.groupKey && String(res.groupKey) !== String(contact.groupKey) && typeof refreshContactsCache === 'function') {
+        refreshContactsCache();
+      }
     }
   } catch(e) {
     pushLog && pushLog(`聯絡資料推送失敗：${e.message}`, 'error');
