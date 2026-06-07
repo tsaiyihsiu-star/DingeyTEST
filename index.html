@@ -2462,7 +2462,12 @@ if (window.visualViewport) {
           const maxBodyH = visibleH - handleH - footerH - 16;
           shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
         }
-        sheet.style.transform = '';
+        // v500.32fix2: 縮小後把視窗上移，讓底部(footer)停在鍵盤正上方。
+        // iOS PWA 不會自動把 fixed 底部視窗抬到鍵盤上 → 必須自己位移。
+        // 用實測 overflow：平台若已自動抬起則 overflow≈0、不會重複抬。
+        const _rect = sheet.getBoundingClientRect();
+        const _ov = _rect.bottom - window.visualViewport.height;
+        sheet.style.transform = _ov > 0 ? `translateY(-${Math.ceil(_ov)}px)` : '';
       } else {
         const sheetRect = sheet.getBoundingClientRect();
         const visibleH = window.visualViewport.height;
