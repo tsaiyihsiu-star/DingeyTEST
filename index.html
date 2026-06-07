@@ -2498,10 +2498,12 @@ if (window.visualViewport) {
         }
       }
     } else {
-      sheet.style.transform = '';
-      // v500.32fix: 一律恢復 sh-body 高度
-      const _shBodyR = sheet.querySelector('.sh-body');
-      if (_shBodyR) _shBodyR.style.maxHeight = '';
+      // v500.32fix: 鍵盤收起 → 還原「所有開啟視窗」的位移與內容高度。
+      // 保險做法：避免殘留的 transform / sh-body maxHeight 把視窗撐高、底部留大空白。
+      document.querySelectorAll('.modal.open').forEach(m => {
+        const s = m.querySelector('.sheet'); if (s) s.style.transform = '';
+        const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
+      });
     }
   });
 }
@@ -5042,6 +5044,10 @@ function openCusM() {
   if (ar) ar.style.display = 'none';
   const nc = document.getElementById('newCus');
   if (nc) nc.value = '';
+  // v500.32fix: 清掉可能殘留的位移/內容高度，讓視窗高度回到「跟著內容縮」
+  const _cm = document.getElementById('cusM');
+  const _cs = _cm && _cm.querySelector('.sheet'); if (_cs) _cs.style.transform = '';
+  const _cb = _cm && _cm.querySelector('.sh-body'); if (_cb) _cb.style.maxHeight = '';
   _expandedCusName = '';  // v500.31fix: 每次打開都收合所有展開的操作
   renderCusList();
   // v500.31: 重設停用清單為收合狀態、更新標題數量
