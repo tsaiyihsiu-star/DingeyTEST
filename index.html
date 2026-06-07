@@ -3573,6 +3573,8 @@ async function pullFromCloudIncremental(reason, hasCatUpdate, hasCusUpdate, fetc
     // v500.27
     if (hasCusUpdate) {
       calls.push(fetchWithTimeout(`${GAS_URL}?action=getCustomers&token=${sessionToken}`).then(r => r.json()).catch(() => null));
+      // v500.32fix: 客戶有變動就連帶抓聯絡資料（聯絡資料異動會 bump 客戶 UpdatedAt → 這裡才收得到、跨裝置才同步）
+      calls.push(fetchWithTimeout(`${GAS_URL}?action=getContacts&token=${sessionToken}`).then(r => r.json()).catch(() => null));
     }
 
     const results = await Promise.all(calls);
@@ -3580,6 +3582,7 @@ async function pullFromCloudIncremental(reason, hasCatUpdate, hasCusUpdate, fetc
     let idx = 1;
     const resC = hasCatUpdate ? results[idx++] : null;
     const resCust = hasCusUpdate ? results[idx++] : null;
+    const resContacts = hasCusUpdate ? results[idx++] : null;
 
     if (!Array.isArray(resT)) {
       if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
@@ -3643,7 +3646,12 @@ async function pullFromCloudIncremental(reason, hasCatUpdate, hasCusUpdate, fetc
 
     // v500.27: 處理客戶名單（若有變動）
     if (resCust && Array.isArray(resCust)) {
-      allCust = resCust;
+      allCust = _mergeCloudCustomers(resCust);   // v500.32fix: 保留本機 pending 新增、避免被吞
+    }
+    // v500.32fix: 處理聯絡資料（若有變動）
+    if (resContacts && Array.isArray(resContacts)) {
+      allContacts = resContacts;
+      localStorage.setItem('contactsCache', JSON.stringify(allContacts));
     }
 
     saveLocal();
@@ -5069,7 +5077,9 @@ function renderCusList() {
   // 單一客戶列（isSub=true 時縮排 + 樹狀連接線）
   const renderRow = (c, isSub) => {
     const cnt = Number(c.taskCount) || 0;
-    const role = c.role || (isSub ? 'sub' : '');
+    let role = c.role || (isSub ? 'sub' : '');
+    // v500.32fix: 沒有子的「主」視同獨立（不顯示主徽章、給獨立選單，避免空殼主卡住）
+    if (role === 'master' && !((subsOf[String(c.groupId)] || []).length)) role = '';
     const gk = _groupKeyOf(c.name);
     const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
     const nm = escapeAttr(c.name);
@@ -5122,7 +5132,7 @@ function renderCusList() {
       const subs = subsOf[String(t.groupId)] || [];
       html += subs.map(s => renderRow(s, true)).join('');
     }
-    return `<div class="cus-tree-group" style="border-left:${t.role === 'master' ? '2px solid rgba(88,86,214,.18)' : '2px solid transparent'};margin-bottom:2px;">${html}</div>`;
+    return `<div class="cus-tree-group" style="border-left:${(t.role === 'master' && (subsOf[String(t.groupId)]||[]).length) ? '2px solid rgba(88,86,214,.18)' : '2px solid transparent'};margin-bottom:2px;">${html}</div>`;
   }).join('');
 }
 async function addCust() {
@@ -5298,6 +5308,47 @@ function _contactsOf(groupKey) {
     .sort((a,b) => (Number(a.sortOrder)||0) - (Number(b.sortOrder)||0));
 }
 // 從雲端抓整份 CustomerContacts、存本地快取
+// v500.32fix: 用雲端客戶清單覆蓋本機，但保留本機「還沒推上去」的變更（新增 / 改名 / 停用），避免被蓋回
+function _mergeCloudCustomers(cloudArr) {
+  if (!Array.isArray(cloudArr)) return allCust;
+  let merged = cloudArr.slice();
+  // 1. 保留 pending 新增（雲端還沒有這個客戶）
+  const cloudNames = new Set(merged.map(c => String(c.name)));
+  const pendingNew = (allCust || []).filter(local => {
+    if (cloudNames.has(String(local.name))) return false;
+    return (cusOpLog || []).some(o => o.status === 'pending' && String(o.customerName) === String(local.name) && o.op === 'add');
+  });
+  if (pendingNew.length) merged = merged.concat(pendingNew);
+  // 2. 套用 pending 改名（雲端還是舊名 → 顯示新名）
+  (pendingQueue || []).forEach(q => {
+    if (q.action === 'renameCustomer' && q.payload && q.payload.oldName && q.payload.newName) {
+      const e = merged.find(c => String(c.name) === String(q.payload.oldName));
+      if (e) e.name = String(q.payload.newName);
+    }
+  });
+  // 3. 套用 pending 停用/解除停用
+  (cusOpLog || []).forEach(o => {
+    if (o.status === 'pending' && o.op === 'update' && o.payload && ('isStopWord' in o.payload)) {
+      const e = merged.find(c => String(c.name) === String(o.customerName));
+      if (e) e.isStopWord = o.payload.isStopWord === true;
+    }
+  });
+  return merged;
+}
+
+// v500.32fix: 角色/編號操作前，先確保該客戶在雲端已建好（新增/改名還沒推 → 先 flush）
+// 回傳 false = 還沒同步且無法即時推（離線）→ 呼叫端應中止
+async function _ensureCustomerSynced(name) {
+  if (!name) return true;
+  const hasPending =
+    (cusOpLog || []).some(o => o.status === 'pending' && String(o.customerName) === String(name)) ||
+    (pendingQueue || []).some(q => q.action === 'renameCustomer' && q.payload && String(q.payload.newName) === String(name)) ||
+    (pendingQueue || []).some(q => q.action === 'addCustomer' && q.payload && String(q.payload.name) === String(name));
+  if (!hasPending) return true;             // 沒有待推 → 直接可做
+  if (typeof isOnline === 'function' && !isOnline()) return false;  // 離線、推不上去
+  try { await flushQueue(); return true; } catch(e) { return false; }
+}
+
 async function refreshContactsCache() {
   try {
     if (!isOnline || !isOnline()) return;
@@ -5331,18 +5382,12 @@ async function refreshContactsCache() {
       if (Array.isArray(cust)) {
         // v500.31fix: 保留「本機剛新增、cusOpLog 還沒推上後端」的客戶，
         // 否則手動新增客戶後馬上存聯絡資料，這裡重抓會用尚未含新客戶的後端清單覆蓋、把新客戶吞掉
-        const cloudNames = new Set(cust.map(c => String(c.name)));
-        const pendingNew = (allCust || []).filter(local => {
-          if (cloudNames.has(String(local.name))) return false;       // 後端已有、不需保留
-          // 本機有、後端沒有：只有在「cusOpLog 還有這客戶的 pending add」時才保留
-          return (cusOpLog || []).some(o =>
-            o.status === 'pending' && String(o.customerName) === String(local.name) && o.op === 'add');
-        });
-        allCust = pendingNew.length ? cust.concat(pendingNew) : cust;
+        const before = (allCust || []).length;
+        allCust = _mergeCloudCustomers(cust);
         saveLocal();
         if (typeof renderCusList === 'function' && document.getElementById('cusM') && document.getElementById('cusM').classList.contains('open')) renderCusList();
         render();
-        console.log('[refreshContactsCache] 客戶名單已刷新 ' + allCust.length + ' 筆（保留 pending 新增 ' + pendingNew.length + '）');
+        console.log('[refreshContactsCache] 客戶名單已刷新 ' + allCust.length + ' 筆（前 ' + before + '）');
       }
     } catch(e2) {
       console.log('[refreshContactsCache] 客戶刷新失敗: ' + e2.message);
@@ -5476,11 +5521,13 @@ async function saveContactItem() {
     const res = await callGasAction('saveContact', { contact });
     if (!res || (res.status !== 'added' && res.status !== 'updated')) {
       pushLog && pushLog(`聯絡資料儲存失敗：${res && res.message ? res.message : '未知'}`, 'error');
+      if (typeof refreshContactsCache === 'function') refreshContactsCache();  // v500.32fix: 對齊雲端，移除本機未成功的暫存
     } else {
       pushLog && pushLog(`聯絡資料已儲存`, 'success');
     }
   } catch(e) {
     pushLog && pushLog(`聯絡資料推送失敗：${e.message}`, 'error');
+    if (typeof refreshContactsCache === 'function') refreshContactsCache();
   }
 }
 async function delContactItem(rowId) {
@@ -5494,6 +5541,7 @@ async function delContactItem(rowId) {
     pushLog && pushLog('聯絡項已刪除', 'success');
   } catch(e) {
     pushLog && pushLog(`刪除推送失敗：${e.message}`, 'error');
+    if (typeof refreshContactsCache === 'function') refreshContactsCache();  // v500.32fix: 對齊雲端，刪除失敗時把資料拉回
   }
 }
 
@@ -5707,6 +5755,9 @@ async function editCusCode(name) {
   const code = input.trim();
   if (code === cur) return;    // 沒變
   playSound('tap');
+  // v500.32fix: 先確保客戶已在雲端（新增/改名還沒推 → 先 flush），否則後端找不到列
+  const _ok = await _ensureCustomerSynced(name);
+  if (!_ok) { alert('改編號無法進行：「' + name + '」尚未同步到雲端，請先連線同步後再試'); return; }
   if (c) { c.custCode = code; c.updatedAt = Date.now(); }
   saveLocal();
   renderCusList(); render();
@@ -5715,10 +5766,12 @@ async function editCusCode(name) {
     if (res && res.status === 'success') {
       pushLog && pushLog(`已設定「${name}」編號：${code || '(清除)'}`, 'success');
     } else {
-      alert('設定編號失敗：' + (res && res.message ? res.message : '未知'));
+      if (c) { c.custCode = cur; c.updatedAt = Date.now(); saveLocal(); renderCusList(); }  // v500.32fix: 還原
+      alert('設定編號失敗，已還原：' + (res && res.message ? res.message : '未知'));
     }
   } catch(e) {
-    alert('設定編號推送失敗：' + e.message);
+    if (c) { c.custCode = cur; c.updatedAt = Date.now(); saveLocal(); renderCusList(); }  // v500.32fix: 還原
+    alert('設定編號推送失敗，已還原：' + e.message);
   }
 }
 
@@ -5760,6 +5813,12 @@ function _scheduleRoleRefresh() {
   }, 1500);
 }
 async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
+  // v500.32fix: 先確保相關客戶（含主）已在雲端建好，避免後端找不到列而失敗
+  const _names = [payload.name, payload.masterName].filter(Boolean);
+  for (const _nm of _names) {
+    const ok = await _ensureCustomerSynced(_nm);
+    if (!ok) { alert(label + '無法進行：「' + _nm + '」尚未同步到雲端，請先連線同步後再試'); return; }
+  }
   const snapshot = JSON.parse(JSON.stringify(allCust));  // 還原用快照
   playSound('tap');
   try { mutate(); } catch(err) { allCust = snapshot; alert(label + '失敗：' + err.message); return; }
@@ -5769,7 +5828,10 @@ async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
   try {
     const res = await callGasAction(action, payload);   // 背景送雲端
     if (!res || res.status !== 'success') {
-      rollback(label + '失敗，已還原：' + (res && res.message ? res.message : '未知'));
+      // 後端打回：通常是本機快取與雲端不同步 → 還原後強制重抓對齊（解除卡住）
+      allCust = snapshot; saveLocal(); renderCusList(); render();
+      alert(label + '未完成：' + (res && res.message ? res.message : '未知') + '\n（已重新同步為雲端最新狀態）');
+      if (typeof refreshContactsCache === 'function') refreshContactsCache();
       return;
     }
     pushLog && pushLog(label + '完成：' + (payload.name || ''), 'success');
@@ -5824,9 +5886,16 @@ function detachCust(name) {
   const c = allCust.find(x => x.name === name);
   if (!c || c.role !== 'sub') { alert('此客戶不是子客戶'); return; }
   if (!confirm(`把「${name}」脫離群組、變回獨立客戶？\n（它將不再繼承主的聯絡資料）`)) return;
+  const oldMk = String(c.masterKey || '');
   _roleOptimistic('脫離',
-    () => { c.role = ''; c.masterKey = ''; c.updatedAt = Date.now(); },
-    'detachFromMaster', { name }, false);   // 脫離不動聯絡資料、不需重抓
+    () => {
+      c.role = ''; c.masterKey = ''; c.updatedAt = Date.now();
+      if (oldMk && !allCust.some(x => x.role === 'sub' && String(x.masterKey) === oldMk)) {
+        const m = allCust.find(x => x.role === 'master' && String(x.groupId) === oldMk);
+        if (m) { m.role = ''; m.updatedAt = Date.now(); }
+      }
+    },
+    'detachFromMaster', { name }, false);
 }
 
 // ── 全部長壓日期篩選 ─────────────────────────────
