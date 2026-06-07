@@ -5027,48 +5027,71 @@ function toggleCusExpand(name) {
 }
 function renderCusList() {
   const el = document.getElementById('cusList');
-  // 過濾掉停用詞（停用詞不是真客戶，不列在客戶管理）
-  let list = allCust.filter(c => !c.isStopWord).sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
-  // v500.31: 搜尋過濾（只比對客戶名）
+  const active = allCust.filter(c => !c.isStopWord);
   const kwEl = document.getElementById('cusSearchInput');
   const kw = kwEl ? kwEl.value.trim() : '';
-  if (kw) list = list.filter(c => String(c.name).includes(kw));
-  if (!list.length) {
-    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">' + (kw ? '找不到符合的客戶' : '尚無客戶，可在下方新增') + '</p>';
+  if (!active.length) {
+    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">尚無客戶，可在下方新增</p>';
     return;
   }
-  // v500.32: GroupId → 主客戶名（給子顯示「↳屬於 XX」用）
-  const gidToMaster = {};
-  allCust.forEach(c => { if (c.role === 'master' && c.groupId) gidToMaster[String(c.groupId)] = c.name; });
 
-  el.innerHTML = list.map(c => {
+  // v500.32 樹狀：主 → 其子縮排掛在底下
+  // 主 GroupId 索引、子分群
+  const byGid = {};
+  active.forEach(c => { if (c.role === 'master' && c.groupId) byGid[String(c.groupId)] = c; });
+  const subsOf = {};
+  active.forEach(c => {
+    if (c.role === 'sub' && c.masterKey) {
+      (subsOf[String(c.masterKey)] = subsOf[String(c.masterKey)] || []).push(c);
+    }
+  });
+  Object.keys(subsOf).forEach(k => subsOf[k].sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant')));
+
+  // 頂層 = 非子（獨立 + 主）+ 找不到主的孤兒子（防呆）
+  let tops = active.filter(c => c.role !== 'sub');
+  const orphanSubs = active.filter(c => c.role === 'sub' && (!c.masterKey || !byGid[String(c.masterKey)]));
+  tops = tops.concat(orphanSubs).sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
+
+  // 搜尋：頂層自己符合、或它底下有子符合 → 顯示（並顯示整組）
+  const hit = c => !kw || String(c.name).includes(kw);
+  if (kw) {
+    tops = tops.filter(t => {
+      if (hit(t)) return true;
+      const subs = (t.role === 'master' && t.groupId) ? (subsOf[String(t.groupId)] || []) : [];
+      return subs.some(hit);
+    });
+  }
+  if (!tops.length) {
+    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">找不到符合的客戶</p>';
+    return;
+  }
+
+  // 單一客戶列（isSub=true 時縮排 + 樹狀連接線）
+  const renderRow = (c, isSub) => {
     const cnt = Number(c.taskCount) || 0;
-    const role = c.role || '';
+    const role = c.role || (isSub ? 'sub' : '');
     const gk = _groupKeyOf(c.name);
     const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
     const nm = escapeAttr(c.name);
     const expanded = (_expandedCusName === c.name);
 
-    // v500.32 主標「主」徽章
     const badge = (role === 'master')
       ? `<span style="flex-shrink:0;font-size:11px;font-weight:700;color:#fff;background:#5856D6;border-radius:5px;padding:1px 6px;margin-right:4px;">主</span>` : '';
-    // 名稱列：有聯絡資料 → 名字前放可點的綠色電話圖示（子靠繼承也會有）
     const callIcon = hasContacts
       ? `<span onclick="event.stopPropagation();openContactView('${nm}')" aria-label="撥號/導航" style="flex-shrink:0;display:inline-flex;align-items:center;padding:2px 4px;margin-right:2px;cursor:pointer;">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="var(--green)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
         </span>` : '';
 
-    const indent = (role === 'sub') ? 'padding-left:22px;' : '';
-    const subLabel = (role === 'sub')
-      ? `<div style="font-size:11px;color:var(--gray);padding:2px 4px 6px 22px;">↳ 屬於 ${escapeHtml(gidToMaster[String(c.masterKey)] || '（未知主）')}</div>`
-      : '';
+    // 子：縮排 + 樹狀連接線
+    const rowPad = isSub ? 'padding-left:14px;' : '';
+    const connector = isSub
+      ? `<span style="flex-shrink:0;color:var(--gray);font-size:15px;margin-right:4px;font-family:monospace;">└</span>` : '';
 
-    const nameRow = `<div class="cus-name-row" style="${indent}" onclick="toggleCusExpand('${nm}')">
-        ${badge}${callIcon}<span>${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
+    const nameRow = `<div class="cus-name-row" style="${rowPad}" onclick="toggleCusExpand('${nm}')">
+        ${connector}${badge}${callIcon}<span>${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
         <span class="arrow" style="transform:rotate(${expanded?'90':'0'}deg)">▸</span>
       </div>`;
 
-    // v500.32 依角色顯示三種操作鈕
     let actsRow = '';
     if (expanded) {
       let btns = '';
@@ -5087,9 +5110,19 @@ function renderCusList() {
           <button class="cus-act-btn" onclick="setSubCust('${nm}')">設為子</button>
           <button class="cus-act-btn" style="color:var(--red);" onclick="stopCust('${nm}')">停用</button>`;
       }
-      actsRow = `<div class="cus-acts" style="flex-wrap:wrap;${indent}">${btns}</div>`;
+      actsRow = `<div class="cus-acts" style="flex-wrap:wrap;${rowPad}">${btns}</div>`;
     }
-    return `<div class="cus-item">${nameRow}${subLabel}${actsRow}</div>`;
+    return `<div class="cus-item">${nameRow}${actsRow}</div>`;
+  };
+
+  // 組裝：每個頂層節點，主客戶後面接它的子
+  el.innerHTML = tops.map(t => {
+    let html = renderRow(t, t.role === 'sub');  // 孤兒子也算 sub 樣式
+    if (t.role === 'master' && t.groupId) {
+      const subs = subsOf[String(t.groupId)] || [];
+      html += subs.map(s => renderRow(s, true)).join('');
+    }
+    return `<div class="cus-tree-group" style="border-left:${t.role === 'master' ? '2px solid rgba(88,86,214,.18)' : '2px solid transparent'};margin-bottom:2px;">${html}</div>`;
   }).join('');
 }
 async function addCust() {
