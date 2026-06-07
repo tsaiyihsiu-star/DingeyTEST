@@ -1074,7 +1074,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.31"; // v500.31 客戶聯絡資料功能（階段一：客戶關鍵詞管理介面）
+const APP_VERSION = "TESTtodo-v500.32"; // v500.32 主從模型 UI（子繼承主聯絡資料、依角色選單、主/子視覺）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5037,47 +5037,59 @@ function renderCusList() {
     el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">' + (kw ? '找不到符合的客戶' : '尚無客戶，可在下方新增') + '</p>';
     return;
   }
-  // v500.31: 算出每個 groupId 有幾個成員，>1 才算「真的有分組」
-  const groupCount = {};
-  list.forEach(c => { if (c.groupId) groupCount[c.groupId] = (groupCount[c.groupId]||0) + 1; });
-  // 給每個有效群組一個顏色標記（讓併組一眼看出）
-  const groupColors = ['#FF9500','#34C759','#5856D6','#FF2D55','#00C7BE','#AF52DE','#FF6482'];
-  const gidList = Object.keys(groupCount).filter(g => groupCount[g] > 1);
-  const gidColor = {};
-  gidList.forEach((g,i) => gidColor[g] = groupColors[i % groupColors.length]);
+  // v500.32: GroupId → 主客戶名（給子顯示「↳屬於 XX」用）
+  const gidToMaster = {};
+  allCust.forEach(c => { if (c.role === 'master' && c.groupId) gidToMaster[String(c.groupId)] = c.name; });
 
   el.innerHTML = list.map(c => {
     const cnt = Number(c.taskCount) || 0;
-    const inGroup = c.groupId && groupCount[c.groupId] > 1;
-    const dot = inGroup ? `<span title="併組" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${gidColor[c.groupId]};margin-right:2px;flex-shrink:0;"></span>` : '';
+    const role = c.role || '';
     const gk = _groupKeyOf(c.name);
     const hasContacts = allContacts.some(x => String(x.groupKey) === String(gk));
     const nm = escapeAttr(c.name);
     const expanded = (_expandedCusName === c.name);
-    // 名稱列：有聯絡資料 → 名字前放可點的綠色電話圖示（點圖示=撥號/導航），點名字本身=展開管理操作
+
+    // v500.32 主標「主」徽章
+    const badge = (role === 'master')
+      ? `<span style="flex-shrink:0;font-size:11px;font-weight:700;color:#fff;background:#5856D6;border-radius:5px;padding:1px 6px;margin-right:4px;">主</span>` : '';
+    // 名稱列：有聯絡資料 → 名字前放可點的綠色電話圖示（子靠繼承也會有）
     const callIcon = hasContacts
       ? `<span onclick="event.stopPropagation();openContactView('${nm}')" aria-label="撥號/導航" style="flex-shrink:0;display:inline-flex;align-items:center;padding:2px 4px;margin-right:2px;cursor:pointer;">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="var(--green)"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
         </span>` : '';
-    const nameRow = `<div class="cus-name-row" onclick="toggleCusExpand('${nm}')">
-        ${dot}${callIcon}<span>${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
+
+    const indent = (role === 'sub') ? 'padding-left:22px;' : '';
+    const subLabel = (role === 'sub')
+      ? `<div style="font-size:11px;color:var(--gray);padding:2px 4px 6px 22px;">↳ 屬於 ${escapeHtml(gidToMaster[String(c.masterKey)] || '（未知主）')}</div>`
+      : '';
+
+    const nameRow = `<div class="cus-name-row" style="${indent}" onclick="toggleCusExpand('${nm}')">
+        ${badge}${callIcon}<span>${escapeHtml(c.name)}<span class="cnt">${cnt} 筆</span></span>
         <span class="arrow" style="transform:rotate(${expanded?'90':'0'}deg)">▸</span>
       </div>`;
-    // 展開時的操作鈕（撥號改由名字前的電話圖示觸發，這裡不再放撥號鈕）
+
+    // v500.32 依角色顯示三種操作鈕
     let actsRow = '';
     if (expanded) {
-      const groupBtn = inGroup
-        ? `<button class="cus-act-btn" style="color:var(--gray);" onclick="leaveCust('${nm}')">離組</button>`
-        : `<button class="cus-act-btn" onclick="groupCust('${nm}')">併組</button>`;
-      actsRow = `<div class="cus-acts">
-          <button class="cus-act-btn" onclick="editCusContacts('${nm}')">聯絡資料</button>
+      let btns = '';
+      if (role === 'sub') {
+        btns = `<button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
+          <button class="cus-act-btn" onclick="promoteCust('${nm}')">升為主</button>
+          <button class="cus-act-btn" style="color:var(--gray);" onclick="detachCust('${nm}')">脫離</button>`;
+      } else if (role === 'master') {
+        btns = `<button class="cus-act-btn" onclick="editCusContacts('${nm}')">聯絡資料</button>
+          <button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
+          <button class="cus-act-btn" onclick="editCusCode('${nm}')">編號</button>`;
+      } else {
+        btns = `<button class="cus-act-btn" onclick="editCusContacts('${nm}')">聯絡資料</button>
           <button class="cus-act-btn" onclick="renameCust('${nm}')">改名</button>
           <button class="cus-act-btn" onclick="editCusCode('${nm}')">編號</button>
-          ${groupBtn}
-          <button class="cus-act-btn" style="color:var(--red);" onclick="stopCust('${nm}')">停用</button>
-        </div>`;
+          <button class="cus-act-btn" onclick="setSubCust('${nm}')">設為子</button>
+          <button class="cus-act-btn" style="color:var(--red);" onclick="stopCust('${nm}')">停用</button>`;
+      }
+      actsRow = `<div class="cus-acts" style="flex-wrap:wrap;${indent}">${btns}</div>`;
     }
-    return `<div class="cus-item">${nameRow}${actsRow}</div>`;
+    return `<div class="cus-item">${nameRow}${subLabel}${actsRow}</div>`;
   }).join('');
 }
 async function addCust() {
@@ -5242,7 +5254,9 @@ function openGoogleMap(addr) {
 
 function _groupKeyOf(name) {
   const c = allCust.find(x => x.name === name);
-  return (c && c.groupId) ? c.groupId : name;
+  if (!c) return name;
+  if (c.role === 'sub' && c.masterKey) return String(c.masterKey);  // v500.32 子→主的 GroupId（繼承）
+  return c.groupId ? String(c.groupId) : name;
 }
 // 取得某 groupKey 下的所有聯絡項（依 sortOrder 排序）
 function _contactsOf(groupKey) {
@@ -5630,21 +5644,18 @@ async function leaveCust(name) {
 // v500.31: 手動編輯客戶編號（GroupId）
 async function editCusCode(name) {
   const c = allCust.find(x => x.name === name);
-  let cur = (c && c.groupId) ? String(c.groupId) : '';
-  // v500.31: 防護——若 groupId 被誤存成日期字串（舊資料 bug），prompt 預設顯示空白
-  if (/^[A-Z][a-z]{2}\s/.test(cur) || /GMT|\d{2}:\d{2}:\d{2}/.test(cur)) cur = '';
-  const input = prompt(`設定「${name}」的客戶編號（群組編號）\n\n相同編號的客戶會自動同組、共用聯絡資料。\n留空則不併組（單獨一組）。`, cur);
+  const cur = (c && c.custCode) ? String(c.custCode) : '';
+  const input = prompt(`設定「${name}」的客戶編號（匯入對照碼）\n\n此編號只用於 Excel 匯入時對應客戶，不影響分組或主從關係。`, cur);
   if (input === null) return;  // 取消
   const code = input.trim();
   if (code === cur) return;    // 沒變
   playSound('tap');
-  if (c) { c.groupId = code; c.updatedAt = Date.now(); }
+  if (c) { c.custCode = code; c.updatedAt = Date.now(); }
   saveLocal();
   renderCusList(); render();
   try {
     const res = await callGasAction('setCustomerCode', { name, code });
     if (res && res.status === 'success') {
-      if (typeof refreshContactsCache === 'function') await refreshContactsCache();
       pushLog && pushLog(`已設定「${name}」編號：${code || '(清除)'}`, 'success');
     } else {
       alert('設定編號失敗：' + (res && res.message ? res.message : '未知'));
@@ -5652,6 +5663,66 @@ async function editCusCode(name) {
   } catch(e) {
     alert('設定編號推送失敗：' + e.message);
   }
+}
+
+// ── v500.32 主從角色操作（設為子 / 升為主 / 脫離）─────────────────
+// 設為子：沿用 groupPickM 視窗當「選主」清單
+let _setSubSourceName = null;
+function setSubCust(name) {
+  _setSubSourceName = name;
+  // 候選 = 其他未停用、且本身不是「子」的客戶（主或獨立都可當主）
+  const candidates = allCust
+    .filter(c => !c.isStopWord && c.name !== name && c.role !== 'sub')
+    .sort((a,b)=> String(a.name).localeCompare(String(b.name),'zh-Hant'));
+  const listEl = document.getElementById('groupPickList');
+  if (!candidates.length) {
+    listEl.innerHTML = '<p style="color:var(--gray);text-align:center;padding:20px 0;font-size:14px;">沒有可當主的客戶</p>';
+  } else {
+    listEl.innerHTML = candidates.map(c => {
+      const tag = c.role === 'master' ? '<span style="color:#5856D6;font-size:12px;margin-left:6px;">（主）</span>' : '';
+      return `<div class="cat-row" style="cursor:pointer" onclick="doSetSub('${escapeAttr(c.name)}')">
+        <span class="cat-name">${escapeHtml(c.name)}${tag}</span>
+        <span class="cat-act" style="color:var(--primary)">選為主 ›</span>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('groupPickTitle').textContent = `「${name}」要成為誰的子？`;
+  openModal('groupPickM');
+}
+async function doSetSub(masterName) {
+  const name = _setSubSourceName;
+  if (!name || !masterName) return;
+  closeM('groupPickM');
+  playSound('tap');
+  try {
+    const res = await callGasAction('setAsSub', { name, masterName });
+    if (!res || res.status !== 'success') { alert('設為子失敗：' + (res && res.message ? res.message : '未知錯誤')); return; }
+    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+    renderCusList(); render();
+    pushLog && pushLog(`已設為子：${name} → 屬於 ${masterName}`, 'success');
+  } catch(e) { alert('設為子推送失敗：' + e.message); }
+}
+async function promoteCust(name) {
+  if (!confirm(`把「${name}」升為主？\n\n原本的主會降為它的子、同組其他客戶改拜它為主，聯絡資料整批接收；編號則在它沒有編號時才接收。`)) return;
+  playSound('tap');
+  try {
+    const res = await callGasAction('promoteToMaster', { name });
+    if (!res || res.status !== 'success') { alert('升為主失敗：' + (res && res.message ? res.message : '未知')); return; }
+    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+    renderCusList(); render();
+    pushLog && pushLog(`已升為主：${name}`, 'success');
+  } catch(e) { alert('升為主推送失敗：' + e.message); }
+}
+async function detachCust(name) {
+  if (!confirm(`把「${name}」脫離群組、變回獨立客戶？\n（它將不再繼承主的聯絡資料）`)) return;
+  playSound('tap');
+  try {
+    const res = await callGasAction('detachFromMaster', { name });
+    if (!res || res.status !== 'success') { alert('脫離失敗：' + (res && res.message ? res.message : '未知')); return; }
+    if (typeof refreshContactsCache === 'function') await refreshContactsCache();
+    renderCusList(); render();
+    pushLog && pushLog(`已脫離、變獨立：${name}`, 'success');
+  } catch(e) { alert('脫離推送失敗：' + e.message); }
 }
 
 // ── 全部長壓日期篩選 ─────────────────────────────
@@ -5839,11 +5910,18 @@ function openContactView(cust) {
     .filter(c => String(c.groupKey) === String(gk))
     .sort((a,b) => (Number(a.sortOrder)||0) - (Number(b.sortOrder)||0));
   document.getElementById('contactViewTitle').textContent = cust;
+  // v500.32: 子客戶 → 標示聯絡資料繼承來源
+  let inheritNote = '';
+  const _cObj = allCust.find(x => x.name === cust);
+  if (_cObj && _cObj.role === 'sub' && _cObj.masterKey) {
+    const _m = allCust.find(x => x.role === 'master' && String(x.groupId) === String(_cObj.masterKey));
+    inheritNote = `<div style="font-size:12px;color:#5856D6;background:rgba(88,86,214,.08);border-radius:8px;padding:6px 10px;margin-bottom:8px;">↳ 繼承自主客戶「${escapeHtml(_m ? _m.name : '主')}」的聯絡資料</div>`;
+  }
   const el = document.getElementById('contactViewList');
   if (!contacts.length) {
-    el.innerHTML = '<p style="color:var(--gray);text-align:center;padding:16px 0;">無聯絡資料</p>';
+    el.innerHTML = inheritNote + '<p style="color:var(--gray);text-align:center;padding:16px 0;">無聯絡資料</p>';
   } else {
-    el.innerHTML = contacts.map(c => {
+    el.innerHTML = inheritNote + contacts.map(c => {
       const label = c.label ? escapeHtml(c.label) : '';
       if (c.type === 'phone') {
         const tel = String(c.content).replace(/[^0-9+,#*]/g, '');
