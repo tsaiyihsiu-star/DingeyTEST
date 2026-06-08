@@ -2465,62 +2465,26 @@ if (window.visualViewport) {
     // 使 kbH 暴增、任何用它的算式都把視窗抬出頂端。鍵盤不可能高過螢幕 60%，超出視為雜訊、忽略本次。
     if (kbH > window.innerHeight * 0.6) return;
     if (kbH > 80) {
-      // v500.32fix: 改用「是否有底部列(footer)」判斷，而非寫死 id。
-      // 有 footer 的高視窗（catM/taskM/cusM/contactM/groupPickM…）一律縮小 sh-body，讓內容在鍵盤上方可捲動，
-      // 避免高視窗用 translateY 移不上去、下半部被鍵盤蓋住。
-      const _shBodyChk = sheet.querySelector('.sh-body');
-      const _footerChk = _shBodyChk ? _shBodyChk.nextElementSibling : null;
-      const _hasFooter = !!(_shBodyChk && _footerChk && _footerChk.tagName === 'DIV');
-      if (_hasFooter) {
-        // catM / taskM：縮小 sh-body 讓 footer 保持在鍵盤上方
-        // v500.27.5: taskM 加客戶欄位後變高、需要同樣的縮小處理
-        const shBody = sheet.querySelector('.sh-body');
-        if (shBody) {
-          const visibleH = window.visualViewport.height;
-          const footerEl = sheet.querySelector('.sh-body + div');
-          const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
-          const handleEl = sheet.querySelector('.sh-handle');
-          const titleEl = sheet.querySelector('.sh-title');
-          const handleH = (handleEl ? handleEl.getBoundingClientRect().height : 20) +
-                          (titleEl  ? titleEl.getBoundingClientRect().height  : 40);
-          const maxBodyH = visibleH - handleH - footerH - 16;
-          shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
-        }
-        // v500.33fix2: 改用「動畫無關」的量計算抬升，根除開窗 slideUp 動畫進行中觸發的競態。
-        // 原本清 transform 後量 getBoundingClientRect().top/bottom，但 CSS 動畫會蓋過 inline transform，
-        // 量到的是動畫半路（偏下）的位置 → 算出超大抬升 → 動畫結束後瞬間彈出畫面頂端。
-        // 改用：鍵盤高度(innerHeight - visualViewport.height) + sheet 高度(translate 不影響高度，量得準)。
-        const _pt = sheet.style.transition;
-        sheet.style.transition = 'none';
-        const _kbTopLayout = (window.visualViewport.offsetTop || 0) + window.visualViewport.height;
-        const _need = window.innerHeight - _kbTopLayout;          // 讓 sheet 底部貼齊鍵盤上緣所需抬升
-        const _sheetH = sheet.getBoundingClientRect().height;      // 高度不受 translate 動畫汙染
-        const _naturalTop = window.innerHeight - _sheetH;          // transform:0 時 sheet 頂端位置
-        const _safeTop = (window.visualViewport.offsetTop || 0) + 8;
-        const _maxLift = Math.max(0, _naturalTop - _safeTop);      // 夾住：頂端不可超過安全上緣
-        const _lift = Math.min(Math.max(0, _need), _maxLift);
-        sheet.style.transform = _lift > 0 ? `translateY(-${Math.ceil(_lift)}px)` : '';
-        requestAnimationFrame(() => { sheet.style.transition = _pt; });
-      } else {
-        const sheetRect = sheet.getBoundingClientRect();
-        const visibleH = window.visualViewport.height;
-        const overflow = sheetRect.bottom - visibleH;
-        if (overflow > 0) {
-          const maxMoveUp = Math.max(0, sheetRect.top - 8);
-          const moveUp = Math.min(overflow + 8, maxMoveUp);
-          sheet.style.transform = moveUp > 0 ? `translateY(-${moveUp}px)` : '';
-        }
-        // sh-body 滾動到 focus 的元素
-        const focused = document.activeElement;
-        if (focused && sheet.contains(focused)) {
-          setTimeout(() => focused.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 100);
-        }
-      }
+      // v500.33fix4: 改用「把 modal 高度限制到鍵盤上緣」取代手動 translateY 抬升 sheet。
+      // 過去幾版都在用 transform 手動抬 sheet，但 getBoundingClientRect/visualViewport 的測量
+      // 在開窗動畫、焦點切換、重用視窗時會跑掉，算出超大位移把整個視窗（甚至整個 app）彈出頂端。
+      // 新做法：sheet 本來就是 flex-end（貼 modal 底部），只要把 modal 高度限制到鍵盤上緣，
+      // sheet 自然落在鍵盤正上方；再把 sheet 限高、讓內層 sh-body(flex:1) 捲動。
+      // 內容永遠在鍵盤上方，幾何上不可能被抬出畫面頂端，且不依賴任何易跑掉的位置測量。
+      const _vh = window.visualViewport.height;
+      const _vtop = window.visualViewport.offsetTop || 0;
+      modal.style.top = _vtop + 'px';
+      modal.style.bottom = 'auto';
+      modal.style.height = _vh + 'px';
+      sheet.style.transform = '';                          // 清掉舊版可能殘留的位移，改由 modal 幾何定位
+      sheet.style.maxHeight = Math.max(120, _vh - 8) + 'px';
+      const _sb = sheet.querySelector('.sh-body');
+      if (_sb) _sb.style.maxHeight = '';                   // 高度交給 flex 收縮，不再手動計算
     } else {
-      // v500.32fix: 鍵盤收起 → 還原「所有開啟視窗」的位移與內容高度。
-      // 保險做法：避免殘留的 transform / sh-body maxHeight 把視窗撐高、底部留大空白。
+      // 鍵盤收起 → 還原所有開啟視窗的幾何與殘留樣式
       document.querySelectorAll('.modal.open').forEach(m => {
-        const s = m.querySelector('.sheet'); if (s) s.style.transform = '';
+        m.style.top = ''; m.style.bottom = ''; m.style.height = '';
+        const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
         const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
       });
     }
@@ -4449,8 +4413,9 @@ setInterval(() => { updateSyncMeta(); }, 60000);
 
 function openModal(id) {
   playSound('tap'); const m = document.getElementById(id);
-  // v500.33fix3: 重用同一 modal 元素時，先清掉上一次殘留的鍵盤位移與 sh-body 縮高，避免帶進下一次造成位置異常
-  const _rs = m.querySelector('.sheet');   if (_rs) _rs.style.transform = '';
+  // v500.33fix3/4: 重用同一 modal 元素時，先清掉上一次殘留的鍵盤位移/限高/幾何，避免帶進下一次造成位置異常
+  m.style.top = ''; m.style.bottom = ''; m.style.height = '';
+  const _rs = m.querySelector('.sheet');   if (_rs) { _rs.style.transform = ''; _rs.style.maxHeight = ''; }
   const _rb = m.querySelector('.sh-body'); if (_rb) _rb.style.maxHeight = '';
   // v500.32fix: 疊在目前已開啟的 modal 之上（避免從某 modal 內叫出的視窗被壓在後面）
   const opened = Array.from(document.querySelectorAll('.modal.open')).filter(el => el !== m);
@@ -4464,8 +4429,9 @@ function openModal(id) {
 function closeModal(id) {
   playSound('close'); const m = document.getElementById(id);
   m.classList.remove('open');
+  m.style.top = ''; m.style.bottom = ''; m.style.height = '';
   const body = m.querySelector('.sh-body'); if (body) body.style.maxHeight = '';
-  const sheet = m.querySelector('.sheet'); if (sheet) sheet.style.transform = '';
+  const sheet = m.querySelector('.sheet'); if (sheet) { sheet.style.transform = ''; sheet.style.maxHeight = ''; }
   // 清理拖曳事件監聽器，防止記憶體洩漏
   const handle = m.querySelector('.sh-handle');
   if (handle && m._dragStart) {
