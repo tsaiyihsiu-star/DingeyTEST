@@ -2461,6 +2461,9 @@ if (window.visualViewport) {
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
+    // v500.33fix3: 過濾鍵盤開合動畫中的異常瞬時值 — visualViewport.height 半路會讀到極小值，
+    // 使 kbH 暴增、任何用它的算式都把視窗抬出頂端。鍵盤不可能高過螢幕 60%，超出視為雜訊、忽略本次。
+    if (kbH > window.innerHeight * 0.6) return;
     if (kbH > 80) {
       // v500.32fix: 改用「是否有底部列(footer)」判斷，而非寫死 id。
       // 有 footer 的高視窗（catM/taskM/cusM/contactM/groupPickM…）一律縮小 sh-body，讓內容在鍵盤上方可捲動，
@@ -4446,6 +4449,9 @@ setInterval(() => { updateSyncMeta(); }, 60000);
 
 function openModal(id) {
   playSound('tap'); const m = document.getElementById(id);
+  // v500.33fix3: 重用同一 modal 元素時，先清掉上一次殘留的鍵盤位移與 sh-body 縮高，避免帶進下一次造成位置異常
+  const _rs = m.querySelector('.sheet');   if (_rs) _rs.style.transform = '';
+  const _rb = m.querySelector('.sh-body'); if (_rb) _rb.style.maxHeight = '';
   // v500.32fix: 疊在目前已開啟的 modal 之上（避免從某 modal 內叫出的視窗被壓在後面）
   const opened = Array.from(document.querySelectorAll('.modal.open')).filter(el => el !== m);
   if (opened.length) {
