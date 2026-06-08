@@ -1085,7 +1085,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.32"; // v500.32 主從模型 UI（子繼承主聯絡資料、依角色選單、主/子視覺）
+const APP_VERSION = "TESTtodo-v500.33"; // v500.33 修正 iOS 點輸入框視窗彈出頂端（改 modal 幾何定位 + 綁 scroll 抵銷 iOS 平移）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2445,25 +2445,14 @@ document.addEventListener('focusout', e => {
 
 // 用 visualViewport 監聽鍵盤：resize（鍵盤開合）+ scroll（iOS 把整頁平移露出輸入框）都要處理
 if (window.visualViewport) {
-  // === 鍵盤定位除錯顯示（測試版專用，左上角）===
-  const _kbDbg = document.createElement('div');
-  _kbDbg.style.cssText = 'position:fixed;top:2px;left:2px;z-index:99999;background:rgba(0,0,0,.72);color:#0f0;font:10px/1.3 monospace;padding:3px 5px;border-radius:4px;pointer-events:none;white-space:pre;';
-  document.documentElement.appendChild(_kbDbg);
-  function _kbDbgShow(evt, branch) {
-    const vv = window.visualViewport;
-    _kbDbg.textContent = `[${evt}] ${branch}\n` +
-      `ih=${Math.round(window.innerHeight)} vh=${Math.round(vv.height)}\n` +
-      `ot=${(vv.offsetTop||0).toFixed(1)} kbH=${Math.round(window.innerHeight - vv.height)}`;
-  }
-
-  function _adjustModalForKb(evt) {
+  function _adjustModalForKb() {
     if (_isDraggingModal) return;
     // 疊層時調「游標所在」的視窗；沒有再抓最上層(z-index 最大)的
     const _fa = document.activeElement;
     let modal = (_fa && _fa.closest) ? _fa.closest('.modal.open') : null;
     if (!modal) {
       const _opens = Array.from(document.querySelectorAll('.modal.open'));
-      if (!_opens.length) { _kbDbgShow(evt, 'no-modal'); return; }
+      if (!_opens.length) return;
       modal = _opens.reduce((top, el) =>
         (Number(el.style.zIndex) || 800) >= (Number(top.style.zIndex) || 800) ? el : top, _opens[0]);
     }
@@ -2472,7 +2461,7 @@ if (window.visualViewport) {
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
     // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
-    if (kbH > window.innerHeight * 0.6) { _kbDbgShow(evt, 'SKIP-noise'); return; }
+    if (kbH > window.innerHeight * 0.6) return;
     if (kbH > 80) {
       // v500.33fix4: 把 modal 高度限制到鍵盤上緣，sheet(flex-end) 自然落在鍵盤正上方。
       // v500.33fix5: 同時綁 scroll — iOS 為露出輸入框會把整頁平移(offsetTop 變)，
@@ -2486,19 +2475,17 @@ if (window.visualViewport) {
       sheet.style.maxHeight = Math.max(120, _vh - 8) + 'px';
       const _sb = sheet.querySelector('.sh-body');
       if (_sb) _sb.style.maxHeight = '';
-      _kbDbgShow(evt, 'FIT');
     } else {
       document.querySelectorAll('.modal.open').forEach(m => {
         m.style.top = ''; m.style.bottom = ''; m.style.height = '';
         const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
         const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
       });
-      _kbDbgShow(evt, 'reset');
     }
   }
 
-  window.visualViewport.addEventListener('resize', () => _adjustModalForKb('resize'));
-  window.visualViewport.addEventListener('scroll', () => _adjustModalForKb('scroll'));
+  window.visualViewport.addEventListener('resize', _adjustModalForKb);
+  window.visualViewport.addEventListener('scroll', _adjustModalForKb);
 }
 
 let _txS = 0, _tyS = 0;
