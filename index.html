@@ -2443,17 +2443,27 @@ document.addEventListener('focusout', e => {
   }, 150);
 });
 
-// 用 visualViewport 監聽鍵盤彈出，讓 modal 跟著往上移而不是縮小
+// 用 visualViewport 監聽鍵盤：resize（鍵盤開合）+ scroll（iOS 把整頁平移露出輸入框）都要處理
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', () => {
+  // === 鍵盤定位除錯顯示（測試版專用，左上角）===
+  const _kbDbg = document.createElement('div');
+  _kbDbg.style.cssText = 'position:fixed;top:2px;left:2px;z-index:99999;background:rgba(0,0,0,.72);color:#0f0;font:10px/1.3 monospace;padding:3px 5px;border-radius:4px;pointer-events:none;white-space:pre;';
+  document.documentElement.appendChild(_kbDbg);
+  function _kbDbgShow(evt, branch) {
+    const vv = window.visualViewport;
+    _kbDbg.textContent = `[${evt}] ${branch}\n` +
+      `ih=${Math.round(window.innerHeight)} vh=${Math.round(vv.height)}\n` +
+      `ot=${(vv.offsetTop||0).toFixed(1)} kbH=${Math.round(window.innerHeight - vv.height)}`;
+  }
+
+  function _adjustModalForKb(evt) {
     if (_isDraggingModal) return;
-    // v500.32fix: 疊層時要調「游標所在」的視窗，不是 DOM 最前面那個。
-    // 先抓 focus 元素所屬的開啟視窗；沒有再抓最上層(z-index 最大)的。
+    // 疊層時調「游標所在」的視窗；沒有再抓最上層(z-index 最大)的
     const _fa = document.activeElement;
     let modal = (_fa && _fa.closest) ? _fa.closest('.modal.open') : null;
     if (!modal) {
       const _opens = Array.from(document.querySelectorAll('.modal.open'));
-      if (!_opens.length) return;
+      if (!_opens.length) { _kbDbgShow(evt, 'no-modal'); return; }
       modal = _opens.reduce((top, el) =>
         (Number(el.style.zIndex) || 800) >= (Number(top.style.zIndex) || 800) ? el : top, _opens[0]);
     }
@@ -2461,34 +2471,34 @@ if (window.visualViewport) {
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
     const kbH = window.innerHeight - window.visualViewport.height;
-    // v500.33fix3: 過濾鍵盤開合動畫中的異常瞬時值 — visualViewport.height 半路會讀到極小值，
-    // 使 kbH 暴增、任何用它的算式都把視窗抬出頂端。鍵盤不可能高過螢幕 60%，超出視為雜訊、忽略本次。
-    if (kbH > window.innerHeight * 0.6) return;
+    // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
+    if (kbH > window.innerHeight * 0.6) { _kbDbgShow(evt, 'SKIP-noise'); return; }
     if (kbH > 80) {
-      // v500.33fix4: 改用「把 modal 高度限制到鍵盤上緣」取代手動 translateY 抬升 sheet。
-      // 過去幾版都在用 transform 手動抬 sheet，但 getBoundingClientRect/visualViewport 的測量
-      // 在開窗動畫、焦點切換、重用視窗時會跑掉，算出超大位移把整個視窗（甚至整個 app）彈出頂端。
-      // 新做法：sheet 本來就是 flex-end（貼 modal 底部），只要把 modal 高度限制到鍵盤上緣，
-      // sheet 自然落在鍵盤正上方；再把 sheet 限高、讓內層 sh-body(flex:1) 捲動。
-      // 內容永遠在鍵盤上方，幾何上不可能被抬出畫面頂端，且不依賴任何易跑掉的位置測量。
+      // v500.33fix4: 把 modal 高度限制到鍵盤上緣，sheet(flex-end) 自然落在鍵盤正上方。
+      // v500.33fix5: 同時綁 scroll — iOS 為露出輸入框會把整頁平移(offsetTop 變)，
+      //   只發 scroll 不發 resize；這裡用 offsetTop 把 modal 拉回視覺視窗對齊，抵銷 iOS 平移。
       const _vh = window.visualViewport.height;
       const _vtop = window.visualViewport.offsetTop || 0;
       modal.style.top = _vtop + 'px';
       modal.style.bottom = 'auto';
       modal.style.height = _vh + 'px';
-      sheet.style.transform = '';                          // 清掉舊版可能殘留的位移，改由 modal 幾何定位
+      sheet.style.transform = '';
       sheet.style.maxHeight = Math.max(120, _vh - 8) + 'px';
       const _sb = sheet.querySelector('.sh-body');
-      if (_sb) _sb.style.maxHeight = '';                   // 高度交給 flex 收縮，不再手動計算
+      if (_sb) _sb.style.maxHeight = '';
+      _kbDbgShow(evt, 'FIT');
     } else {
-      // 鍵盤收起 → 還原所有開啟視窗的幾何與殘留樣式
       document.querySelectorAll('.modal.open').forEach(m => {
         m.style.top = ''; m.style.bottom = ''; m.style.height = '';
         const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
         const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
       });
+      _kbDbgShow(evt, 'reset');
     }
-  });
+  }
+
+  window.visualViewport.addEventListener('resize', () => _adjustModalForKb('resize'));
+  window.visualViewport.addEventListener('scroll', () => _adjustModalForKb('scroll'));
 }
 
 let _txS = 0, _tyS = 0;
