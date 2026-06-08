@@ -2489,10 +2489,17 @@ if (window.visualViewport) {
         const _pt = sheet.style.transition;
         sheet.style.transition = 'none';
         sheet.style.transform = 'none';
-        const _trueBottom = sheet.getBoundingClientRect().bottom;
+        const _rect = sheet.getBoundingClientRect();
+        const _trueBottom = _rect.bottom;
         const _kbTop = window.visualViewport.height + (window.visualViewport.offsetTop || 0);
         const _ov = _trueBottom - _kbTop;
-        sheet.style.transform = _ov > 0 ? `translateY(-${Math.ceil(_ov)}px)` : '';
+        // v500.33fix: 夾住抬升量 — sheet 頂端不可超過安全上緣(offsetTop+8)。
+        // 否則高視窗（如新增任務隱藏刪除鈕後 sh-body 變高）算出的 _ov 過大時，
+        // 會把整個視窗抬出畫面頂端（只剩 footer 露在最上面）。
+        const _safeTop = (window.visualViewport.offsetTop || 0) + 8;
+        const _maxLift = Math.max(0, _rect.top - _safeTop);
+        const _lift = Math.min(Math.max(0, _ov), _maxLift);
+        sheet.style.transform = _lift > 0 ? `translateY(-${Math.ceil(_lift)}px)` : '';
         requestAnimationFrame(() => { sheet.style.transition = _pt; });
       } else {
         const sheetRect = sheet.getBoundingClientRect();
@@ -4440,31 +4447,8 @@ window.addEventListener('offline', () => { pushLog('網路中斷','warn'); updat
 // 每分鐘更新「最後同步」時間顯示和角標警示
 setInterval(() => { updateSyncMeta(); }, 60000);
 
-// v500.33fix: 開視窗時鎖 body 捲動，防 iOS 為了讓輸入框避開鍵盤而捲動整個文件
-// （否則：iOS 捲動 + JS translateY 雙重抬升 → 視窗衝出畫面頂端；且 document 被捲後 fixed 視窗與觸點座標錯位 → 點不準）
-let _scrollLockY = 0;
-function _lockBodyScroll() {
-  if (document.body.style.position === 'fixed') return;   // 疊層視窗已鎖，不重複
-  _scrollLockY = window.scrollY || window.pageYOffset || 0;
-  document.body.style.position = 'fixed';
-  document.body.style.top = `-${_scrollLockY}px`;
-  document.body.style.left = '0';
-  document.body.style.right = '0';
-  document.body.style.width = '100%';
-}
-function _unlockBodyScroll() {
-  if (document.querySelector('.modal.open')) return;       // 還有視窗開著，先不解鎖
-  if (document.body.style.position !== 'fixed') return;
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.left = '';
-  document.body.style.right = '';
-  document.body.style.width = '';
-  window.scrollTo(0, _scrollLockY);
-}
 function openModal(id) {
   playSound('tap'); const m = document.getElementById(id);
-  _lockBodyScroll();
   // v500.32fix: 疊在目前已開啟的 modal 之上（避免從某 modal 內叫出的視窗被壓在後面）
   const opened = Array.from(document.querySelectorAll('.modal.open')).filter(el => el !== m);
   if (opened.length) {
@@ -4487,7 +4471,7 @@ function closeModal(id) {
     handle.removeEventListener('touchend',   m._dragEnd);
     delete m._dragStart; delete m._dragMove; delete m._dragEnd;
   }
-  setTimeout(() => { m.style.display = 'none'; m.style.zIndex = ''; _unlockBodyScroll(); }, 280);
+  setTimeout(() => { m.style.display = 'none'; m.style.zIndex = ''; }, 280);
 }
 function closeM(id) { if (id) closeModal(id); else { closeModal('taskM'); closeModal('catM'); } }
 let _isDraggingModal = false; // 拖曳中暫停 visualViewport 處理
