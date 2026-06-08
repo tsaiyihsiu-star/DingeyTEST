@@ -1493,7 +1493,9 @@ function applyOpToLocalCustomer(op) {
 async function pullOps(fetchFn) {
   const _fetch = fetchFn || ((url) => fetch(url));
   try {
-    const url = `${GAS_URL}?action=getOps&since=${lastSyncOpSeq}&clientId=${getClientId()}`;
+    const token = getSession();
+    if (!token) { console.log('[pullOps] no token, skip'); return { ops: [], applied: 0 }; }
+    const url = `${GAS_URL}?action=getOps&since=${lastSyncOpSeq}&clientId=${getClientId()}&token=${encodeURIComponent(token)}`;
     const res = await _fetch(url);
     const data = await res.json();
     if (!Array.isArray(data)) {
@@ -1619,10 +1621,14 @@ async function pushOpsToCloud(fetchFn) {
   const pendingOps = opLog.filter(o => o.status === 'pending');
   if (pendingOps.length === 0) return { acked: [], rejected: [] };
 
+  // 正式版需要 token（測試版送假 token、無密碼後端忽略；三版共用同一段）
+  const token = getSession();
+  if (!token) { console.log('[pushOps] no token, skip'); return { acked: [], rejected: [] }; }
+
   try {
     const res = await _fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'pushOps', ops: pendingOps }),
+      body: JSON.stringify({ action: 'pushOps', ops: pendingOps, token }),
       redirect: 'follow'
     });
     const data = await res.json();
@@ -1658,7 +1664,9 @@ async function pushOpsToCloud(fetchFn) {
 async function pullCustomerOps(fetchFn) {
   const _fetch = fetchFn || ((url) => fetch(url));
   try {
-    const url = `${GAS_URL}?action=getCustomerOps&since=${lastSyncCusOpSeq}&clientId=${getClientId()}`;
+    const token = getSession();
+    if (!token) { console.log('[pullCustomerOps] no token, skip'); return { ops: [], applied: 0 }; }
+    const url = `${GAS_URL}?action=getCustomerOps&since=${lastSyncCusOpSeq}&clientId=${getClientId()}&token=${encodeURIComponent(token)}`;
     const res = await _fetch(url);
     const data = await res.json();
     if (!Array.isArray(data)) return { ops: [], applied: 0 };
@@ -1699,10 +1707,14 @@ async function pushCustomerOpsToCloud(fetchFn) {
   const pendingOps = cusOpLog.filter(o => o.status === 'pending');
   if (pendingOps.length === 0) return { acked: [], rejected: [] };
 
+  // 正式版需要 token（測試版送假 token、無密碼後端忽略；三版共用同一段）
+  const token = getSession();
+  if (!token) { console.log('[pushCustomerOps] no token, skip'); return { acked: [], rejected: [] }; }
+
   try {
     const res = await _fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'pushCustomerOps', ops: pendingOps }),
+      body: JSON.stringify({ action: 'pushCustomerOps', ops: pendingOps, token }),
       redirect: 'follow'
     });
     const data = await res.json();
@@ -3293,10 +3305,12 @@ async function verifyFlushedOps(cloudTasks, cloudCats) {
 async function pullFromCloud(reason, attempt=1) {
   if (!isOnline()) { pushLog('離線略過拉取','warn'); return false; }
 
-  // ── 保護：分類管理視窗開著時跳過拉取（避免覆蓋使用者編輯）──
+  // ── 保護：分類/客戶管理視窗開著時跳過拉取（避免覆蓋使用者編輯、且避免拉取重繪卡住捲動）──
   const catMOpen = document.getElementById('catM');
-  if (catMOpen && catMOpen.classList.contains('open')) {
-    pushLog('分類管理開啟中，跳過拉取', 'warn');
+  const cusMOpen = document.getElementById('cusM');
+  if ((catMOpen && catMOpen.classList.contains('open')) ||
+      (cusMOpen && cusMOpen.classList.contains('open'))) {
+    pushLog('管理視窗開啟中，跳過拉取', 'warn');
     return false;
   }
 
@@ -3889,7 +3903,9 @@ async function fullSync(reason) {
   } finally {
     isSyncRunning = false; updateBanner(); updateSyncMeta();
     // v500.31: 同步成功後刷新聯絡資料快取（涵蓋啟動/回前景/網路恢復/手動等所有路徑）
-    if (success) { try { await refreshContactsCache(); } catch(e){} }
+    // v500.32fix: 客戶管理開著時先跳過（避免重繪打斷清單捲動；角色操作會自行直接重抓）
+    const _cusMOpenNow = document.getElementById('cusM') && document.getElementById('cusM').classList.contains('open');
+    if (success && !_cusMOpenNow) { try { await refreshContactsCache(); } catch(e){} }
     // v500.30: 同步期間若有新操作（pendingQueue / opLog / cusOpLog）→ 立即觸發推送
     const newPendingTotal = pendingQueue.length
       + opLog.filter(o => o.status === 'pending').length
@@ -7201,7 +7217,8 @@ async function init() {
     console.log('[init] 首次安裝、跳過 pullOps、直接 fullSync');
     // 取雲端最新 cloudSeq、設為 lastSyncOpSeq（之後只拉新的）
     try {
-      const res = await fetch(`${GAS_URL}?action=getOpsLatestSeq`);
+      const _tk = getSession();
+      const res = await fetch(`${GAS_URL}?action=getOpsLatestSeq&token=${encodeURIComponent(_tk||'')}`);
       const data = await res.json();
       if (data && typeof data.latestSeq === 'number') {
         lastSyncOpSeq = data.latestSeq;
