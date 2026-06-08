@@ -2483,22 +2483,19 @@ if (window.visualViewport) {
           const maxBodyH = visibleH - handleH - footerH - 16;
           shBody.style.maxHeight = Math.max(80, maxBodyH) + 'px';
         }
-        // v500.32fix4: 量「清掉自身位移後」的真實底部，再補足到鍵盤上緣。
-        // 先清 transform 再量 → 不會把上次的位移算進去（避免連續事件歸零、或越抬越高）；
-        // 平台若已自動把視窗抬到鍵盤上，量到的差值≈0 → 不重複抬（解決抬過頭、底部留大空白、頂部頂出畫面）。
+        // v500.33fix2: 改用「動畫無關」的量計算抬升，根除開窗 slideUp 動畫進行中觸發的競態。
+        // 原本清 transform 後量 getBoundingClientRect().top/bottom，但 CSS 動畫會蓋過 inline transform，
+        // 量到的是動畫半路（偏下）的位置 → 算出超大抬升 → 動畫結束後瞬間彈出畫面頂端。
+        // 改用：鍵盤高度(innerHeight - visualViewport.height) + sheet 高度(translate 不影響高度，量得準)。
         const _pt = sheet.style.transition;
         sheet.style.transition = 'none';
-        sheet.style.transform = 'none';
-        const _rect = sheet.getBoundingClientRect();
-        const _trueBottom = _rect.bottom;
-        const _kbTop = window.visualViewport.height + (window.visualViewport.offsetTop || 0);
-        const _ov = _trueBottom - _kbTop;
-        // v500.33fix: 夾住抬升量 — sheet 頂端不可超過安全上緣(offsetTop+8)。
-        // 否則高視窗（如新增任務隱藏刪除鈕後 sh-body 變高）算出的 _ov 過大時，
-        // 會把整個視窗抬出畫面頂端（只剩 footer 露在最上面）。
+        const _kbTopLayout = (window.visualViewport.offsetTop || 0) + window.visualViewport.height;
+        const _need = window.innerHeight - _kbTopLayout;          // 讓 sheet 底部貼齊鍵盤上緣所需抬升
+        const _sheetH = sheet.getBoundingClientRect().height;      // 高度不受 translate 動畫汙染
+        const _naturalTop = window.innerHeight - _sheetH;          // transform:0 時 sheet 頂端位置
         const _safeTop = (window.visualViewport.offsetTop || 0) + 8;
-        const _maxLift = Math.max(0, _rect.top - _safeTop);
-        const _lift = Math.min(Math.max(0, _ov), _maxLift);
+        const _maxLift = Math.max(0, _naturalTop - _safeTop);      // 夾住：頂端不可超過安全上緣
+        const _lift = Math.min(Math.max(0, _need), _maxLift);
         sheet.style.transform = _lift > 0 ? `translateY(-${Math.ceil(_lift)}px)` : '';
         requestAnimationFrame(() => { sheet.style.transition = _pt; });
       } else {
