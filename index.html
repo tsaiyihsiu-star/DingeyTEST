@@ -4,7 +4,7 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2452,12 +2452,7 @@ document.addEventListener('focusout', e => {
 
 // 用 visualViewport 監聽鍵盤：resize（鍵盤開合）+ scroll（iOS 把整頁平移露出輸入框）都要處理
 if (window.visualViewport) {
-  let _kbResetTimer = null;   // v500.37fix2: 鍵盤收起的延遲歸位計時器（長壓選字會短暫收放鍵盤）
-  // v500.37fix3: 改用 viewport interactive-widget=resizes-content 讓版面自動縮上去（不靠 iOS 平移）。
-  //   設 true 即停用底下舊的 JS 重定位邏輯，避免新舊打架。若該機制在某裝置失效，改回 false 即恢復舊法。
-  const _kbViewportResizes = true;
   function _adjustModalForKb() {
-    if (_kbViewportResizes) return;
     if (_isDraggingModal) return;
     // 疊層時調「游標所在」的視窗；沒有再抓最上層(z-index 最大)的
     const _fa = document.activeElement;
@@ -2475,15 +2470,11 @@ if (window.visualViewport) {
     // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
     if (kbH > window.innerHeight * 0.6) return;
     if (kbH > 80) {
-      clearTimeout(_kbResetTimer);   // v500.37fix2: 鍵盤回來了 → 取消任何待執行的歸位
       // v500.33fix4: 把 modal 高度限制到鍵盤上緣，sheet(flex-end) 自然落在鍵盤正上方。
       // v500.33fix5: 同時綁 scroll — iOS 為露出輸入框會把整頁平移(offsetTop 變)，
       //   只發 scroll 不發 resize；這裡用 offsetTop 把 modal 拉回視覺視窗對齊，抵銷 iOS 平移。
       const _vh = window.visualViewport.height;
       const _vtop = window.visualViewport.offsetTop || 0;
-      // v500.37fix2: 容差 — 與目前值差不到 3px 就不重定位，擋掉 iOS 平移回授造成的來回微抖
-      const _curTop = parseFloat(modal.style.top), _curH = parseFloat(modal.style.height);
-      if (!isNaN(_curTop) && !isNaN(_curH) && Math.abs(_curTop - _vtop) < 3 && Math.abs(_curH - _vh) < 3) return;
       modal.style.top = _vtop + 'px';
       modal.style.bottom = 'auto';
       modal.style.height = _vh + 'px';
@@ -2492,21 +2483,11 @@ if (window.visualViewport) {
       const _sb = sheet.querySelector('.sh-body');
       if (_sb) _sb.style.maxHeight = '';
     } else {
-      // v500.37fix2: 鍵盤收起 → 不馬上歸位，延遲 300ms 並回頭確認；長壓選字時鍵盤會短暫收放，
-      //   這段時間鍵盤又回來(或輸入框仍聚焦)就取消歸位，避免「按下長壓→下沉」「放開→彈起」的跳動。
-      const _fa2 = document.activeElement;
-      if (_fa2 && (_fa2.tagName === 'INPUT' || _fa2.tagName === 'TEXTAREA') && _fa2.closest && _fa2.closest('.modal.open')) return;
-      clearTimeout(_kbResetTimer);
-      _kbResetTimer = setTimeout(() => {
-        if (window.innerHeight - window.visualViewport.height > 80) return;   // 鍵盤又回來了，別歸位
-        const _fa3 = document.activeElement;
-        if (_fa3 && (_fa3.tagName === 'INPUT' || _fa3.tagName === 'TEXTAREA') && _fa3.closest && _fa3.closest('.modal.open')) return;
-        document.querySelectorAll('.modal.open').forEach(m => {
-          m.style.top = ''; m.style.bottom = ''; m.style.height = '';
-          const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
-          const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
-        });
-      }, 300);
+      document.querySelectorAll('.modal.open').forEach(m => {
+        m.style.top = ''; m.style.bottom = ''; m.style.height = '';
+        const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
+        const b = m.querySelector('.sh-body'); if (b) b.style.maxHeight = '';
+      });
     }
   }
 
