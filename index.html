@@ -31,6 +31,12 @@
       -webkit-font-smoothing:antialiased;
       background:var(--sidebar-bg);
       overscroll-behavior:none;
+      /* v500.37: 全域關閉長壓選字＋iOS 長壓泡泡選單（整個 app UI 不被長壓誤選/誤跳選單） */
+      -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    }
+    /* v500.37: 輸入框重新開放選字與長壓選單（編輯任務/分類/搜尋/通訊資料都能選取、複製、貼上） */
+    input, textarea, select, [contenteditable="true"]{
+      -webkit-user-select:text; user-select:text; -webkit-touch-callout:default;
     }
     /* === 測試版視覺標示 === */
     body::before{
@@ -1085,7 +1091,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.36"; // v500.36 下拉關閉視窗(起手區擴大+鍵盤防呆)；v500.35 查看全部依組篩+鍵盤殘影修正
+const APP_VERSION = "TESTtodo-v500.37"; // v500.37 全域禁長壓選字/callout(輸入框除外)；v500.36 下拉關閉視窗
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
