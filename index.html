@@ -4433,12 +4433,12 @@ function closeModal(id) {
   m.style.top = ''; m.style.bottom = ''; m.style.height = '';
   const body = m.querySelector('.sh-body'); if (body) body.style.maxHeight = '';
   const sheet = m.querySelector('.sheet'); if (sheet) { sheet.style.transform = ''; sheet.style.maxHeight = ''; }
-  // 清理拖曳事件監聽器，防止記憶體洩漏
-  const handle = m.querySelector('.sh-handle');
-  if (handle && m._dragStart) {
-    handle.removeEventListener('touchstart', m._dragStart);
-    handle.removeEventListener('touchmove',  m._dragMove);
-    handle.removeEventListener('touchend',   m._dragEnd);
+  // 清理拖曳事件監聽器，防止記憶體洩漏（v500.35: 改掛在 .sheet）
+  const _dragSheet = m.querySelector('.sheet');
+  if (_dragSheet && m._dragStart) {
+    _dragSheet.removeEventListener('touchstart', m._dragStart);
+    _dragSheet.removeEventListener('touchmove',  m._dragMove);
+    _dragSheet.removeEventListener('touchend',   m._dragEnd);
     delete m._dragStart; delete m._dragMove; delete m._dragEnd;
   }
   setTimeout(() => { m.style.display = 'none'; m.style.zIndex = ''; }, 280);
@@ -4447,16 +4447,26 @@ function closeM(id) { if (id) closeModal(id); else { closeModal('taskM'); closeM
 let _isDraggingModal = false; // 拖曳中暫停 visualViewport 處理
 
 function _startHandleDrag(modal, id) {
-  const handle = modal.querySelector('.sh-handle'), sheet = modal.querySelector('.sheet');
-  if (!handle || !sheet) return;
+  // v500.35: 起手區從 4px 握把擴大到整個 sheet 頂部（內容區除外），下拉關閉才好觸發
+  const sheet = modal.querySelector('.sheet');
+  if (!sheet) return;
   // 移除舊的監聽器（防止記憶體洩漏）
   if (modal._dragStart) {
-    handle.removeEventListener('touchstart', modal._dragStart);
-    handle.removeEventListener('touchmove',  modal._dragMove);
-    handle.removeEventListener('touchend',   modal._dragEnd);
+    sheet.removeEventListener('touchstart', modal._dragStart);
+    sheet.removeEventListener('touchmove',  modal._dragMove);
+    sheet.removeEventListener('touchend',   modal._dragEnd);
   }
   let startY = 0;
   modal._dragStart = (e) => {
+    // v500.35: 鍵盤開著時 → 下拉先收鍵盤、本次不拖曳（避免與 iOS 露出輸入框的平移打架而上下亂跳）
+    const kbH = window.visualViewport ? (window.innerHeight - window.visualViewport.height) : 0;
+    if (kbH > 80) {
+      const _af = document.activeElement;
+      if (_af && _af.blur) _af.blur();
+      return;
+    }
+    // v500.35: 從可捲動內容區(.sh-body)起手 → 不攔截，讓它正常捲動；只有頂部(握把/標題)起手才拖曳關閉
+    if (e.target.closest && e.target.closest('.sh-body')) return;
     startY = e.touches[0].clientY; _isDraggingModal = true;
     sheet.style.transition = 'none'; modal.style.transition = 'none';
   };
@@ -4473,9 +4483,9 @@ function _startHandleDrag(modal, id) {
     }
     else { sheet.style.transform = ''; modal.style.transition = ''; }
   };
-  handle.addEventListener('touchstart', modal._dragStart, {passive:true});
-  handle.addEventListener('touchmove',  modal._dragMove,  {passive:true});
-  handle.addEventListener('touchend',   modal._dragEnd,   {passive:true});
+  sheet.addEventListener('touchstart', modal._dragStart, {passive:true});
+  sheet.addEventListener('touchmove',  modal._dragMove,  {passive:true});
+  sheet.addEventListener('touchend',   modal._dragEnd,   {passive:true});
 }
 
 function renderSidebar() {
