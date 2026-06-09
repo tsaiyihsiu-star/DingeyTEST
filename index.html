@@ -4785,6 +4785,10 @@ function gotoCustomerSearch(customer) {
   _groupFilterKey = _groupKeyOf(customer);   // v500.34: 依組篩，帶出整組（主+所有子）任務
   const searchInput = document.getElementById('searchInput');
   if (searchInput) searchInput.value = customer;
+  // v500.34fix: 展開搜尋欄＋顯示清除鈕，讓使用者看得到目前正依這組篩（否則欄收合、任務像被莫名篩掉）
+  const wrap = document.getElementById('srchWrap'); if (wrap) wrap.classList.add('open');
+  const x = document.getElementById('srchX'); if (x) x.style.display = 'block';
+  const ic = document.getElementById('srchIcon'); if (ic) ic.classList.add('has-query');
   renderAll();
 }
 
@@ -6203,10 +6207,12 @@ function setF(c) {
   if (_scatAllLpFired) { _scatAllLpFired = false; return; } // 長壓觸發，不關閉選單
   closeAllFilterMenu(); // 切換分類時關閉篩選選單
   playSound('select');
-  if (_groupFilterKey) {   // v500.34: 從「查看全部」群組篩切走 → 清掉群組篩與搜尋框標籤
+  if (_groupFilterKey) {   // v500.34: 從「查看全部」群組篩切走 → 清掉群組篩與搜尋框標籤、收回搜尋欄
     _groupFilterKey = null;
     const _si = document.getElementById('searchInput'); if (_si) _si.value = '';
     const _sx = document.getElementById('srchX'); if (_sx) _sx.style.display = 'none';
+    const _sw = document.getElementById('srchWrap'); if (_sw) _sw.classList.remove('open');
+    const _ic = document.getElementById('srchIcon'); if (_ic) _ic.classList.remove('has-query');
   }
   if (c !== '全部' || currentF === '全部') {
     // 切換到其他分類，或重複點「全部」→ 清除日期篩選
@@ -6630,6 +6636,7 @@ function openQuick() {
 }
 function closeQuick() {
   playSound('close');
+  document.getElementById('quickInput').blur();   // v500.34fix: 先收鍵盤（input 還在）再隱藏，避免 iOS 鍵盤殘影閃爍
   document.getElementById('quickM').classList.remove('open');
   document.getElementById('quickOverlay').classList.remove('open');
   document.getElementById('quickInput').value = '';
@@ -6649,8 +6656,8 @@ async function saveQuick() {
   allT.push({ ID:id, Task:task, Category:category, DueDate:getToday(), Status:'Pending', Priority:99, Note:'', Customer:customer, CustomerHint:customerHint, mTime });
   lastUsedCat = category;
 
-  // v500.30: 先關鍵盤、再做後續（避免 UI 殘留）
-  saveLocal(); renderAll(); closeQuick();
+  // v500.34fix: 先關視窗/收鍵盤、再渲染（避免渲染時 input 還聚焦造成鍵盤殘影閃爍）
+  closeQuick(); saveLocal(); renderAll();
 
   // v500.27: 若 customer 是新客戶、本機加進 allCust、推送到 GAS
   if (customer) {
