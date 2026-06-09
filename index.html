@@ -2483,6 +2483,9 @@ if (window.visualViewport) {
       const _sb = sheet.querySelector('.sh-body');
       if (_sb) _sb.style.maxHeight = '';
     } else {
+      // v500.37fix: 鍵盤「真的」收起才歸位；若輸入框仍聚焦（iOS 長壓選字/鍵盤動畫會短暫收鍵盤）→ 維持現狀，避免視窗上跳下跳
+      const _fa2 = document.activeElement;
+      if (_fa2 && (_fa2.tagName === 'INPUT' || _fa2.tagName === 'TEXTAREA') && _fa2.closest && _fa2.closest('.modal.open')) return;
       document.querySelectorAll('.modal.open').forEach(m => {
         m.style.top = ''; m.style.bottom = ''; m.style.height = '';
         const s = m.querySelector('.sheet'); if (s) { s.style.transform = ''; s.style.maxHeight = ''; }
