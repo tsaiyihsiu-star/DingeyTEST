@@ -1284,6 +1284,7 @@ function shakeInput() {
 }
 
 let allT = [], allC = [], allCust = [], currentF = '今天';
+let _groupFilterKey = null;   // v500.34: 「查看全部」依組篩的群組鍵；null=一般文字搜尋
 let allContacts = [];  // v500.31: 客戶聯絡資料快取（CustomerContacts）
 let syncLogs = [], pendingQueue = [];
 let isSyncRunning = false, sideState = 1;
@@ -4549,7 +4550,12 @@ function render() {
     if (currentF === '全部') return t.Status !== 'Done' && (!_titleFilterDate || (d && d <= _titleFilterDate));
     return String(t.Category) === currentF && t.Status !== 'Done';
   });
-  if (q) f = f.filter(t => String(t.Task||"").toLowerCase().includes(q));
+  // v500.34: 有群組篩（從「查看全部」進來）→ 依組顯示整組（主+所有子）任務；否則照搜尋字串比對標題
+  if (_groupFilterKey) {
+    f = f.filter(t => t.Customer && String(_groupKeyOf(t.Customer)) === String(_groupFilterKey));
+  } else if (q) {
+    f = f.filter(t => String(t.Task||"").toLowerCase().includes(q));
+  }
   if (!f.length) {
     const emSvg = {
       今天: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="48" height="48" style="color:#34C759"><polyline points="20 6 9 17 4 12"/></svg>`,
@@ -4776,6 +4782,7 @@ function renderSameCustExpansion(customer, selfId) {
 function gotoCustomerSearch(customer) {
   _expandedSameCustId = null;
   currentF = '全部';
+  _groupFilterKey = _groupKeyOf(customer);   // v500.34: 依組篩，帶出整組（主+所有子）任務
   const searchInput = document.getElementById('searchInput');
   if (searchInput) searchInput.value = customer;
   renderAll();
@@ -6196,6 +6203,11 @@ function setF(c) {
   if (_scatAllLpFired) { _scatAllLpFired = false; return; } // 長壓觸發，不關閉選單
   closeAllFilterMenu(); // 切換分類時關閉篩選選單
   playSound('select');
+  if (_groupFilterKey) {   // v500.34: 從「查看全部」群組篩切走 → 清掉群組篩與搜尋框標籤
+    _groupFilterKey = null;
+    const _si = document.getElementById('searchInput'); if (_si) _si.value = '';
+    const _sx = document.getElementById('srchX'); if (_sx) _sx.style.display = 'none';
+  }
   if (c !== '全部' || currentF === '全部') {
     // 切換到其他分類，或重複點「全部」→ 清除日期篩選
     _titleFilterDate = null;
@@ -6210,6 +6222,7 @@ function toggleSearch() {
   else { playSound('swipe'); wrap.classList.add('open'); setTimeout(() => inp.focus(), 280); }
 }
 function handleSearch() {
+  _groupFilterKey = null;   // v500.34: 使用者手動輸入 → 退出群組篩、回一般文字搜尋
   const val = document.getElementById('searchInput').value;
   document.getElementById('srchX').style.display = val ? 'block' : 'none';
   document.getElementById('srchIcon').classList.toggle('has-query', !!val);
