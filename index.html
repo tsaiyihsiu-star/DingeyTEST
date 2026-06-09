@@ -4426,6 +4426,9 @@ function openModal(id) {
 }
 function closeModal(id) {
   playSound('close'); const m = document.getElementById(id);
+  // v500.34fix: 關閉前先 blur 視窗內聚焦的輸入框，避免 iOS 鍵盤殘影
+  const _af = document.activeElement;
+  if (_af && _af.blur && m.contains(_af)) _af.blur();
   m.classList.remove('open');
   m.style.top = ''; m.style.bottom = ''; m.style.height = '';
   const body = m.querySelector('.sh-body'); if (body) body.style.maxHeight = '';
@@ -6429,6 +6432,7 @@ function ctxQuickEdit() {
 
 function closeQuickEdit() {
   playSound('close');
+  document.getElementById('quickEditInput').blur();   // v500.34fix: 先收鍵盤再隱藏，避免 iOS 鍵盤殘影閃爍
   document.getElementById('quickEditM').classList.remove('open');
   document.getElementById('quickEditOverlay').classList.remove('open');
   document.getElementById('quickEditInput').value = '';
