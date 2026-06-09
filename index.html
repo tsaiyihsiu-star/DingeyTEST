@@ -5945,6 +5945,11 @@ async function editCusCode(name) {
   if (input === null) return;  // 取消
   const code = input.trim();
   if (code === cur) return;    // 沒變
+  // v500.33: 前端先擋明顯重複（即時回饋，不必送出再還原）；後端 setCustomerCode 仍會權威複查
+  if (code) {
+    const dup = allCust.find(x => x.name !== name && String(x.custCode || '').trim() === code);
+    if (dup) { alert('編號「' + code + '」已被「' + dup.name + '」使用，請改用其他編號'); return; }
+  }
   playSound('tap');
   // v500.32fix: 先確保客戶已在雲端（新增/改名還沒推 → 先 flush），否則後端找不到列
   const _ok = await _ensureCustomerSynced(name);
