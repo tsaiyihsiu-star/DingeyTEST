@@ -4,7 +4,7 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2453,7 +2453,11 @@ document.addEventListener('focusout', e => {
 // 用 visualViewport 監聽鍵盤：resize（鍵盤開合）+ scroll（iOS 把整頁平移露出輸入框）都要處理
 if (window.visualViewport) {
   let _kbResetTimer = null;   // v500.37fix2: 鍵盤收起的延遲歸位計時器（長壓選字會短暫收放鍵盤）
+  // v500.37fix3: 改用 viewport interactive-widget=resizes-content 讓版面自動縮上去（不靠 iOS 平移）。
+  //   設 true 即停用底下舊的 JS 重定位邏輯，避免新舊打架。若該機制在某裝置失效，改回 false 即恢復舊法。
+  const _kbViewportResizes = true;
   function _adjustModalForKb() {
+    if (_kbViewportResizes) return;
     if (_isDraggingModal) return;
     // 疊層時調「游標所在」的視窗；沒有再抓最上層(z-index 最大)的
     const _fa = document.activeElement;
