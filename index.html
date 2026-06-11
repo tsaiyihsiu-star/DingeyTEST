@@ -411,6 +411,18 @@
     .modal.open{display:flex;}
     .sheet{background:var(--card);width:100%;border-radius:20px 20px 0 0;padding-bottom:calc(var(--sab) + 6px);display:flex;flex-direction:column;max-height:88dvh;animation:slideUp .3s cubic-bezier(.32,.72,0,1);position:relative;transition:transform .25s cubic-bezier(.32,.72,0,1);will-change:transform;}
     @keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+    /* v500.38: 上方表單視窗（含輸入框者）— 固定在上半部，鍵盤從底部冒出也碰不到，不需隨鍵盤移動 */
+    .modal.modal-top{ align-items:flex-start; }
+    .modal.modal-top .sheet{
+      border-radius:0 0 20px 20px;
+      margin-top:var(--sat);
+      max-height:52vh;            /* 上半部上限；內容多則 sh-body 內部捲動。此值為實機可調參數 */
+      padding-top:16px;
+      padding-bottom:12px;
+      animation:dropDown .25s cubic-bezier(.32,.72,0,1);
+    }
+    .modal.modal-top .sh-handle{ display:none; }   /* 上方視窗不用拖曳握把 */
+    @keyframes dropDown{from{transform:translateY(-100%);}to{transform:translateY(0);}}
     .sh-handle{width:36px;height:4px;border-radius:2px;background:#D1D1D6;margin:10px auto 6px;flex-shrink:0;cursor:grab;}
     .sh-handle:active{cursor:grabbing;}
     .sh-title{font-size:15px;font-weight:700;text-align:center;color:var(--label);padding:6px 16px 4px;flex-shrink:0;}
@@ -878,7 +890,7 @@
 </div>
 
 <!-- 聯絡項編輯表單 v500.31 -->
-<div id="contactFormM" class="modal" onclick="if(event.target===this)closeM('contactFormM')">
+<div id="contactFormM" class="modal modal-top" onclick="if(event.target===this)closeM('contactFormM')">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title" id="contactFormTitle">新增聯絡項</div>
@@ -1091,7 +1103,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.37"; // v500.37 全域禁長壓選字/callout(輸入框除外)；v500.36 下拉關閉視窗
+const APP_VERSION = "TESTtodo-v500.38"; // v500.38 編輯聯絡項改上方視窗(避開鍵盤)試點；v500.37 全域禁長壓選字
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2466,6 +2478,7 @@ if (window.visualViewport) {
     if (!modal) return;
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
+    if (modal.classList.contains('modal-top')) return;   // v500.38: 上方表單視窗不隨鍵盤移動
     const kbH = window.innerHeight - window.visualViewport.height;
     // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
     if (kbH > window.innerHeight * 0.6) return;
@@ -4456,6 +4469,7 @@ function _startHandleDrag(modal, id) {
   // v500.35: 起手區從 4px 握把擴大到整個 sheet 頂部（內容區除外），下拉關閉才好觸發
   const sheet = modal.querySelector('.sheet');
   if (!sheet) return;
+  if (modal.classList.contains('modal-top')) return;   // v500.38: 上方表單視窗不用下拉關閉（改用按鈕）
   // 移除舊的監聽器（防止記憶體洩漏）
   if (modal._dragStart) {
     sheet.removeEventListener('touchstart', modal._dragStart);
