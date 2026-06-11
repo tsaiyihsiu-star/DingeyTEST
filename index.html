@@ -4,7 +4,7 @@
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -754,7 +754,7 @@
 
 <!-- 任務視窗 -->
 
-<div id="taskM" class="modal" onclick="if(event.target===this)closeM('taskM')">
+<div id="taskM" class="modal modal-top" onclick="if(event.target===this)closeM('taskM')">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title" id="taskSheetTitle">新增任務</div>
