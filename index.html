@@ -1103,7 +1103,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.38"; // v500.38 編輯聯絡項改上方視窗(避開鍵盤)試點；v500.37 全域禁長壓選字
+const APP_VERSION = "TESTtodo-v500.39"; // v500.39 客戶管理搜尋時點客戶誤關修正(不隨鍵盤位移)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2479,6 +2479,10 @@ if (window.visualViewport) {
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
     if (modal.classList.contains('modal-top')) return;   // v500.38: 上方表單視窗不隨鍵盤移動
+    // v500.39: 客戶管理搜尋框在頂部、鍵盤升起時本來就露出；若隨鍵盤位移，收鍵盤瞬間版面會跳動，
+    //   導致點客戶的點擊落到背景而誤觸 closeCusM()。故 cusM 不做鍵盤位移（維持底部抽屜固定）。
+    // v500.39: groupPickM（設為子/移轉共用的選客戶 picker）結構與搜尋框位置同 cusM，同樣排除。
+    if (modal.id === 'cusM' || modal.id === 'groupPickM') return;
     const kbH = window.innerHeight - window.visualViewport.height;
     // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
     if (kbH > window.innerHeight * 0.6) return;
@@ -5079,6 +5083,8 @@ function openCusM() {
   if (nc) nc.value = '';
   // v500.32fix: 清掉可能殘留的位移/內容高度，讓視窗高度回到「跟著內容縮」
   const _cm = document.getElementById('cusM');
+  // v500.39: 一併清掉 modal 本身可能殘留的鍵盤位移（top/bottom/height），確保每次乾淨開啟
+  if (_cm) { _cm.style.top = ''; _cm.style.bottom = ''; _cm.style.height = ''; }
   const _cs = _cm && _cm.querySelector('.sheet'); if (_cs) _cs.style.transform = '';
   const _cb = _cm && _cm.querySelector('.sh-body'); if (_cb) _cb.style.maxHeight = '';
   _expandedCusName = '';  // v500.31fix: 每次打開都收合所有展開的操作
@@ -5664,6 +5670,9 @@ function _openGroupPick(opts) {
   };
   const si = document.getElementById('groupPickSearch');
   if (si) { si.value = ''; si.style.display = 'none'; }  // 每次打開收起並清空搜尋
+  // v500.39: 清掉可能殘留的鍵盤位移，確保每次乾淨開啟
+  const _gm = document.getElementById('groupPickM');
+  if (_gm) { _gm.style.top = ''; _gm.style.bottom = ''; _gm.style.height = ''; const _gs = _gm.querySelector('.sheet'); if (_gs) _gs.style.transform = ''; const _gb = _gm.querySelector('.sh-body'); if (_gb) _gb.style.maxHeight = ''; }
   const t = document.getElementById('groupPickTitle');
   if (t) t.textContent = opts.title || '選擇客戶';
   renderGroupPick();
