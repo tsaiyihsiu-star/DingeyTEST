@@ -422,6 +422,9 @@
       animation:dropDown .25s cubic-bezier(.32,.72,0,1);
     }
     .modal.modal-top .sh-handle{ display:none; }   /* 上方視窗不用拖曳握把 */
+    /* v500.40: 清單型上方視窗（客戶管理/選客戶）— 比表單高，搜尋結果在頂部不被鍵盤蓋；
+       不搜尋時也有足夠空間瀏覽清單。固定在上方→收鍵盤不跳動→單擊即選、不誤關。 */
+    .modal.modal-top.modal-top-list .sheet{ max-height:82vh; }
     @keyframes dropDown{from{transform:translateY(-100%);}to{transform:translateY(0);}}
     .sh-handle{width:36px;height:4px;border-radius:2px;background:#D1D1D6;margin:10px auto 6px;flex-shrink:0;cursor:grab;}
     .sh-handle:active{cursor:grabbing;}
@@ -811,7 +814,7 @@
 
 <!-- 客戶管理 v500.31 -->
 
-<div id="cusM" class="modal" onclick="if(event.target===this)closeCusM()">
+<div id="cusM" class="modal modal-top modal-top-list" onclick="if(event.target===this)closeCusM()">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title" style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
@@ -854,7 +857,7 @@
 </div>
 
 <!-- 分組選擇視窗 v500.31 -->
-<div id="groupPickM" class="modal" onclick="if(event.target===this)closeM('groupPickM')">
+<div id="groupPickM" class="modal modal-top modal-top-list" onclick="if(event.target===this)closeM('groupPickM')">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title" style="display:flex;align-items:center;justify-content:center;gap:8px;position:relative;">
@@ -1103,7 +1106,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.39"; // v500.39 客戶管理搜尋時點客戶誤關修正(不隨鍵盤位移)
+const APP_VERSION = "TESTtodo-v500.40"; // v500.40 客戶管理/選客戶改上方清單視窗(搜尋不被鍵盤蓋、不誤關、單擊即選)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2478,11 +2481,7 @@ if (window.visualViewport) {
     if (!modal) return;
     const sheet = modal.querySelector('.sheet');
     if (!sheet) return;
-    if (modal.classList.contains('modal-top')) return;   // v500.38: 上方表單視窗不隨鍵盤移動
-    // v500.39: 客戶管理搜尋框在頂部、鍵盤升起時本來就露出；若隨鍵盤位移，收鍵盤瞬間版面會跳動，
-    //   導致點客戶的點擊落到背景而誤觸 closeCusM()。故 cusM 不做鍵盤位移（維持底部抽屜固定）。
-    // v500.39: groupPickM（設為子/移轉共用的選客戶 picker）結構與搜尋框位置同 cusM，同樣排除。
-    if (modal.id === 'cusM' || modal.id === 'groupPickM') return;
+    if (modal.classList.contains('modal-top')) return;   // v500.38: 上方視窗(表單/清單)不隨鍵盤移動；v500.40 客戶管理/選客戶亦改為上方清單視窗
     const kbH = window.innerHeight - window.visualViewport.height;
     // 過濾鍵盤動畫中的異常瞬時值（鍵盤不可能高過螢幕 60%）
     if (kbH > window.innerHeight * 0.6) return;
