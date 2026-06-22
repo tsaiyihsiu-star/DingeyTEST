@@ -392,6 +392,9 @@
     #quickCat{flex:1;padding:12px 12px;border:none;border-radius:10px;background:var(--bg);font-size:17px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;cursor:pointer;}
     #quickSave{padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     #quickSave:active{opacity:.85;}
+    #quickAi{padding:12px 13px;background:var(--bg);color:var(--primary);border:none;border-radius:10px;font-size:18px;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+    #quickAi:active{opacity:.6;}
+    #quickAi:disabled{opacity:.4;}
     #quickOverlay{display:none;position:fixed;inset:0;z-index:819;background:rgba(0,0,0,.35);}
     #quickOverlay.open{display:block;}
     #ctxOverlay{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.35);}
@@ -751,7 +754,21 @@
   </div>
   <div class="quick-row">
     <select id="quickCat"></select>
+    <button id="quickAi" onclick="aiParse()" title="AI 解析成任務">✨</button>
     <button id="quickSave" onclick="saveQuick()">新增</button>
+  </div>
+</div>
+
+<!-- v500.41: AI 解析預覽（上方清單視窗）-->
+<div id="aiPreviewM" class="modal modal-top modal-top-list" onclick="if(event.target===this)closeAiPreview()">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title">✨ AI 解析結果</div>
+    <div class="sh-body" id="aiPreviewBody"></div>
+    <div style="flex-shrink:0;display:flex;gap:10px;padding:10px 14px 4px;">
+      <button onclick="closeAiPreview()" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--bg);color:var(--label);font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;">取消</button>
+      <button onclick="aiCreateTasks()" style="flex:2;padding:13px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:16px;font-weight:700;font-family:inherit;cursor:pointer;">建立勾選任務</button>
+    </div>
   </div>
 </div>
 
@@ -1106,7 +1123,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v500.40"; // v500.40 客戶管理/選客戶改上方清單視窗(搜尋不被鍵盤蓋、不誤關、單擊即選)
+const APP_VERSION = "TESTtodo-v501.01"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6683,6 +6700,88 @@ function closeQuick() {
   document.getElementById('quickOverlay').classList.remove('open');
   document.getElementById('quickInput').value = '';
 }
+// ===== v500.41: AI 自然語言解析建任務（試點，測試版）=====
+let _aiTasks = [];
+async function aiParse() {
+  const text = document.getElementById('quickInput').value.trim();
+  if (!text) { document.getElementById('quickInput').focus(); return; }
+  if (navigator.onLine === false) { alert('目前離線，無法使用 AI 解析。可直接用「新增」手動建立。'); return; }
+  const btn = document.getElementById('quickAi'); const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'aiParseTask', text, cats: (allC||[]).map(c=>c.name), today: getToday() })
+    });
+    const data = await res.json();
+    if (data.status !== 'success' || !Array.isArray(data.tasks) || !data.tasks.length) {
+      alert('AI 解析失敗' + (data && data.message ? '：'+data.message : '，可改用手動新增。')); return;
+    }
+    _aiTasks = data.tasks.map(t => ({
+      include: true,
+      name: String(t.name||'').trim(),
+      category: _aiPickCat(t.category),
+      dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(t.dueDate||'')) ? t.dueDate : getToday(),
+      customer: String(t.customer||'').trim(),
+      note: String(t.note||'').trim()
+    })).filter(t => t.name);
+    if (!_aiTasks.length) { alert('AI 沒有解析出任務，可改用手動新增。'); return; }
+    document.getElementById('quickInput').blur();
+    closeQuick();
+    renderAiPreview();
+    openModal('aiPreviewM');
+  } catch(e) {
+    alert('連線失敗，無法使用 AI 解析。可直接用「新增」手動建立。');
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+function _aiPickCat(name){
+  const n = String(name||'').trim();
+  if (n && (allC||[]).some(c=>c.name===n)) return n;
+  return (allC&&allC[0]) ? allC[0].name : '';
+}
+function closeAiPreview(){ closeModal('aiPreviewM'); _aiTasks = []; }
+function renderAiPreview(){
+  const body = document.getElementById('aiPreviewBody');
+  const catOpts = (allC||[]).map(c=>`<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+  if (!_aiTasks.length){ body.innerHTML = '<div style="padding:20px;text-align:center;color:#8E8E93;">沒有解析出任務</div>'; return; }
+  body.innerHTML = _aiTasks.map((t,i)=>`
+    <div style="border:1px solid var(--bg);border-radius:12px;padding:10px;margin:8px 2px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <input type="checkbox" ${t.include?'checked':''} onchange="_aiTasks[${i}].include=this.checked" style="width:20px;height:20px;flex-shrink:0;">
+        <input type="text" value="${escapeAttr(t.name)}" oninput="_aiTasks[${i}].name=this.value" style="flex:1;min-width:0;padding:8px;border:none;border-radius:8px;background:var(--bg);font-size:15px;font-family:inherit;color:var(--label);outline:none;">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <select onchange="_aiTasks[${i}].category=this.value" data-i="${i}" style="flex:1;min-width:0;padding:8px;border:none;border-radius:8px;background:var(--bg);font-size:14px;font-family:inherit;color:var(--label);">${catOpts}</select>
+        <input type="date" value="${t.dueDate}" onchange="_aiTasks[${i}].dueDate=this.value" style="flex:1;min-width:0;padding:8px;border:none;border-radius:8px;background:var(--bg);font-size:14px;font-family:inherit;color:var(--label);">
+      </div>
+      ${t.customer?`<div style="margin-top:6px;font-size:13px;color:#8E8E93;">客戶：${escapeHtml(t.customer)}</div>`:''}
+      ${t.note?`<div style="margin-top:4px;font-size:13px;color:#8E8E93;">備註：${escapeHtml(t.note)}</div>`:''}
+    </div>`).join('');
+  Array.from(body.querySelectorAll('select[data-i]')).forEach(sel=>{ const i=+sel.dataset.i; sel.value = _aiTasks[i].category; });
+}
+async function aiCreateTasks(){
+  const picked = _aiTasks.filter(t=>t.include && String(t.name).trim());
+  if (!picked.length){ closeAiPreview(); return; }
+  playSound('add');
+  for (const t of picked){
+    const id = genID(); const mTime = Date.now();
+    let customer = t.customer;
+    if (!customer){ const det = detectCustomer(t.name); customer = det.customer || ''; }
+    const category = (allC||[]).some(c=>c.name===t.category) ? t.category : ((allC&&allC[0])?allC[0].name:'');
+    const dueDate = t.dueDate || getToday();
+    allT.push({ ID:id, Task:t.name, Category:category, DueDate:dueDate, Status:'Pending', Priority:99, Note:t.note||'', Customer:customer, CustomerHint:'', mTime });
+    if (customer){
+      const ex = (allCust||[]).find(c=>c.name===customer);
+      if (!ex){ allCust.push({name:customer, firstSeen:Date.now(), lastSeen:Date.now(), taskCount:1, updatedAt:Date.now()}); await pushOp('addCustomer',{name:customer},`新增客戶「${customer}」`); }
+      else { ex.lastSeen=Date.now(); ex.taskCount=(ex.taskCount||0)+1; }
+    }
+    await pushOp('addTask', {id, data:{task:t.name, category, dueDate, priority:99, note:t.note||'', mTime, ID:id, customer, customerHint:''}}, `新增「${t.name}」`);
+  }
+  closeAiPreview(); saveLocal(); renderAll();
+}
+
 async function saveQuick() {
   const task = document.getElementById('quickInput').value.trim();
   if (!task) { document.getElementById('quickInput').focus(); return; }
