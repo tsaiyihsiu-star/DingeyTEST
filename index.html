@@ -1123,7 +1123,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.01"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.02"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6717,14 +6717,20 @@ async function aiParse() {
     if (data.status !== 'success' || !Array.isArray(data.tasks) || !data.tasks.length) {
       alert('AI 解析失敗' + (data && data.message ? '：'+data.message : '，可改用手動新增。')); return;
     }
-    _aiTasks = data.tasks.map(t => ({
-      include: true,
-      name: String(t.name||'').trim(),
-      category: _aiPickCat(t.category),
-      dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(t.dueDate||'')) ? t.dueDate : getToday(),
-      customer: String(t.customer||'').trim(),
-      note: String(t.note||'').trim()
-    })).filter(t => t.name);
+    _aiTasks = data.tasks.map(t => {
+      const action = String(t.name||'').trim();
+      const cust = String(t.customer||'').trim();
+      // v501.02: 客戶名併進主旨（app 是主旨驅動：客戶在主旨裡才會標綠、才出現聯絡/導航選單）
+      const title = (cust && !action.includes(cust)) ? (cust + ' ' + action) : action;
+      return {
+        include: true,
+        name: title,
+        category: _aiPickCat(t.category),
+        dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(t.dueDate||'')) ? t.dueDate : getToday(),
+        customer: cust,
+        note: String(t.note||'').trim()
+      };
+    }).filter(t => t.name);
     if (!_aiTasks.length) { alert('AI 沒有解析出任務，可改用手動新增。'); return; }
     document.getElementById('quickInput').blur();
     closeQuick();
@@ -6766,18 +6772,21 @@ async function aiCreateTasks(){
   if (!picked.length){ closeAiPreview(); return; }
   playSound('add');
   for (const t of picked){
+    const task = String(t.name).trim();   // v501.02: 主旨已含客戶名
     const id = genID(); const mTime = Date.now();
-    let customer = t.customer;
-    if (!customer){ const det = detectCustomer(t.name); customer = det.customer || ''; }
+    // 完全比照 saveQuick：對主旨跑 detectCustomer 認客戶（主旨驅動、與手動新增一致）
+    const det = detectCustomer(task);
+    const customer = det.customer || '';
+    const customerHint = det.isAmbiguous ? det.hint : '';
     const category = (allC||[]).some(c=>c.name===t.category) ? t.category : ((allC&&allC[0])?allC[0].name:'');
     const dueDate = t.dueDate || getToday();
-    allT.push({ ID:id, Task:t.name, Category:category, DueDate:dueDate, Status:'Pending', Priority:99, Note:t.note||'', Customer:customer, CustomerHint:'', mTime });
+    allT.push({ ID:id, Task:task, Category:category, DueDate:dueDate, Status:'Pending', Priority:99, Note:t.note||'', Customer:customer, CustomerHint:customerHint, mTime });
     if (customer){
       const ex = (allCust||[]).find(c=>c.name===customer);
       if (!ex){ allCust.push({name:customer, firstSeen:Date.now(), lastSeen:Date.now(), taskCount:1, updatedAt:Date.now()}); await pushOp('addCustomer',{name:customer},`新增客戶「${customer}」`); }
       else { ex.lastSeen=Date.now(); ex.taskCount=(ex.taskCount||0)+1; }
     }
-    await pushOp('addTask', {id, data:{task:t.name, category, dueDate, priority:99, note:t.note||'', mTime, ID:id, customer, customerHint:''}}, `新增「${t.name}」`);
+    await pushOp('addTask', {id, data:{task, category, dueDate, priority:99, note:t.note||'', mTime, ID:id, customer, customerHint}}, `新增「${task}」`);
   }
   closeAiPreview(); saveLocal(); renderAll();
 }
