@@ -713,7 +713,7 @@
 
 <div id="main">
   <div id="mainHeader">
-    <h1 id="vTitle" onclick="onVTitleClick()">今天</h1>
+    <h1 id="vTitle" onclick="onVTitleClick()" ontouchstart="vtLpStart(event)" ontouchend="vtLpEnd()" ontouchmove="vtLpEnd()" onmousedown="vtLpStart(event)" onmouseup="vtLpEnd()" onmouseleave="vtLpEnd()" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;">今天</h1>
     <button id="arrivalBtn"
       onclick="toggleArrival()"
       ontouchstart="arrivalLpStart()"
@@ -723,6 +723,7 @@
       onmouseup="arrivalLpEnd()"
       onmouseleave="arrivalLpEnd()">到場時間</button>
     <div id="arrivalDrop"></div>
+    <button id="routeBtn" onclick="aiRoute()" aria-label="AI 排路線" title="AI 排路線（依地址分區建議順序）" style="background:none;border:none;padding:6px;cursor:pointer;color:var(--primary);display:flex;align-items:center;-webkit-tap-highlight-color:transparent;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3 3 0 0 0 0-6H10a3 3 0 0 1 0-6h6"/></svg></button>
     <div class="srch">
       <div id="srchWrap">
         <input type="search" id="searchInput" placeholder="搜尋…" oninput="handleSearch()" autocomplete="off" autocorrect="off" spellcheck="false">
@@ -769,6 +770,19 @@
 </div>
 
 <!-- v500.41: AI 解析預覽（上方清單視窗）-->
+<!-- v501.09: AI 排路線結果 -->
+<div id="aiRouteM" class="modal modal-top modal-top-list" onclick="if(event.target===this)closeModal('aiRouteM')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sh-handle"></div>
+    <div class="sh-title">建議路線順序</div>
+    <div class="sh-body" id="aiRouteBody"></div>
+    <div style="flex-shrink:0;display:flex;gap:10px;padding:10px 14px 4px;">
+      <button onclick="closeModal('aiRouteM')" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--bg);color:var(--label);font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;">關閉</button>
+      <a id="aiRouteMapLink" href="#" onclick="playSound('tap')" style="flex:2;padding:13px;border-radius:12px;background:var(--primary);color:#fff;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;text-align:center;text-decoration:none;">在 Google 地圖開整條路線</a>
+    </div>
+  </div>
+</div>
+
 <!-- v501.04: AI 解析進行中彈窗 -->
 <div id="aiBusy">
   <div class="ai-busy-card">
@@ -1084,6 +1098,15 @@
 </div>
 <div id="allFilterOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeAllFilterMenu()"></div>
 
+<!-- v501.10: 長按抬頭選單 -->
+<div id="vtMenu" onclick="event.stopPropagation()" style="display:none;position:fixed;z-index:600;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.22);padding:6px;min-width:150px;">
+  <div onclick="closeVtMenu();aiRoute();" style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:8px;cursor:pointer;color:var(--label);font-size:15px;font-weight:600;-webkit-tap-highlight-color:transparent;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="19" height="19"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3 3 0 0 0 0-6H10a3 3 0 0 1 0-6h6"/></svg>
+    排路線
+  </div>
+</div>
+<div id="vtOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeVtMenu()"></div>
+
 <!-- 快速選單 -->
 
 <div id="ctxOverlay"></div>
@@ -1142,7 +1165,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.08"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.10"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6273,6 +6296,7 @@ function applyTitleFilter(val) {
 }
 
 function onVTitleClick() {
+  if (_vtLpFired) { _vtLpFired = false; return; }   // v501.10: 長按已開選單，吞掉這次點擊
   if (currentF !== '全部' || !_titleFilterDate) return;
   // 點標題 mm/dd → 清除篩選
   _titleFilterDate = null;
@@ -6725,14 +6749,16 @@ function closeQuick() {
 function autoGrowQuick(el){ el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; }
 // ===== v500.41: AI 自然語言解析建任務（試點，測試版）=====
 let _aiTasks = [];
-let _aiAbort = null, _aiTimer = null;
+let _aiAbort = null, _aiTimer = null, _aiRetry = null;
 function aiCancel(){ if(_aiTimer)clearTimeout(_aiTimer); if(_aiAbort){try{_aiAbort.abort();}catch(e){}} _aiBusyHide(); const b=document.getElementById('quickAi'); if(b)b.disabled=false; }
-function _aiBusyShow(){ document.getElementById('aiBusySpin').style.display='block'; document.getElementById('aiBusyMsg').textContent='AI 解析中…'; document.getElementById('aiBusySub').textContent='正在把你的句子拆成任務 · 可隨時取消'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="aiCancel()">取消</button>'; document.getElementById('aiBusy').style.display='flex'; }
+function _aiDoRetry(){ _aiBusyHide(); if(_aiRetry) _aiRetry(); }
+function _aiBusyShow(msg, sub){ document.getElementById('aiBusySpin').style.display='block'; document.getElementById('aiBusyMsg').textContent = msg || 'AI 解析中…'; document.getElementById('aiBusySub').textContent = sub || '正在把你的句子拆成任務 · 可隨時取消'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="aiCancel()">取消</button>'; document.getElementById('aiBusy').style.display='flex'; }
 function _aiBusyHide(){ document.getElementById('aiBusy').style.display='none'; }
-function _aiBusyFail(msg){ document.getElementById('aiBusySpin').style.display='none'; document.getElementById('aiBusyMsg').textContent=msg||'AI 解析沒成功'; document.getElementById('aiBusySub').textContent='可以直接按「新增」手動建立，或再試一次'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="_aiBusyHide()">關閉</button><button class="ai-busy-btn ai-busy-btn-primary" onclick="aiParse()">再試一次</button>'; document.getElementById('aiBusy').style.display='flex'; }
+function _aiBusyFail(msg, sub){ document.getElementById('aiBusySpin').style.display='none'; document.getElementById('aiBusyMsg').textContent=msg||'AI 沒成功'; document.getElementById('aiBusySub').textContent = sub || '可以直接按「新增」手動建立，或再試一次'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="_aiBusyHide()">關閉</button><button class="ai-busy-btn ai-busy-btn-primary" onclick="_aiDoRetry()">再試一次</button>'; document.getElementById('aiBusy').style.display='flex'; }
 async function aiParse() {
   const text = document.getElementById('quickInput').value.trim();
   if (!text) { document.getElementById('quickInput').focus(); return; }
+  _aiRetry = aiParse;
   if (navigator.onLine === false) { _aiBusyFail('目前離線，無法解析'); return; }
   const btn = document.getElementById('quickAi'); btn.disabled = true;
   document.getElementById('quickInput').blur();
@@ -6836,6 +6862,95 @@ async function aiCreateTasks(){
   }
   closeAiPreview(); saveLocal(); renderAll();
 }
+
+// ===== v501.09: AI 排路線（免費 LLM 版，依地址分區建議順序）=====
+let _aiRouteStops = [], _aiRouteNote = '';
+function _visibleTasksNow(){
+  const today = getToday();
+  return allT.filter(t => {
+    const d = fmtD(t.DueDate);
+    if (currentF === '已完成') return t.Status === 'Done';
+    if (currentF === '今天') return t.Status !== 'Done' && d && d <= today;
+    if (currentF === '全部') return t.Status !== 'Done';
+    return String(t.Category) === currentF && t.Status !== 'Done';
+  });
+}
+async function aiRoute(){
+  const vis = _visibleTasksNow();
+  const stops = [];
+  vis.forEach(t => {
+    const cust = t.Customer || '';
+    if (!cust) return;
+    const addrC = _contactsOf(_groupKeyOf(cust)).find(c => c.type === 'address');
+    if (addrC && String(addrC.content||'').trim()) stops.push({ id:t.ID, task:t.Task||'', customer:cust, address:String(addrC.content).trim() });
+  });
+  if (stops.length < 2){ alert('這個檢視裡「有地址的任務」不到 2 筆，無法排路線。\n（路線需要客戶有存「地址」聯絡資料）'); return; }
+  if (navigator.onLine === false){ alert('目前離線，無法排路線。'); return; }
+  _aiRetry = aiRoute;
+  _aiBusyShow('AI 排路線中…','依地址分區建議順序 · 可隨時取消');
+  _aiAbort = new AbortController();
+  let timedOut = false;
+  _aiTimer = setTimeout(()=>{ timedOut = true; try { _aiAbort.abort(); } catch(e){} }, 20000);
+  try {
+    const res = await fetch(GAS_URL, { method:'POST', signal:_aiAbort.signal,
+      body: JSON.stringify({ action:'aiRouteOrder', stops: stops.map((sp,i)=>({ i, task:sp.task, customer:sp.customer, address:sp.address })) }) });
+    clearTimeout(_aiTimer);
+    const data = await res.json();
+    if (data.status !== 'success' || !Array.isArray(data.order)){ _aiBusyFail('排路線沒成功' + (data && data.message ? '：'+data.message : ''), '可再試一次，或檢查網路'); return; }
+    const ord = data.order.map(Number).filter(n=>!isNaN(n));
+    const ordered = [];
+    ord.forEach(idx => { if (stops[idx] && ordered.indexOf(stops[idx])<0) ordered.push(stops[idx]); });
+    stops.forEach((sp,idx)=>{ if (ord.indexOf(idx)<0) ordered.push(sp); });
+    _aiRouteStops = ordered;
+    _aiRouteNote = String(data.note||'');
+    _aiBusyHide();
+    renderAiRoute();
+    openModal('aiRouteM');
+  } catch(e){
+    clearTimeout(_aiTimer);
+    if (timedOut) _aiBusyFail('排路線太久了，已停止', '可再試一次，或檢查網路');
+    else if (e && e.name === 'AbortError') { /* 取消 */ }
+    else _aiBusyFail('連線失敗', '可再試一次，或檢查網路');
+  } finally { _aiAbort = null; }
+}
+function renderAiRoute(){
+  const body = document.getElementById('aiRouteBody');
+  const n = _aiRouteStops.length;
+  const note = `<div style="padding:6px 4px 8px;font-size:13px;color:var(--gray);line-height:1.5;">${_aiRouteNote ? escapeHtml(_aiRouteNote)+' · ' : ''}順序可用右側箭頭手動調整</div>`;
+  body.innerHTML = note + _aiRouteStops.map((sp,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--bg);">
+      <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i+1}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;color:var(--label);">${escapeHtml(sp.customer)} · ${escapeHtml(sp.task)}</div>
+        <div style="font-size:13px;color:var(--gray);margin-top:2px;word-break:break-all;">${escapeHtml(sp.address)}</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;gap:3px;">
+        <button onclick="aiRouteMove(${i},-1)" ${i===0?'disabled':''} aria-label="上移" style="border:none;background:var(--bg);border-radius:7px;width:36px;height:24px;cursor:pointer;color:var(--primary);font-size:13px;${i===0?'opacity:.3;':''}">▲</button>
+        <button onclick="aiRouteMove(${i},1)" ${i===n-1?'disabled':''} aria-label="下移" style="border:none;background:var(--bg);border-radius:7px;width:36px;height:24px;cursor:pointer;color:var(--primary);font-size:13px;${i===n-1?'opacity:.3;':''}">▼</button>
+      </div>
+    </div>`).join('');
+  const url = 'https://www.google.com/maps/dir/' + _aiRouteStops.map(sp=>encodeURIComponent(sp.address)).join('/');
+  document.getElementById('aiRouteMapLink').href = url;
+}
+function aiRouteMove(i, dir){
+  const j = i + dir;
+  if (j < 0 || j >= _aiRouteStops.length) return;
+  const t = _aiRouteStops[i]; _aiRouteStops[i] = _aiRouteStops[j]; _aiRouteStops[j] = t;
+  playSound('tap'); renderAiRoute();
+}
+// v501.10: 長按抬頭(今天/保養…) → 選單 → 排路線
+let _vtLpTimer = null, _vtLpFired = false;
+function vtLpStart(e){ _vtLpFired = false; _vtLpTimer = setTimeout(()=>{ _vtLpTimer=null; _vtLpFired=true; showVtMenu(); }, 500); }
+function vtLpEnd(){ if(_vtLpTimer){ clearTimeout(_vtLpTimer); _vtLpTimer=null; } }
+function showVtMenu(){
+  const r = document.getElementById('vTitle').getBoundingClientRect();
+  const menu = document.getElementById('vtMenu');
+  menu.style.left = Math.round(r.left) + 'px';
+  menu.style.top = Math.round(r.bottom + 6) + 'px';
+  menu.style.display = 'block';
+  document.getElementById('vtOverlay').style.display = 'block';
+}
+function closeVtMenu(){ document.getElementById('vtMenu').style.display='none'; document.getElementById('vtOverlay').style.display='none'; }
 
 async function saveQuick() {
   const task = document.getElementById('quickInput').value.trim();
