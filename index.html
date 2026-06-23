@@ -392,7 +392,7 @@
     #quickCat{flex:1;padding:12px 12px;border:none;border-radius:10px;background:var(--bg);font-size:17px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;cursor:pointer;}
     #quickSave{padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     #quickSave:active{opacity:.85;}
-    #quickAi{padding:11px 13px;background:var(--bg);color:var(--primary);border:none;border-radius:10px;font-family:inherit;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+    #quickAi{padding:8px 11px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);color:#fff;border:none;border-radius:12px;font-family:inherit;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
     #quickAi:active{opacity:.6;}
     #quickAi:disabled{opacity:.4;}
     .ai-spin{width:36px;height:36px;margin:2px auto 0;border-radius:50%;border:3px solid var(--bg);border-top-color:var(--primary);animation:aiSpin .8s linear infinite;}
@@ -763,7 +763,7 @@
   </div>
   <div class="quick-row">
     <select id="quickCat"></select>
-    <button id="quickAi" onclick="aiParse()" title="AI 解析成任務" aria-label="AI 解析"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4 Q10 11 17 11 Q10 11 10 18 Q10 11 3 11 Q10 11 10 4 Z"/><path d="M19 2 Q19 5 22 5 Q19 5 19 8 Q19 5 16 5 Q19 5 19 2 Z"/><path d="M6 16.5 Q6 19 8.5 19 Q6 19 6 21.5 Q6 19 3.5 19 Q6 19 6 16.5 Z"/></svg></button>
+    <button id="quickAi" onclick="aiParse()" title="AI 解析成任務" aria-label="AI 解析"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 3.5 Q11 12 19.5 12 Q11 12 11 20.5 Q11 12 2.5 12 Q11 12 11 3.5 Z"/><path d="M20 2 Q20 5 23 5 Q20 5 20 8 Q20 5 17 5 Q20 5 20 2 Z"/><path d="M4.5 17.6 Q4.5 20 6.9 20 Q4.5 20 4.5 22.4 Q4.5 20 2.1 20 Q4.5 20 4.5 17.6 Z"/></svg></button>
     <button id="quickSave" onclick="saveQuick()">新增</button>
   </div>
 </div>
@@ -1142,7 +1142,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.05"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.07"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
