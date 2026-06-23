@@ -1193,7 +1193,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.20"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.21"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7054,7 +7054,10 @@ async function aiRouteRecompute(){
     _aiBusyHide(); _routeMode = true; render();
   } catch(e){
     clearTimeout(_aiTimer);
-    if (e && e.name === 'AbortError') { /* 取消 */ }
+    if (e && e.name === 'AbortError') {
+      if (timedOut) { _aiBusyHide(); _routeMode = true; render(); alert('AI 排路線太久了，已停止，先用預設順序顯示。'); }
+      // 使用者按取消：aiCancel 已收起遮罩，不處理
+    }
     else { _aiBusyHide(); _routeMode = true; render(); alert('AI 排序連線失敗，先用預設順序顯示。'); }
   } finally { _aiAbort = null; }
 }
