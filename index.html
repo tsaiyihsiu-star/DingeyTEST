@@ -1187,7 +1187,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.16"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.18"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -4171,13 +4171,29 @@ async function openReconcile() {
     }
     
     // 6. 顯示報告
+    // v501.18: 同時對帳 客戶清單 與 聯絡資料
+    const _fwt = (url, ms=20000) => { const cc=new AbortController(); const tt=setTimeout(()=>cc.abort(),ms); return fetch(url,{signal:cc.signal}).finally(()=>clearTimeout(tt)); };
+    let cloudCust=null, cloudContacts=null;
+    try { const j = await _fwt(`${GAS_URL}?action=getCustomers&token=${sessionToken}`).then(r=>r.json()); cloudCust = Array.isArray(j)?j:[]; } catch(e){ cloudCust=null; }
+    try { const j = await _fwt(`${GAS_URL}?action=getContacts&token=${sessionToken}`).then(r=>r.json()); cloudContacts = Array.isArray(j)?j:[]; } catch(e){ cloudContacts=null; }
+    let custLocalOnly=[], custCloudOnly=[], custDiff=[];
+    if (cloudCust!==null){
+      const lm=new Map((allCust||[]).map(c=>[String(c.name),c])), cm=new Map(cloudCust.map(c=>[String(c.name),c]));
+      for(const [k,lc] of lm){ const cc=cm.get(k); if(!cc) custLocalOnly.push(lc); else if(!!lc.isStopWord!==!!cc.isStopWord) custDiff.push({name:k,local:lc,cloud:cc}); }
+      for(const [k,cc] of cm){ if(!lm.has(k)) custCloudOnly.push(cc); }
+    }
+    let conLocalOnly=[], conCloudOnly=[], conDiff=[];
+    if (cloudContacts!==null){
+      const F=['groupKey','type','label','content'];
+      const lm=new Map((allContacts||[]).map(c=>[String(c.rowId),c])), cm=new Map(cloudContacts.map(c=>[String(c.rowId),c]));
+      for(const [k,lc] of lm){ const cc=cm.get(k); if(!cc) conLocalOnly.push(lc); else { const d=F.filter(f=>String(lc[f]??'').trim()!==String(cc[f]??'').trim()); if(d.length) conDiff.push({rowId:k,local:lc,cloud:cc,fields:d}); } }
+      for(const [k,cc] of cm){ if(!lm.has(k)) conCloudOnly.push(cc); }
+    }
     renderReconcileReport({
-      localOnly,
-      cloudOnly,
-      conflicts,
-      identical,
-      totalLocal: allT.length,
-      totalCloud: cloudFiltered.length
+      localOnly, cloudOnly, conflicts, identical,
+      totalLocal: allT.length, totalCloud: cloudFiltered.length,
+      custFetchOk: cloudCust!==null, custLocalOnly, custCloudOnly, custDiff,
+      conFetchOk: cloudContacts!==null, conLocalOnly, conCloudOnly, conDiff
     });
     
   } catch (e) {
@@ -4194,7 +4210,9 @@ function renderReconcileReport(r) {
   
   const realConflictCount = r.conflicts.filter(c => !c.isMTimeOnly).length;
   const mTimeOnlyCount = r.conflicts.filter(c => c.isMTimeOnly).length;
-  const hasRealDiff = r.localOnly.length > 0 || r.cloudOnly.length > 0 || realConflictCount > 0;
+  const hasRealDiff = r.localOnly.length > 0 || r.cloudOnly.length > 0 || realConflictCount > 0
+    || (r.custLocalOnly&&r.custLocalOnly.length) || (r.custCloudOnly&&r.custCloudOnly.length) || (r.custDiff&&r.custDiff.length)
+    || (r.conLocalOnly&&r.conLocalOnly.length) || (r.conCloudOnly&&r.conCloudOnly.length) || (r.conDiff&&r.conDiff.length);
   const hasMTimeOnly = mTimeOnlyCount > 0;
   const hasDiff = hasRealDiff || hasMTimeOnly;
   
@@ -4372,6 +4390,30 @@ function renderReconcileReport(r) {
     </div>
   `;
   
+  // v501.18: 客戶清單 + 聯絡資料 對帳區塊
+  function _secList(title, color, items, fmt){
+    if(!items || !items.length) return '';
+    return `<div style="margin-bottom:10px;"><div style="font-size:13px;font-weight:700;color:${color};margin-bottom:6px;">${title}（${items.length}）</div>`
+      + items.slice(0,10).map(x=>`<div style="background:#F9F9FB;padding:6px 10px;border-radius:6px;margin-bottom:4px;font-size:12px;">${fmt(x)}</div>`).join('')
+      + (items.length>10?`<div style="font-size:12px;color:#6e6e73;text-align:center;padding:4px;">(僅顯示前 10、共 ${items.length})</div>`:'') + `</div>`;
+  }
+  html += `<div style="border-top:1px solid #eee;margin:14px 0 8px;padding-top:12px;font-size:14px;font-weight:700;color:#1C1C1E;">👤 客戶清單</div>`;
+  if(!r.custFetchOk){ html += `<div style="font-size:12px;color:#FF9500;margin-bottom:10px;">⚠️ 無法取得雲端客戶、這次略過客戶對帳</div>`; }
+  else if(!((r.custLocalOnly||[]).length||(r.custCloudOnly||[]).length||(r.custDiff||[]).length)){ html += `<div style="font-size:12px;color:#34C759;margin-bottom:10px;">✅ 客戶清單一致</div>`; }
+  else {
+    html += _secList('📱 本機獨有','#FF9500',r.custLocalOnly, c=>escapeHtml(c.name||'(空)'));
+    html += _secList('☁️ 雲端獨有','#007AFF',r.custCloudOnly, c=>escapeHtml(c.name||'(空)'));
+    html += _secList('⚠️ 停用詞狀態不同','#D70015',r.custDiff, d=>`${escapeHtml(d.name)}：本機停用=${d.local.isStopWord?'是':'否'}、雲端=${d.cloud.isStopWord?'是':'否'}`);
+  }
+  html += `<div style="border-top:1px solid #eee;margin:14px 0 8px;padding-top:12px;font-size:14px;font-weight:700;color:#1C1C1E;">📞 聯絡資料</div>`;
+  if(!r.conFetchOk){ html += `<div style="font-size:12px;color:#FF9500;margin-bottom:10px;">⚠️ 無法取得雲端聯絡資料、這次略過</div>`; }
+  else if(!((r.conLocalOnly||[]).length||(r.conCloudOnly||[]).length||(r.conDiff||[]).length)){ html += `<div style="font-size:12px;color:#34C759;margin-bottom:10px;">✅ 聯絡資料一致</div>`; }
+  else {
+    const fc = c => `${escapeHtml(c.content||'(空)')} <span style="color:#6e6e73;">(${c.type||''}${c.label?'·'+escapeHtml(c.label):''}${c.groupKey?' · '+escapeHtml(String(c.groupKey)):''})</span>`;
+    html += _secList('📱 本機獨有','#FF9500',r.conLocalOnly, fc);
+    html += _secList('☁️ 雲端獨有','#007AFF',r.conCloudOnly, fc);
+    html += _secList('⚠️ 內容不同','#D70015',r.conDiff, d=>`${escapeHtml((d.local&&d.local.content)||(d.cloud&&d.cloud.content)||'')}：${d.fields.join('/')} 不同`);
+  }
   resultEl.innerHTML = html;
 }
 
