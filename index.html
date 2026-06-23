@@ -432,6 +432,12 @@
     .rt-handle{flex-shrink:0;padding:8px 6px 8px 10px;color:var(--gray);cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;}
     .rt-handle:active{cursor:grabbing;}
     .rt-station.rt-dragging{opacity:.92;background:var(--bg);box-shadow:0 6px 20px rgba(0,0,0,.18);position:relative;z-index:5;}
+    .rt-xbtn{flex-shrink:0;align-self:center;font-size:14px;background:transparent;border:none;padding:6px 10px;margin-right:2px;-webkit-tap-highlight-color:transparent;cursor:pointer;opacity:.55;}
+    .rt-xbtn:active{opacity:1;}
+    .rt-xbtn-back{font-size:12px;color:var(--primary);opacity:1;white-space:nowrap;}
+    .rt-xcust{color:var(--gray);}
+    .rt-task-x{opacity:.55;}
+    .rt-excl-label{font-size:12px;color:var(--gray);padding:10px 14px 4px;background:var(--bg);border-top:8px solid var(--bg);}
     #quickOverlay{display:none;position:fixed;inset:0;z-index:819;background:rgba(0,0,0,.35);}
     #quickOverlay.open{display:block;}
     #ctxOverlay{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.35);}
@@ -1187,7 +1193,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.19"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.20"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6933,6 +6939,11 @@ async function aiCreateTasks(){
 let _routeMode = false;
 let _routeOrders = null;
 let _routeCollapsed = new Set();
+let _routeExclTasks = null;
+function _loadRouteExclTasks(){ if(_routeExclTasks) return _routeExclTasks; try{ _routeExclTasks = new Set(JSON.parse(localStorage.getItem('yixiu_routeExclTasks')||'[]').map(String)); }catch(e){ _routeExclTasks=new Set(); } return _routeExclTasks; }
+function _saveRouteExclTasks(){ try{ localStorage.setItem('yixiu_routeExclTasks', JSON.stringify(Array.from(_loadRouteExclTasks()))); }catch(e){} }
+function _isTaskExcluded(id){ return _loadRouteExclTasks().has(String(id)); }
+function routeToggleExclTask(id){ const set=_loadRouteExclTasks(); id=String(id); if(set.has(id)) set.delete(id); else set.add(id); _saveRouteExclTasks(); render(); }
 function _loadRouteOrders(){ if(_routeOrders) return _routeOrders; try{ _routeOrders = JSON.parse(localStorage.getItem('yixiu_routeOrders')||'{}'); }catch(e){ _routeOrders={}; } return _routeOrders; }
 function _saveRouteOrders(){ try{ localStorage.setItem('yixiu_routeOrders', JSON.stringify(_routeOrders||{})); }catch(e){} }
 function _addrOfGroup(gk){ const a=_contactsOf(gk).find(c=>c.type==='address'); return (a&&String(a.content||'').trim())?String(a.content).trim():''; }
@@ -6947,8 +6958,9 @@ function _visibleTasksNow(){
   });
 }
 function _buildRouteStations(f){
-  const stationMap = new Map(); const noAddr = [];
+  const stationMap = new Map(); const noAddr = []; const excludedTasks = [];
   f.forEach(t => {
+    if (_isTaskExcluded(t.ID)) { excludedTasks.push(t); return; }
     const cust = t.Customer || '';
     const gk = cust ? _groupKeyOf(cust) : '';
     const addr = gk ? _addrOfGroup(gk) : '';
@@ -6958,7 +6970,7 @@ function _buildRouteStations(f){
   });
   const inViewIds = new Set(f.map(t => String(t.ID)));
   stationMap.forEach(st => { st.others = allT.filter(t => t.Status!=='Done' && t.Customer && _groupKeyOf(t.Customer)===st.gk && !inViewIds.has(String(t.ID))); });
-  return { stationMap, noAddr };
+  return { stationMap, noAddr, excludedTasks };
 }
 function _orderedStations(stationMap){
   const orders = _loadRouteOrders(); const saved = orders[currentF] || [];
@@ -6969,32 +6981,39 @@ function _orderedStations(stationMap){
 }
 function renderRouteMode(f, today){
   const list = document.getElementById('list');
-  const { stationMap, noAddr } = _buildRouteStations(f);
+  const { stationMap, noAddr, excludedTasks } = _buildRouteStations(f);
   const stations = _orderedStations(stationMap);
   const weekDays = ['(日)','(一)','(二)','(三)','(四)','(五)','(六)'];
   const wk = sv => { if(!sv) return ''; const a=sv.split('-').map(Number); return weekDays[new Date(a[0],a[1]-1,a[2]).getDay()]; };
-  const taskRow = (t, warn) => {
+  const taskRow = (t, opts) => {
+    opts = opts || {};
     const d = fmtD(t.DueDate)||''; const io = d && d < today; const cc = getCatColor(t.Category||'');
-    return `<div class="rt-task${warn?' rt-warn':''}" data-task-id="${t.ID}">
+    let btn = '';
+    if (opts.exclBtn==='exclude') btn = `<button class="rt-xbtn" onclick="event.stopPropagation();routeToggleExclTask('${t.ID}')" aria-label="不排這筆">🚫</button>`;
+    else if (opts.exclBtn==='restore') btn = `<button class="rt-xbtn rt-xbtn-back" onclick="event.stopPropagation();routeToggleExclTask('${t.ID}')">↩ 排回</button>`;
+    const cust = (opts.showCust && t.Customer) ? `<span class="rt-xcust">${escapeHtml(t.Customer)} · </span>` : '';
+    return `<div class="rt-task${opts.warn?' rt-warn':''}${opts.exclBtn==='restore'?' rt-task-x':''}" data-task-id="${t.ID}">
       <div class="rt-chk" onclick="event.stopPropagation();toggleT('${t.ID}')"><div class="checkbox"></div></div>
       <div class="rt-info" onclick="ctxShowMenu(event,'${t.ID}')" ontouchstart="ctxLongStart(event,'${t.ID}')" ontouchmove="ctxLongMove()" ontouchend="ctxLongEnd()" onmousedown="ctxLongStart(event,'${t.ID}')" onmouseup="ctxLongEnd()" onmouseleave="ctxLongEnd()">
-        <div class="rt-tt">${warn?'<span class="rt-rdot"></span>':''}${escapeHtml(t.Task||'未命名')}</div>
+        <div class="rt-tt">${opts.warn?'<span class="rt-rdot"></span>':''}${cust}${escapeHtml(t.Task||'未命名')}</div>
         <div class="rt-meta"><span class="meta-cat" style="background:${cc}">${t.Category||'未分類'}</span>${d?`<span class="meta-date ${io?'overdue':''}">${wk(d)} ${fmtDateShort(d)}</span>`:''}<span class="pri-badge">P${t.Priority||99}</span></div>
       </div>
+      ${btn}
     </div>`;
   };
   let html = `<div class="rt-banner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3 3 0 0 0 0-6H10a3 3 0 0 1 0-6h6"/></svg>路線排序 · 同區相鄰</div>`;
-  if (!stations.length){ html += `<div style="padding:18px;text-align:center;color:var(--gray);font-size:14px;">這個檢視沒有「有地址」的客戶任務可排路線。</div>`; }
+  if (!stations.length && !(excludedTasks&&excludedTasks.length)){ html += `<div style="padding:18px;text-align:center;color:var(--gray);font-size:14px;">這個檢視沒有「有地址」的客戶任務可排路線。</div>`; }
   stations.forEach((st, i) => {
     const others = st.others || [];
     const collapsed = _routeCollapsed.has(st.gk);
     const cnt = st.inView.length + others.length;
     html += `<div class="rt-station" data-gk="${escapeAttr(st.gk)}">
       <div class="rt-head"><div class="rt-head-main" onclick="rtToggleStation(this)"><div class="rt-num">${i+1}</div><div class="rt-hinfo"><div class="rt-cust">${escapeHtml(st.customer)}</div><div class="rt-addr">${escapeHtml(st.address)}</div></div>${collapsed?`<span class="rt-cnt">${cnt}</span>`:''}<svg class="rt-chev${collapsed?' collapsed':''}" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div><div class="rt-handle" ontouchstart="rtDragStart(event,this)" onmousedown="rtDragStartM(event,this)" aria-label="拖曳排序"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg></div></div>
-      ${collapsed ? '' : (st.inView.map(t=>taskRow(t,false)).join('') + (others.length ? `<div class="rt-others-label"><span class="rt-rdot"></span>這家還沒做（不在目前範圍）</div>`+others.map(t=>taskRow(t,true)).join('') : ''))}
+      ${collapsed ? '' : (st.inView.map(t=>taskRow(t,{exclBtn:'exclude'})).join('') + (others.length ? `<div class="rt-others-label"><span class="rt-rdot"></span>這家還沒做（不在目前範圍）</div>`+others.map(t=>taskRow(t,{warn:true})).join('') : ''))}
     </div>`;
   });
-  if (noAddr.length){ html += `<div class="rt-noaddr-label">無地址 · 未排入路線</div><div class="rt-noaddr">`+noAddr.map(t=>taskRow(t,false)).join('')+`</div>`; }
+  if (excludedTasks && excludedTasks.length){ html += `<div class="rt-excl-label">🚫 排除區（${excludedTasks.length}）· 不排入路線</div>` + excludedTasks.map(t=>taskRow(t,{exclBtn:'restore',showCust:true})).join(''); }
+  if (noAddr.length){ html += `<div class="rt-noaddr-label">無地址 · 未排入路線</div><div class="rt-noaddr">`+noAddr.map(t=>taskRow(t,{})).join('')+`</div>`; }
   list.innerHTML = html;
 }
 function rtToggleStation(el){
