@@ -1180,7 +1180,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.12"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.13"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6982,6 +6982,19 @@ async function aiRouteRecompute(){
     else { _aiBusyHide(); _routeMode = true; render(); alert('AI 排序連線失敗，先用預設順序顯示。'); }
   } finally { _aiAbort = null; }
 }
+function _isApple(){ const ua = (navigator.userAgent||''); const pf = (navigator.platform||''); return /iPhone|iPad|iPod/.test(ua) || /iPhone|iPad|iPod|Mac/.test(pf) || (pf==='MacIntel' && (navigator.maxTouchPoints||0) > 1); }
+function routeOpenAppleMaps(){
+  closeVtMenu();
+  const f = _visibleTasksNow();
+  const { stationMap } = _buildRouteStations(f);
+  const stations = _orderedStations(stationMap);
+  const addrs = stations.map(st => st.address).filter(Boolean);
+  if (!addrs.length){ alert('沒有可導航的地址。'); return; }
+  playSound('tap');
+  // Apple 地圖：官方只支援單一 daddr；多站 +to: 為盡力而為（看 iOS 是否支援）
+  const url = 'https://maps.apple.com/?dirflg=d&daddr=' + addrs.map(a=>encodeURIComponent(a)).join('+to:');
+  window.location.href = url;   // iOS 會直接開 Apple 地圖 App，不卡引導頁
+}
 function routeOpenMaps(){
   closeVtMenu();
   const f = _visibleTasksNow();
@@ -7010,6 +7023,7 @@ function showVtMenu(){
     `<div class="vt-item" onclick="routeSetMode(true)"><span class="vt-tx">路線排序</span>${_routeMode?ck:''}</div>` +
     `<div class="vt-sep"></div>` +
     `<div class="vt-item" onclick="aiRouteRecompute()"><span class="vt-tx">AI 重新排路線</span></div>` +
+    (_isApple() ? `<div class="vt-item" onclick="routeOpenAppleMaps()"><span class="vt-tx">在 Apple 地圖開路線</span></div>` : '') +
     `<div class="vt-item" onclick="routeOpenMaps()"><span class="vt-tx">在 Google 地圖開路線</span></div>`;
   menu.style.left = Math.round(Math.min(r.left, window.innerWidth-220)) + 'px';
   menu.style.top = Math.round(r.bottom + 6) + 'px';
