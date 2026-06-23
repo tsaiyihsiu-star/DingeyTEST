@@ -387,7 +387,7 @@
     @keyframes fadeScaleIn{from{opacity:0;transform:scale(0.92) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
     .quick-row{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
     .quick-row:last-child{margin-bottom:0;}
-    #quickInput{flex:1;padding:12px 14px;border:none;border-radius:10px;background:var(--bg);font-size:18px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;width:100%;}
+    #quickInput{flex:1;padding:12px 14px;border:none;border-radius:10px;background:var(--bg);font-size:18px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;width:100%;box-sizing:border-box;line-height:1.35;resize:none;overflow-y:auto;min-height:48px;max-height:140px;display:block;}
     #quickInput::placeholder{color:#AEAEB2;}
     #quickCat{flex:1;padding:12px 12px;border:none;border-radius:10px;background:var(--bg);font-size:17px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;cursor:pointer;}
     #quickSave{padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
@@ -759,7 +759,7 @@
 <div id="quickOverlay" onclick="closeQuick()"></div>
 <div id="quickM" onclick="event.stopPropagation()">
   <div class="quick-row">
-    <input type="text" id="quickInput" placeholder="任務名稱…" onkeydown="if(event.key==='Enter'&&!event.isComposing)saveQuick()">
+    <textarea id="quickInput" rows="1" placeholder="任務名稱…" oninput="autoGrowQuick(this)" onkeydown="if(event.key==='Enter'&&!event.isComposing&&!event.shiftKey){event.preventDefault();saveQuick();}"></textarea>
   </div>
   <div class="quick-row">
     <select id="quickCat"></select>
@@ -1142,7 +1142,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.07"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.08"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6710,7 +6710,8 @@ function openQuick() {
   m.style.left = '16px';
   m.style.top = (fr.bottom + 10) + 'px';
   document.getElementById('quickOverlay').classList.add('open');
-  document.getElementById('quickInput').focus();
+  const _qi = document.getElementById('quickInput'); _qi.style.height = '';   // v501.08: 重置高度
+  _qi.focus();
 }
 function closeQuick() {
   playSound('close');
@@ -6718,7 +6719,10 @@ function closeQuick() {
   document.getElementById('quickM').classList.remove('open');
   document.getElementById('quickOverlay').classList.remove('open');
   document.getElementById('quickInput').value = '';
+  document.getElementById('quickInput').style.height = '';   // v501.08: 重置多行高度
 }
+// v501.08: 快速新增輸入框自動長高（字超過欄寬換行 → 框跟著變高，到上限後內部捲動）
+function autoGrowQuick(el){ el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; }
 // ===== v500.41: AI 自然語言解析建任務（試點，測試版）=====
 let _aiTasks = [];
 let _aiAbort = null, _aiTimer = null;
