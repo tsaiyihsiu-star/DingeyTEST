@@ -406,17 +406,21 @@
     .ai-busy-btn-primary{background:var(--primary);color:#fff;font-weight:700;}
     .rt-banner{display:flex;align-items:center;gap:6px;padding:8px 14px;background:rgba(0,122,255,.08);color:var(--primary);font-size:13px;}
     .rt-station{border-bottom:8px solid var(--bg);}
-    .rt-head{display:flex;align-items:center;gap:10px;padding:10px 14px 4px;}
+    .rt-head{display:flex;align-items:center;padding:7px 10px 5px 14px;}
+    .rt-head-main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .rt-chev{flex-shrink:0;color:var(--gray);transition:transform .15s;}
+    .rt-chev.collapsed{transform:rotate(-90deg);}
+    .rt-cnt{flex-shrink:0;font-size:12px;color:var(--gray);background:var(--bg);border-radius:10px;padding:1px 8px;}
     .rt-num{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--primary);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;}
     .rt-hinfo{flex:1;min-width:0;}
     .rt-cust{font-size:16px;font-weight:700;color:var(--label);}
     .rt-addr{font-size:13px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .rt-task{display:flex;align-items:center;gap:10px;padding:7px 14px 7px 16px;}
+    .rt-task{display:flex;align-items:center;gap:10px;padding:4px 14px 4px 16px;}
     .rt-warn{background:rgba(255,59,48,.06);}
     .rt-chk{flex-shrink:0;}
     .rt-info{flex:1;min-width:0;}
-    .rt-tt{font-size:15px;color:var(--label);}
-    .rt-meta{display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;}
+    .rt-tt{font-size:15px;color:var(--label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .rt-meta{display:flex;align-items:center;gap:6px;margin-top:1px;flex-wrap:wrap;}
     .rt-rdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px;vertical-align:middle;animation:badgePulse 1.2s ease-in-out infinite;}
     .rt-others-label{font-size:12px;color:var(--red);padding:4px 14px 2px 16px;display:flex;align-items:center;}
     .rt-noaddr-label{font-size:12px;color:var(--gray);padding:8px 14px 4px;background:var(--bg);}
@@ -1183,7 +1187,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.15"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.16"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6886,6 +6890,7 @@ async function aiCreateTasks(){
 // ===== v501.12: 路線排序模式（主清單依站點順序顯示）=====
 let _routeMode = false;
 let _routeOrders = null;
+let _routeCollapsed = new Set();
 function _loadRouteOrders(){ if(_routeOrders) return _routeOrders; try{ _routeOrders = JSON.parse(localStorage.getItem('yixiu_routeOrders')||'{}'); }catch(e){ _routeOrders={}; } return _routeOrders; }
 function _saveRouteOrders(){ try{ localStorage.setItem('yixiu_routeOrders', JSON.stringify(_routeOrders||{})); }catch(e){} }
 function _addrOfGroup(gk){ const a=_contactsOf(gk).find(c=>c.type==='address'); return (a&&String(a.content||'').trim())?String(a.content).trim():''; }
@@ -6940,14 +6945,21 @@ function renderRouteMode(f, today){
   if (!stations.length){ html += `<div style="padding:18px;text-align:center;color:var(--gray);font-size:14px;">這個檢視沒有「有地址」的客戶任務可排路線。</div>`; }
   stations.forEach((st, i) => {
     const others = st.others || [];
+    const collapsed = _routeCollapsed.has(st.gk);
+    const cnt = st.inView.length + others.length;
     html += `<div class="rt-station" data-gk="${escapeAttr(st.gk)}">
-      <div class="rt-head"><div class="rt-num">${i+1}</div><div class="rt-hinfo"><div class="rt-cust">${escapeHtml(st.customer)}</div><div class="rt-addr">${escapeHtml(st.address)}</div></div><div class="rt-handle" ontouchstart="rtDragStart(event,this)" onmousedown="rtDragStartM(event,this)" aria-label="拖曳排序"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg></div></div>
-      ${st.inView.map(t=>taskRow(t,false)).join('')}
-      ${others.length ? `<div class="rt-others-label"><span class="rt-rdot"></span>這家還沒做（不在目前範圍）</div>`+others.map(t=>taskRow(t,true)).join('') : ''}
+      <div class="rt-head"><div class="rt-head-main" onclick="rtToggleStation(this)"><div class="rt-num">${i+1}</div><div class="rt-hinfo"><div class="rt-cust">${escapeHtml(st.customer)}</div><div class="rt-addr">${escapeHtml(st.address)}</div></div>${collapsed?`<span class="rt-cnt">${cnt}</span>`:''}<svg class="rt-chev${collapsed?' collapsed':''}" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div><div class="rt-handle" ontouchstart="rtDragStart(event,this)" onmousedown="rtDragStartM(event,this)" aria-label="拖曳排序"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg></div></div>
+      ${collapsed ? '' : (st.inView.map(t=>taskRow(t,false)).join('') + (others.length ? `<div class="rt-others-label"><span class="rt-rdot"></span>這家還沒做（不在目前範圍）</div>`+others.map(t=>taskRow(t,true)).join('') : ''))}
     </div>`;
   });
   if (noAddr.length){ html += `<div class="rt-noaddr-label">無地址 · 未排入路線</div><div class="rt-noaddr">`+noAddr.map(t=>taskRow(t,false)).join('')+`</div>`; }
   list.innerHTML = html;
+}
+function rtToggleStation(el){
+  const st = el.closest('.rt-station'); if(!st) return;
+  const gk = st.getAttribute('data-gk');
+  if (_routeCollapsed.has(gk)) _routeCollapsed.delete(gk); else _routeCollapsed.add(gk);
+  render();
 }
 function routeSetMode(on){
   closeVtMenu(); _routeMode = !!on;
