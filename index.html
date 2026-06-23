@@ -425,6 +425,9 @@
     .vt-item:active{background:var(--bg);}
     .vt-tx{flex:1;}
     .vt-sep{height:1px;background:var(--bg);margin:4px 8px;}
+    .rt-handle{flex-shrink:0;padding:8px 6px 8px 10px;color:var(--gray);cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;}
+    .rt-handle:active{cursor:grabbing;}
+    .rt-station.rt-dragging{opacity:.92;background:var(--bg);box-shadow:0 6px 20px rgba(0,0,0,.18);position:relative;z-index:5;}
     #quickOverlay{display:none;position:fixed;inset:0;z-index:819;background:rgba(0,0,0,.35);}
     #quickOverlay.open{display:block;}
     #ctxOverlay{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.35);}
@@ -1180,7 +1183,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.13"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.14"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6937,8 +6940,8 @@ function renderRouteMode(f, today){
   if (!stations.length){ html += `<div style="padding:18px;text-align:center;color:var(--gray);font-size:14px;">這個檢視沒有「有地址」的客戶任務可排路線。</div>`; }
   stations.forEach((st, i) => {
     const others = st.others || [];
-    html += `<div class="rt-station">
-      <div class="rt-head"><div class="rt-num">${i+1}</div><div class="rt-hinfo"><div class="rt-cust">${escapeHtml(st.customer)}</div><div class="rt-addr">${escapeHtml(st.address)}</div></div></div>
+    html += `<div class="rt-station${_dragGk===st.gk?' rt-dragging':''}" data-gk="${escapeAttr(st.gk)}">
+      <div class="rt-head"><div class="rt-num">${i+1}</div><div class="rt-hinfo"><div class="rt-cust">${escapeHtml(st.customer)}</div><div class="rt-addr">${escapeHtml(st.address)}</div></div><div class="rt-handle" ontouchstart="rtDragStart(event,this)" onmousedown="rtDragStartM(event,this)" aria-label="拖曳排序"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg></div></div>
       ${st.inView.map(t=>taskRow(t,false)).join('')}
       ${others.length ? `<div class="rt-others-label"><span class="rt-rdot"></span>這家還沒做（不在目前範圍）</div>`+others.map(t=>taskRow(t,true)).join('') : ''}
     </div>`;
@@ -7009,6 +7012,50 @@ function routeOpenMaps(){
   window.addEventListener('pagehide', ()=>{ switched = true; }, { once:true });
   const tmr = setTimeout(()=>{ if(!switched) window.location.href = webUrl; }, 700);
   try { window.location.href = appUrl; } catch(e){ clearTimeout(tmr); window.location.href = webUrl; }
+}
+// v501.14: 站點拖曳排序（按住右側 ☰ 把手）
+let _dragGk = null, _dragOrder = null;
+function _currentRouteGkOrder(){ const f=_visibleTasksNow(); const {stationMap}=_buildRouteStations(f); return _orderedStations(stationMap).map(st=>st.gk); }
+function _stationGkAt(x,y){ let el=document.elementFromPoint(x,y); while(el && el!==document.body){ if(el.classList && el.classList.contains('rt-station')) return el.getAttribute('data-gk'); el=el.parentElement; } return null; }
+function _dragReorderTo(overGk){
+  if(!overGk || overGk===_dragGk || !_dragOrder) return;
+  const from=_dragOrder.indexOf(_dragGk), to=_dragOrder.indexOf(overGk);
+  if(from<0 || to<0 || from===to) return;
+  _dragOrder.splice(from,1); _dragOrder.splice(to,0,_dragGk);
+  _routeOrders[currentF]=_dragOrder.slice();
+  render();
+}
+function rtDragStart(e, el){
+  const st=el.closest('.rt-station'); if(!st) return;
+  e.preventDefault();
+  _dragGk=st.getAttribute('data-gk'); _dragOrder=_currentRouteGkOrder();
+  _loadRouteOrders(); _routeOrders[currentF]=_dragOrder.slice();
+  render();
+  document.addEventListener('touchmove', _rtTouchMove, {passive:false});
+  document.addEventListener('touchend', _rtTouchEnd);
+  document.addEventListener('touchcancel', _rtTouchEnd);
+}
+function _rtTouchMove(e){ if(!_dragGk) return; e.preventDefault(); const t=e.touches[0]; if(!t) return; _dragReorderTo(_stationGkAt(t.clientX, t.clientY)); }
+function _rtTouchEnd(){ if(!_dragGk) return; _dragGk=null; _saveRouteOrders();
+  document.removeEventListener('touchmove', _rtTouchMove, {passive:false});
+  document.removeEventListener('touchend', _rtTouchEnd);
+  document.removeEventListener('touchcancel', _rtTouchEnd);
+  render(); try{ playSound('tap'); }catch(_){}
+}
+function rtDragStartM(e, el){
+  const st=el.closest('.rt-station'); if(!st) return;
+  e.preventDefault();
+  _dragGk=st.getAttribute('data-gk'); _dragOrder=_currentRouteGkOrder();
+  _loadRouteOrders(); _routeOrders[currentF]=_dragOrder.slice();
+  render();
+  document.addEventListener('mousemove', _rtMouseMove);
+  document.addEventListener('mouseup', _rtMouseUp);
+}
+function _rtMouseMove(e){ if(!_dragGk) return; _dragReorderTo(_stationGkAt(e.clientX, e.clientY)); }
+function _rtMouseUp(){ if(!_dragGk) return; _dragGk=null; _saveRouteOrders();
+  document.removeEventListener('mousemove', _rtMouseMove);
+  document.removeEventListener('mouseup', _rtMouseUp);
+  render();
 }
 // 長按抬頭 → 小選單
 let _vtLpTimer = null, _vtLpFired = false;
