@@ -392,9 +392,18 @@
     #quickCat{flex:1;padding:12px 12px;border:none;border-radius:10px;background:var(--bg);font-size:17px;font-family:inherit;color:var(--label);outline:none;-webkit-appearance:none;cursor:pointer;}
     #quickSave{padding:12px 20px;background:var(--primary);color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     #quickSave:active{opacity:.85;}
-    #quickAi{padding:12px 13px;background:var(--bg);color:var(--primary);border:none;border-radius:10px;font-size:18px;font-family:inherit;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+    #quickAi{padding:11px 13px;background:var(--bg);color:var(--primary);border:none;border-radius:10px;font-family:inherit;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
     #quickAi:active{opacity:.6;}
     #quickAi:disabled{opacity:.4;}
+    .ai-spin{width:36px;height:36px;margin:2px auto 0;border-radius:50%;border:3px solid var(--bg);border-top-color:var(--primary);animation:aiSpin .8s linear infinite;}
+    @keyframes aiSpin{to{transform:rotate(360deg);}}
+    #aiBusy{display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.4);align-items:center;justify-content:center;padding:24px;}
+    .ai-busy-card{background:var(--card);border-radius:18px;padding:24px 22px;width:100%;max-width:300px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+    #aiBusyMsg{margin-top:16px;font-size:16px;font-weight:700;color:var(--label);}
+    #aiBusySub{margin-top:6px;font-size:13px;color:var(--gray);line-height:1.5;}
+    #aiBusyBtns{margin-top:18px;display:flex;gap:10px;}
+    .ai-busy-btn{flex:1;padding:11px;border:none;border-radius:11px;background:var(--bg);color:var(--label);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .ai-busy-btn-primary{background:var(--primary);color:#fff;font-weight:700;}
     #quickOverlay{display:none;position:fixed;inset:0;z-index:819;background:rgba(0,0,0,.35);}
     #quickOverlay.open{display:block;}
     #ctxOverlay{display:none;position:fixed;inset:0;z-index:490;background:rgba(0,0,0,.35);}
@@ -754,12 +763,22 @@
   </div>
   <div class="quick-row">
     <select id="quickCat"></select>
-    <button id="quickAi" onclick="aiParse()" title="AI 解析成任務">✨</button>
+    <button id="quickAi" onclick="aiParse()" title="AI 解析成任務" aria-label="AI 解析"><svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 4 Q10 11 17 11 Q10 11 10 18 Q10 11 3 11 Q10 11 10 4 Z"/><path d="M19 2 Q19 5 22 5 Q19 5 19 8 Q19 5 16 5 Q19 5 19 2 Z"/><path d="M6 16.5 Q6 19 8.5 19 Q6 19 6 21.5 Q6 19 3.5 19 Q6 19 6 16.5 Z"/></svg></button>
     <button id="quickSave" onclick="saveQuick()">新增</button>
   </div>
 </div>
 
 <!-- v500.41: AI 解析預覽（上方清單視窗）-->
+<!-- v501.04: AI 解析進行中彈窗 -->
+<div id="aiBusy">
+  <div class="ai-busy-card">
+    <div id="aiBusySpin" class="ai-spin"></div>
+    <div id="aiBusyMsg">AI 解析中…</div>
+    <div id="aiBusySub">正在把你的句子拆成任務 · 可隨時取消</div>
+    <div id="aiBusyBtns"><button class="ai-busy-btn" onclick="aiCancel()">取消</button></div>
+  </div>
+</div>
+
 <div id="aiPreviewM" class="modal modal-top modal-top-list" onclick="if(event.target===this)closeAiPreview()">
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
@@ -1123,7 +1142,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.02"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.04"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6702,20 +6721,31 @@ function closeQuick() {
 }
 // ===== v500.41: AI 自然語言解析建任務（試點，測試版）=====
 let _aiTasks = [];
+let _aiAbort = null, _aiTimer = null;
+function aiCancel(){ if(_aiTimer)clearTimeout(_aiTimer); if(_aiAbort){try{_aiAbort.abort();}catch(e){}} _aiBusyHide(); const b=document.getElementById('quickAi'); if(b)b.disabled=false; }
+function _aiBusyShow(){ document.getElementById('aiBusySpin').style.display='block'; document.getElementById('aiBusyMsg').textContent='AI 解析中…'; document.getElementById('aiBusySub').textContent='正在把你的句子拆成任務 · 可隨時取消'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="aiCancel()">取消</button>'; document.getElementById('aiBusy').style.display='flex'; }
+function _aiBusyHide(){ document.getElementById('aiBusy').style.display='none'; }
+function _aiBusyFail(msg){ document.getElementById('aiBusySpin').style.display='none'; document.getElementById('aiBusyMsg').textContent=msg||'AI 解析沒成功'; document.getElementById('aiBusySub').textContent='可以直接按「新增」手動建立，或再試一次'; document.getElementById('aiBusyBtns').innerHTML='<button class="ai-busy-btn" onclick="_aiBusyHide()">關閉</button><button class="ai-busy-btn ai-busy-btn-primary" onclick="aiParse()">再試一次</button>'; document.getElementById('aiBusy').style.display='flex'; }
 async function aiParse() {
   const text = document.getElementById('quickInput').value.trim();
   if (!text) { document.getElementById('quickInput').focus(); return; }
-  if (navigator.onLine === false) { alert('目前離線，無法使用 AI 解析。可直接用「新增」手動建立。'); return; }
-  const btn = document.getElementById('quickAi'); const old = btn.textContent;
-  btn.disabled = true; btn.textContent = '…';
+  if (navigator.onLine === false) { _aiBusyFail('目前離線，無法解析'); return; }
+  const btn = document.getElementById('quickAi'); btn.disabled = true;
+  document.getElementById('quickInput').blur();
+  _aiBusyShow();                                  // v501.04: 一按就跳「解析中」轉圈
+  _aiAbort = new AbortController();
+  let timedOut = false;
+  _aiTimer = setTimeout(() => { timedOut = true; try { _aiAbort.abort(); } catch(e){} }, 20000); // 逾時 20 秒自動停止
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
+      signal: _aiAbort.signal,
       body: JSON.stringify({ action: 'aiParseTask', text, cats: (allC||[]).map(c=>c.name), today: getToday() })
     });
+    clearTimeout(_aiTimer);
     const data = await res.json();
     if (data.status !== 'success' || !Array.isArray(data.tasks) || !data.tasks.length) {
-      alert('AI 解析失敗' + (data && data.message ? '：'+data.message : '，可改用手動新增。')); return;
+      _aiBusyFail('AI 解析沒成功' + (data && data.message ? '：'+data.message : '')); return;
     }
     _aiTasks = data.tasks.map(t => {
       const action = String(t.name||'').trim();
@@ -6731,15 +6761,18 @@ async function aiParse() {
         note: String(t.note||'').trim()
       };
     }).filter(t => t.name);
-    if (!_aiTasks.length) { alert('AI 沒有解析出任務，可改用手動新增。'); return; }
-    document.getElementById('quickInput').blur();
+    if (!_aiTasks.length) { _aiBusyFail('沒有解析出任務'); return; }
+    _aiBusyHide();
     closeQuick();
     renderAiPreview();
     openModal('aiPreviewM');
   } catch(e) {
-    alert('連線失敗，無法使用 AI 解析。可直接用「新增」手動建立。');
+    clearTimeout(_aiTimer);
+    if (timedOut) _aiBusyFail('解析太久了，已停止');
+    else if (e && e.name === 'AbortError') { /* 使用者按取消，彈窗已收起 */ }
+    else _aiBusyFail('連線失敗');
   } finally {
-    btn.disabled = false; btn.textContent = old;
+    btn.disabled = false; _aiAbort = null;
   }
 }
 function _aiPickCat(name){
