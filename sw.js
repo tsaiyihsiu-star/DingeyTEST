@@ -1,4 +1,4 @@
-const CACHE_NAME = 'TESTtodo-v501.15';
+const CACHE_NAME = 'TESTtodo-v501.16';
 
 const urlsToCache = [
   './',
