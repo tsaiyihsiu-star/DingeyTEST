@@ -1187,7 +1187,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.18"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.19"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -4383,12 +4383,6 @@ function renderReconcileReport(r) {
     }
   }
   
-  html += `
-    <div style="display:flex;gap:8px;margin-top:16px;">
-      <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="closeM('reconcileM')">關閉</button>
-      <button class="btn-sync" style="background:#5856D6;flex:1;" onclick="openReconcile()">重新檢查</button>
-    </div>
-  `;
   
   // v501.18: 客戶清單 + 聯絡資料 對帳區塊
   function _secList(title, color, items, fmt){
@@ -4414,6 +4408,12 @@ function renderReconcileReport(r) {
     html += _secList('☁️ 雲端獨有','#007AFF',r.conCloudOnly, fc);
     html += _secList('⚠️ 內容不同','#D70015',r.conDiff, d=>`${escapeHtml((d.local&&d.local.content)||(d.cloud&&d.cloud.content)||'')}：${d.fields.join('/')} 不同`);
   }
+  html += `
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="closeM('reconcileM')">關閉</button>
+      <button class="btn-sync" style="background:#5856D6;flex:1;" onclick="openReconcile()">重新檢查</button>
+    </div>
+  `;
   resultEl.innerHTML = html;
 }
 
