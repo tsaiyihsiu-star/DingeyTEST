@@ -1142,7 +1142,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.04"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.05"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6750,13 +6750,22 @@ async function aiParse() {
     _aiTasks = data.tasks.map(t => {
       const action = String(t.name||'').trim();
       const cust = String(t.customer||'').trim();
-      // v501.02: 客戶名併進主旨（app 是主旨驅動：客戶在主旨裡才會標綠、才出現聯絡/導航選單）
-      const title = (cust && !action.includes(cust)) ? (cust + ' ' + action) : action;
+      // v501.05: 主旨組成 = 日期時段 + 客戶 + 動作，例：「6/24下午 正泰 保養」
+      const aiDate = /^\d{4}-\d{2}-\d{2}$/.test(String(t.dueDate||'')) ? t.dueDate : '';
+      const time = String(t.time||'').trim();
+      let datePart = '';
+      if (aiDate) { const _p = aiDate.split('-'); datePart = (+_p[1]) + '/' + (+_p[2]); }  // 2026-06-24 → 6/24
+      const when = (datePart + time).trim();   // 「6/24下午」/「下午」/「6/24」/「」
+      const segs = [];
+      if (when) segs.push(when);
+      if (cust && !action.includes(cust)) segs.push(cust);   // 客戶在主旨裡才會標綠、出現聯絡/導航
+      segs.push(action);
+      const title = segs.join(' ');
       return {
         include: true,
         name: title,
         category: _aiPickCat(t.category),
-        dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(t.dueDate||'')) ? t.dueDate : getToday(),
+        dueDate: aiDate || getToday(),   // 沒指定日期才預設今天；主旨日期只在使用者有講時才顯示
         customer: cust,
         note: String(t.note||'').trim()
       };
