@@ -1193,7 +1193,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.22"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.23"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5670,6 +5670,10 @@ function renderContactMng() {
   }
   titleEl.textContent = `${_contactEditCustName} 的聯絡資料`;
   const contacts = _contactsOf(_contactEditGroupKey);
+  // v501.23: 預設地址 = sortOrder 最前的 address；2 筆以上才提供「設為預設」
+  const _addrs = contacts.filter(c => c.type==='address');
+  const _defAddrId = _addrs.length ? String(_addrs[0].rowId) : null;
+  const _multiAddr = _addrs.length >= 2;
   let rows = '';
   if (!contacts.length) {
     rows = '<p style="color:var(--gray);text-align:center;padding:16px 0;font-size:14px;">尚無聯絡資料，點下方新增</p>';
@@ -5682,12 +5686,14 @@ function renderContactMng() {
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap;">
             <span style="font-size:11px;font-weight:700;color:#fff;background:${typeColor};border-radius:4px;padding:1px 6px;">${typeLabel}</span>
+            ${(c.type==='address' && _multiAddr && String(c.rowId)===_defAddrId) ? '<span style="font-size:11px;font-weight:700;color:#FF9500;">⭐ 預設</span>' : ''}
             ${c.label ? `<span style="font-size:13px;color:var(--text);font-weight:600;">${escapeHtml(c.label)}</span>` : ''}
             ${(c.origin && c.origin !== _contactEditCustName) ? `<span style="font-size:11px;color:#FF9500;">· 來源：${escapeHtml(c.origin)}</span>` : ''}
           </div>
           <div style="font-size:14px;color:var(--text);word-break:break-all;">${escapeHtml(c.content)}</div>
         </div>
         <div class="cat-acts" style="flex-shrink:0;">
+          ${(c.type==='address' && _multiAddr && String(c.rowId)!==_defAddrId) ? `<span class="cat-act" style="color:#FF9500" onclick="setDefaultAddress('${escapeAttr(c.rowId)}')">設為預設</span>` : ''}
           <span class="cat-act" style="color:var(--primary)" onclick="editContactItem('${escapeAttr(c.rowId)}')">編輯</span>
           <span class="cat-act" style="color:#FF9500" onclick="moveContactItem('${escapeAttr(c.rowId)}')">移轉</span>
           <span class="cat-act" style="color:var(--red)" onclick="delContactItem('${escapeAttr(c.rowId)}')">刪除</span>
@@ -5786,6 +5792,36 @@ async function saveContactItem() {
     }
   } catch(e) {
     pushLog && pushLog(`聯絡資料推送失敗：${e.message}`, 'error');
+    if (typeof refreshContactsCache === 'function') refreshContactsCache();
+  }
+}
+
+// v501.23: 設為預設地址（用 sortOrder 對調，走現有 saveContact 同步、不動 GAS/試算表）
+async function setDefaultAddress(rowId) {
+  const chosen = allContacts.find(x => String(x.rowId) === String(rowId));
+  if (!chosen || chosen.type !== 'address') return;
+  const gk = chosen.groupKey;
+  const addrs = allContacts
+    .filter(c => String(c.groupKey) === String(gk) && c.type === 'address')
+    .sort((a,b) => (Number(a.sortOrder)||0) - (Number(b.sortOrder)||0));
+  if (addrs.length < 2) return;
+  const first = addrs[0];
+  if (String(first.rowId) === String(rowId)) return; // 已是預設
+  const soFirst = Number(first.sortOrder)||0;
+  const soChosen = Number(chosen.sortOrder)||0;
+  if (soFirst === soChosen) { chosen.sortOrder = soFirst - 1; }   // 平手 → 直接調更小
+  else { chosen.sortOrder = soFirst; first.sortOrder = soChosen; } // 否則對調
+  localStorage.setItem('contactsCache', JSON.stringify(allContacts));
+  renderContactMng();
+  playSound && playSound('add');
+  const mk = (c) => ({ groupKey: c.groupKey, custName: _contactEditCustName, type: c.type, label: c.label||'', content: c.content||'', sortOrder: c.sortOrder, rowId: c.rowId, updatedAt: Date.now(), origin: c.origin||'' });
+  try {
+    await callGasAction('saveContact', { contact: mk(chosen) });
+    await callGasAction('saveContact', { contact: mk(first) });
+    pushLog && pushLog('已更新預設地址', 'success');
+    if (typeof refreshContactsCache === 'function') refreshContactsCache();
+  } catch(e) {
+    pushLog && pushLog(`預設地址同步失敗：${e.message||e}`, 'error');
     if (typeof refreshContactsCache === 'function') refreshContactsCache();
   }
 }
