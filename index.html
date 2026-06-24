@@ -1193,7 +1193,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.21"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v501.22"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -3065,7 +3065,7 @@ async function flushQueue() {
   }
 
   // 統一的 fetch with timeout（25秒）
-  const batchFetch = (body, ms=25000) => {
+  const batchFetch = (body, ms=35000) => {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), ms);
     return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
@@ -3080,7 +3080,7 @@ async function flushQueue() {
     try {
       const result = await pushOpsToCloud(async (url, opts) => {
         const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 25000);
+        const tid = setTimeout(() => ctrl.abort(), 35000);
         const res = await fetch(url, {
           method: opts.method,
           body: opts.body,
@@ -3094,7 +3094,8 @@ async function flushQueue() {
       if (opsPushed > 0) pushLog(`✓ ${opsPushed} 個 op 已確認`, 'success');
       if (opsRejected > 0) pushLog(`⚠️ ${opsRejected} 個 op 被拒絕`, 'warn');
     } catch (e) {
-      pushLog(`✗ TaskOps 推送失敗: ${e.message || e}`, 'error');
+      const _ab = e && (e.name === 'AbortError' || /abort/i.test(String(e.message||'')));
+      pushLog(_ab ? '⏳ 雲端較慢或忙碌，稍後自動重試' : `✗ TaskOps 推送失敗: ${e.message || e}`, _ab ? 'warn' : 'error');
     }
   }
 
@@ -3107,7 +3108,7 @@ async function flushQueue() {
     try {
       const result = await pushCustomerOpsToCloud(async (url, opts) => {
         const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 25000);
+        const tid = setTimeout(() => ctrl.abort(), 35000);
         const res = await fetch(url, {
           method: opts.method,
           body: opts.body,
@@ -3119,7 +3120,8 @@ async function flushQueue() {
       cusOpsPushed = result.acked.length;
       if (cusOpsPushed > 0) pushLog(`✓ ${cusOpsPushed} 個客戶 op 已確認`, 'success');
     } catch (e) {
-      pushLog(`✗ CustomerOps 推送失敗: ${e.message || e}`, 'error');
+      const _ab = e && (e.name === 'AbortError' || /abort/i.test(String(e.message||'')));
+      pushLog(_ab ? '⏳ 雲端較慢或忙碌，稍後自動重試' : `✗ CustomerOps 推送失敗: ${e.message || e}`, _ab ? 'warn' : 'error');
     }
   }
 
