@@ -1200,7 +1200,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.4"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.5"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5061,6 +5061,7 @@ async function toggleT(id) {
   const ns = t.Status === 'Done' ? 'Pending' : 'Done';
   playSound(ns === 'Done' ? 'done' : 'tap');
   t.Status = ns; t.mTime = Date.now();
+  if (ns === 'Done') _clearLocalPhotos(t);  // v502.5: 完成即清本地照片快取
   saveLocal(); renderAll();
   // v500: 改用 setTaskStatus 明確指定目標狀態，避免重試造成翻錯
   await pushOp('setTaskStatus',
@@ -7360,11 +7361,14 @@ function _compressImage(file, maxDim, quality){
   });
 }
 // v502.3 離線待上傳（IndexedDB）─────────────────────────
-const _PHOTO_DB='yixiu_photos', _PHOTO_STORE='pending';
+const _PHOTO_DB='yixiu_photos', _PHOTO_STORE='pending', _CACHE_STORE='cache', _CACHE_MAX=200*1024*1024;
 function _photoDB(){
   return new Promise((res,rej)=>{
-    const r = indexedDB.open(_PHOTO_DB, 1);
-    r.onupgradeneeded = () => { const db=r.result; if(!db.objectStoreNames.contains(_PHOTO_STORE)){ const os=db.createObjectStore(_PHOTO_STORE,{keyPath:'localId'}); os.createIndex('taskId','taskId',{unique:false}); } };
+    const r = indexedDB.open(_PHOTO_DB, 2);
+    r.onupgradeneeded = () => { const db=r.result;
+      if(!db.objectStoreNames.contains(_PHOTO_STORE)){ const os=db.createObjectStore(_PHOTO_STORE,{keyPath:'localId'}); os.createIndex('taskId','taskId',{unique:false}); }
+      if(!db.objectStoreNames.contains(_CACHE_STORE)){ db.createObjectStore(_CACHE_STORE,{keyPath:'fileId'}); }
+    };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
 }
@@ -7373,6 +7377,31 @@ async function _pendingByTask(taskId){ const db=await _photoDB(); return new Pro
 async function _pendingAll(){ const db=await _photoDB(); return new Promise((res)=>{ const tx=db.transaction(_PHOTO_STORE,'readonly'); const req=tx.objectStore(_PHOTO_STORE).getAll(); req.onsuccess=()=>res(req.result||[]); req.onerror=()=>res([]); }); }
 async function _pendingDel(localId){ const db=await _photoDB(); return new Promise((res)=>{ const tx=db.transaction(_PHOTO_STORE,'readwrite'); tx.objectStore(_PHOTO_STORE).delete(localId); tx.oncomplete=()=>res(); tx.onerror=()=>res(); }); }
 async function _deletePending(localId){ await _pendingDel(localId); const t=_currentEditTask(); if(t) renderTaskPhotos(t, true); }
+// v502.5 看圖快取（IndexedDB，200MB LRU）
+async function _cacheGet(fileId){
+  try { const db=await _photoDB(); return await new Promise((res)=>{ const tx=db.transaction(_CACHE_STORE,'readwrite'); const st=tx.objectStore(_CACHE_STORE); const req=st.get(String(fileId)); req.onsuccess=()=>{ const rec=req.result; if(rec){ rec.lastAccess=Date.now(); try{st.put(rec);}catch(e){} } res(rec||null); }; req.onerror=()=>res(null); }); } catch(e){ return null; }
+}
+async function _cachePut(fileId, base64, mime){
+  try { const db=await _photoDB(); const bytes=Math.round((base64||'').length*0.75);
+    await new Promise((res)=>{ const tx=db.transaction(_CACHE_STORE,'readwrite'); tx.objectStore(_CACHE_STORE).put({fileId:String(fileId), base64, mime:mime||'image/jpeg', bytes, lastAccess:Date.now()}); tx.oncomplete=()=>res(); tx.onerror=()=>res(); });
+    _cacheEvict();
+  } catch(e){}
+}
+async function _cacheDel(fileId){ try{ const db=await _photoDB(); await new Promise((res)=>{ const tx=db.transaction(_CACHE_STORE,'readwrite'); tx.objectStore(_CACHE_STORE).delete(String(fileId)); tx.oncomplete=()=>res(); tx.onerror=()=>res(); }); }catch(e){} }
+let _evicting=false;
+async function _cacheEvict(){
+  if(_evicting) return; _evicting=true;
+  try {
+    const db=await _photoDB();
+    const all=await new Promise((res)=>{ const tx=db.transaction(_CACHE_STORE,'readonly'); const req=tx.objectStore(_CACHE_STORE).getAll(); req.onsuccess=()=>res(req.result||[]); req.onerror=()=>res([]); });
+    let total=all.reduce((sum,r)=>sum+(r.bytes||0),0);
+    if(total<=_CACHE_MAX){ _evicting=false; return; }
+    all.sort((a,b)=>(a.lastAccess||0)-(b.lastAccess||0));
+    const tx=db.transaction(_CACHE_STORE,'readwrite'); const st=tx.objectStore(_CACHE_STORE);
+    for(const rec of all){ if(total<=_CACHE_MAX) break; try{st.delete(rec.fileId);}catch(e){} total-=(rec.bytes||0); }
+  } catch(e){} finally { _evicting=false; }
+}
+function _clearLocalPhotos(t){ try{ _photosOf(t).forEach(fid=>_cacheDel(fid)); }catch(e){} }
 let _photoFlushing = false;
 async function _flushPending(taskId){
   if (_photoFlushing) return;
@@ -7391,6 +7420,7 @@ async function _flushPending(taskId){
           allT[idx].Photos = newPhotos; saveLocal();
           await pushOp('updateTask', { id: pr.taskId, data: { ID: pr.taskId, photos: newPhotos, mTime: Date.now() } }, `補傳照片「${allT[idx].Task||pr.taskId}」`);
         }
+        _cachePut(res.fileId, pr.base64, pr.mime);
         await _pendingDel(pr.localId); changed = true;
       }
     }
@@ -7431,18 +7461,22 @@ async function renderTaskPhotos(t, editable){
     el.insertBefore(img, el.firstChild);
   });
 }
-function _loadThumb(fid, box){
-  callGasAction('getPhoto', { fileId: fid }).then(res => {
-    if (!res || res.status !== 'ok' || !res.dataBase64) return;
-    let el=null; try { el = box.querySelector('.ph-thumb[data-fid="'+CSS.escape(fid)+'"]'); } catch(e){}
-    if (!el) return;
-    const src = `data:${res.mimeType||'image/jpeg'};base64,${res.dataBase64}`;
-    const ld = el.querySelector('.ph-load'); if (ld) ld.remove();
-    const img = document.createElement('img');
-    img.src = src; img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;';
-    img.onclick = (e) => { e.stopPropagation(); _showLightbox(src); };
-    el.insertBefore(img, el.firstChild);
-  }).catch(()=>{});
+async function _loadThumb(fid, box){
+  let b64=null, mime='image/jpeg';
+  const cached = await _cacheGet(fid);
+  if (cached && cached.base64){ b64=cached.base64; mime=cached.mime||'image/jpeg'; }
+  else {
+    try { const res = await callGasAction('getPhoto', { fileId: fid }); if (res && res.status==='ok' && res.dataBase64){ b64=res.dataBase64; mime=res.mimeType||'image/jpeg'; _cachePut(fid, b64, mime); } } catch(e){}
+  }
+  if (!b64) return;
+  const src = `data:${mime};base64,${b64}`;
+  let el=null; try { el = box.querySelector('.ph-thumb[data-fid="'+CSS.escape(fid)+'"]'); } catch(e){}
+  if (!el) return;
+  const ld = el.querySelector('.ph-load'); if (ld) ld.remove();
+  const img = document.createElement('img');
+  img.src = src; img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;';
+  img.onclick = (e) => { e.stopPropagation(); _showLightbox(src); };
+  el.insertBefore(img, el.firstChild);
 }
 let _lb = { scale:1, x:0, y:0 };
 function _lbApply(){ const img=document.getElementById('lbImg'); if(img) img.style.transform = `translate(${_lb.x}px,${_lb.y}px) scale(${_lb.scale})`; }
