@@ -1200,7 +1200,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.2"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.3"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -3998,6 +3998,7 @@ async function fullSync(reason) {
     // v500.32fix: 客戶管理開著時先跳過（避免重繪打斷清單捲動；角色操作會自行直接重抓）
     const _cusMOpenNow = document.getElementById('cusM') && document.getElementById('cusM').classList.contains('open');
     if (success && !_cusMOpenNow) { try { await refreshContactsCache(); } catch(e){} }
+    if (success) { _flushPending(); }  // v502.3: 補傳離線待上傳的照片
     // v500.30: 同步期間若有新操作（pendingQueue / opLog / cusOpLog）→ 立即觸發推送
     const newPendingTotal = pendingQueue.length
       + opLog.filter(o => o.status === 'pending').length
@@ -7358,21 +7359,77 @@ function _compressImage(file, maxDim, quality){
     img.src = url;
   });
 }
-function renderTaskPhotos(t, editable){
+// v502.3 離線待上傳（IndexedDB）─────────────────────────
+const _PHOTO_DB='yixiu_photos', _PHOTO_STORE='pending';
+function _photoDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open(_PHOTO_DB, 1);
+    r.onupgradeneeded = () => { const db=r.result; if(!db.objectStoreNames.contains(_PHOTO_STORE)){ const os=db.createObjectStore(_PHOTO_STORE,{keyPath:'localId'}); os.createIndex('taskId','taskId',{unique:false}); } };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function _pendingAdd(rec){ const db=await _photoDB(); return new Promise((res,rej)=>{ const tx=db.transaction(_PHOTO_STORE,'readwrite'); tx.objectStore(_PHOTO_STORE).put(rec); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function _pendingByTask(taskId){ const db=await _photoDB(); return new Promise((res)=>{ const tx=db.transaction(_PHOTO_STORE,'readonly'); const req=tx.objectStore(_PHOTO_STORE).index('taskId').getAll(String(taskId)); req.onsuccess=()=>res(req.result||[]); req.onerror=()=>res([]); }); }
+async function _pendingAll(){ const db=await _photoDB(); return new Promise((res)=>{ const tx=db.transaction(_PHOTO_STORE,'readonly'); const req=tx.objectStore(_PHOTO_STORE).getAll(); req.onsuccess=()=>res(req.result||[]); req.onerror=()=>res([]); }); }
+async function _pendingDel(localId){ const db=await _photoDB(); return new Promise((res)=>{ const tx=db.transaction(_PHOTO_STORE,'readwrite'); tx.objectStore(_PHOTO_STORE).delete(localId); tx.oncomplete=()=>res(); tx.onerror=()=>res(); }); }
+async function _deletePending(localId){ await _pendingDel(localId); const t=_currentEditTask(); if(t) renderTaskPhotos(t, true); }
+let _photoFlushing = false;
+async function _flushPending(taskId){
+  if (_photoFlushing) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  _photoFlushing = true; let changed = false;
+  try {
+    const list = taskId ? await _pendingByTask(taskId) : await _pendingAll();
+    for (const pr of list){
+      let res;
+      try { res = await callGasAction('uploadTaskPhoto', { taskId: pr.taskId, dataBase64: pr.base64, mimeType: pr.mime }, 40000); }
+      catch(e){ continue; }
+      if (res && res.status === 'ok' && res.fileId){
+        const idx = allT.findIndex(x => String(x.ID) === String(pr.taskId));
+        if (idx > -1){
+          const newPhotos = _photosOf(allT[idx]).concat([res.fileId]);
+          allT[idx].Photos = newPhotos; saveLocal();
+          await pushOp('updateTask', { id: pr.taskId, data: { ID: pr.taskId, photos: newPhotos, mTime: Date.now() } }, `補傳照片「${allT[idx].Task||pr.taskId}」`);
+        }
+        await _pendingDel(pr.localId); changed = true;
+      }
+    }
+  } finally { _photoFlushing = false; }
+  if (changed){ const cur=_currentEditTask(); if(cur){ renderTaskPhotos(cur,false); renderTaskPhotos(cur,true); } }
+}
+async function renderTaskPhotos(t, editable){
   const box = document.getElementById(editable ? 'editPhotos' : 'viewPhotos'); if (!box) return;
   const photos = _photosOf(t);
-  if (!editable && photos.length === 0){ box.innerHTML = ''; return; }
-  let html = `<div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📷 照片 ${photos.length}/3${editable?'':'（點圖看大圖）'}</div><div style="display:flex;gap:8px;flex-wrap:wrap;">`;
+  let pending = [];
+  try { pending = await _pendingByTask(t.ID); } catch(e){}
+  const total = photos.length + pending.length;
+  if (!editable && total === 0){ box.innerHTML = ''; return; }
+  let html = `<div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📷 照片 ${total}/3${editable?'':'（點圖看大圖）'}</div><div style="display:flex;gap:8px;flex-wrap:wrap;">`;
   photos.forEach(fid => {
     html += `<div class="ph-thumb" data-fid="${escapeAttr(fid)}" style="position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;">
       <div class="ph-load" style="font-size:11px;color:var(--gray);">載入中</div>
       ${editable ? `<div onclick="event.stopPropagation();deleteTaskPhoto('${escapeAttr(fid)}')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:2;cursor:pointer;">×</div>` : ''}
     </div>`;
   });
-  if (editable && photos.length < 3) html += `<div onclick="document.getElementById('photoFileInput').click()" style="width:74px;height:74px;border-radius:9px;border:1.5px dashed var(--gray);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:26px;cursor:pointer;">＋</div>`;
+  pending.forEach(pr => {
+    html += `<div class="ph-pend" data-lid="${escapeAttr(pr.localId)}" style="position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:10px;line-height:1.6;text-align:center;z-index:2;">⏳ 待上傳</div>
+      ${editable ? `<div onclick="event.stopPropagation();_deletePending('${escapeAttr(pr.localId)}')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:3;cursor:pointer;">×</div>` : ''}
+    </div>`;
+  });
+  if (editable && total < 3) html += `<div onclick="document.getElementById('photoFileInput').click()" style="width:74px;height:74px;border-radius:9px;border:1.5px dashed var(--gray);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:26px;cursor:pointer;">＋</div>`;
   html += `</div>`;
   box.innerHTML = html;
   photos.forEach(fid => _loadThumb(fid, box));
+  pending.forEach(pr => {
+    let el=null; try{ el = box.querySelector('.ph-pend[data-lid="'+CSS.escape(pr.localId)+'"]'); }catch(e){}
+    if (!el) return;
+    const src = `data:${pr.mime||'image/jpeg'};base64,${pr.base64}`;
+    const img = document.createElement('img');
+    img.src = src; img.style.cssText='width:100%;height:100%;object-fit:cover;opacity:.65;cursor:pointer;';
+    img.onclick = (e)=>{ e.stopPropagation(); _showLightbox(src); };
+    el.insertBefore(img, el.firstChild);
+  });
 }
 function _loadThumb(fid, box){
   callGasAction('getPhoto', { fileId: fid }).then(res => {
@@ -7415,20 +7472,18 @@ async function onPhotoPicked(e){
   const file = e.target.files && e.target.files[0]; e.target.value = '';
   if (!file) return;
   const t = _currentEditTask(); if (!t) return;
-  if (_photosOf(t).length >= 3){ alert('一筆任務最多 3 張照片'); return; }
+  let pend = []; try { pend = await _pendingByTask(t.ID); } catch(e){}
+  if (_photosOf(t).length + pend.length >= 3){ alert('一筆任務最多 3 張照片'); return; }
   let comp;
   pushLog && pushLog('照片壓縮中…', 'warn');
   try { comp = await _compressImage(file); } catch(err){ alert('圖片處理失敗'); return; }
-  pushLog && pushLog('照片上傳中…', 'warn');
-  let res;
-  try { res = await callGasAction('uploadTaskPhoto', { taskId: t.ID, dataBase64: comp.base64, mimeType: comp.mime }, 40000); }
-  catch(err){ alert('照片上傳失敗（需要網路連線）。離線暫存會在下一步（1b）加入。'); pushLog && pushLog('照片上傳失敗：'+(err.message||err), 'error'); return; }
-  if (!res || res.status !== 'ok' || !res.fileId){ alert('照片上傳失敗：'+((res&&res.message)||'未知錯誤')); return; }
-  const newPhotos = _photosOf(t).concat([res.fileId]);
-  const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
-  if (idx > -1) allT[idx].Photos = newPhotos;
-  saveLocal(); renderTaskPhotos(idx>-1?allT[idx]:t, true); playSound && playSound('add');
-  await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `加照片「${t.Task||t.ID}」`);
+  const localId = 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  try { await _pendingAdd({ localId, taskId: String(t.ID), base64: comp.base64, mime: comp.mime, createdAt: Date.now() }); }
+  catch(err){ alert('本機暫存失敗：'+(err.message||err)); return; }
+  playSound && playSound('add');
+  renderTaskPhotos(t, true);
+  pushLog && pushLog('照片已暫存，嘗試上傳…', 'warn');
+  _flushPending(t.ID);
 }
 async function deleteTaskPhoto(fileId){
   if (!confirm('刪除這張照片？（雲端正本也會一起刪）')) return;
@@ -7473,6 +7528,7 @@ function openEdit(id) {
   const noteEl=document.getElementById('viewNote');
   if (t.Note && String(t.Note).trim()) { noteEl.textContent=t.Note; noteEl.style.display='block'; } else noteEl.style.display='none';
   renderTaskPhotos(t, false);
+  _flushPending(t.ID);
   openModal('taskM');
 }
 function switchToEdit() {
