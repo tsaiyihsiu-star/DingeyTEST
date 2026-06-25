@@ -1202,7 +1202,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.7"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.8"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1386,7 +1386,7 @@ function doLogout() {
       }).catch(() => {});
     }
 
-    console.log('[doLogout] 本機資料已清除');
+    try { indexedDB.deleteDatabase('yixiu_photos'); } catch(e) {} console.log('[doLogout] 本機資料已清除');
   } catch (e) {
     console.log('[doLogout] 清除錯誤: ' + e);
   }
