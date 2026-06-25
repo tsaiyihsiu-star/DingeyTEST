@@ -850,6 +850,12 @@
         <div id="viewTitle" style="font-size:18px;font-weight:700;color:var(--label);margin-bottom:10px;line-height:1.4"></div>
         <div id="viewMeta" style="font-size:13px;color:var(--gray);margin-bottom:8px;display:flex;gap:10px;flex-wrap:wrap"></div>
         <div id="viewNote" style="font-size:14px;color:var(--gray);background:var(--bg);border-radius:9px;padding:10px 12px;min-height:40px;line-height:1.6;white-space:pre-wrap;display:none"></div>
+        <div id="viewPhotos" style="margin-top:14px"></div>
+        <input type="file" id="photoFileInput" accept="image/*" style="display:none" onchange="onPhotoPicked(event)">
+        <div id="photoLightbox" onclick="closePhotoLightbox()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;padding:20px;box-sizing:border-box;">
+          <div id="photoLightboxImg" style="max-width:94%;max-height:82%;display:flex;align-items:center;justify-content:center;"></div>
+          <div style="color:#fff;margin-top:14px;font-size:13px;opacity:.6;">點任意處關閉</div>
+        </div>
         <button class="btn-p" style="margin-top:12px" onclick="switchToEdit()">編輯任務</button>
       </div>
       <div id="editMode" style="display:none">
@@ -1193,7 +1199,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v501.23"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.0"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1546,6 +1552,7 @@ function applyOpToLocal(op) {
     if ('Note' in payload)         t.Note = String(payload.Note || '');
     if ('Customer' in payload)     t.Customer = String(payload.Customer || '');
     if ('CustomerHint' in payload) t.CustomerHint = String(payload.CustomerHint || '');
+    if ('Photos' in payload)       t.Photos = payload.Photos;
     t.mTime = ts;
   } else if (op.op === 'delete') {
     const idx = allT.findIndex(t => String(t.ID) === taskId);
@@ -2897,14 +2904,18 @@ function convertActionToOp(action, payload) {
       'priority': 'Priority',
       'note': 'Note',
       'customer': 'Customer',
-      'customerHint': 'CustomerHint'
+      'customerHint': 'CustomerHint',
+      'photos': 'Photos'
     };
 
     const diff = {};
     for (const lowerKey in fieldMap) {
       if (!(lowerKey in data)) continue;  // caller 沒傳這個欄位、跳過
       const upperKey = fieldMap[lowerKey];
-      const val = lowerKey === 'priority' ? (Number(data[lowerKey]) || 99) : String(data[lowerKey] || '');
+      let val;
+      if (lowerKey === 'priority') val = Number(data[lowerKey]) || 99;
+      else if (lowerKey === 'photos') val = (typeof data.photos === 'string') ? data.photos : JSON.stringify(data.photos || []);
+      else val = String(data[lowerKey] || '');
       diff[upperKey] = val;
     }
 
@@ -7326,6 +7337,90 @@ function openAdd() {
   // 延遲由呼叫端（fabTouchStart / scatAllLpStart）控制，避免 touch 事件洩漏
   openModal('taskM'); setTimeout(()=>document.getElementById('taskInput').focus(),320);
 }
+// ── v502.0 任務照片（1a 線上核心）─────────────────────────
+function _photosOf(t){ const p = t && t.Photos; if (Array.isArray(p)) return p; if (typeof p === 'string' && p.trim()){ try{ return JSON.parse(p)||[]; }catch(e){ return []; } } return []; }
+function _currentEditTask(){ const el = document.getElementById('editId'); const id = el ? el.value : ''; return allT.find(x => String(x.ID) === String(id)); }
+function _compressImage(file, maxDim, quality){
+  maxDim = maxDim || 1600; quality = quality || 0.8;
+  return new Promise((resolve, reject) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (Math.max(w,h) > maxDim){ const sc = maxDim/Math.max(w,h); w = Math.round(w*sc); h = Math.round(h*sc); }
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = cv.toDataURL('image/jpeg', quality);
+      resolve({ base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('圖片讀取失敗')); };
+    img.src = url;
+  });
+}
+function renderViewPhotos(t){
+  const box = document.getElementById('viewPhotos'); if (!box) return;
+  const photos = _photosOf(t);
+  let html = `<div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📷 照片 ${photos.length}/3</div><div style="display:flex;gap:8px;flex-wrap:wrap;">`;
+  photos.forEach(fid => {
+    html += `<div class="ph-thumb" data-fid="${escapeAttr(fid)}" style="position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;">
+      <div class="ph-load" style="font-size:11px;color:var(--gray);">載入中</div>
+      <div onclick="event.stopPropagation();deleteTaskPhoto('${escapeAttr(fid)}')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:2;cursor:pointer;">×</div>
+    </div>`;
+  });
+  if (photos.length < 3) html += `<div onclick="document.getElementById('photoFileInput').click()" style="width:74px;height:74px;border-radius:9px;border:1.5px dashed var(--gray);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:26px;cursor:pointer;">＋</div>`;
+  html += `</div>`;
+  box.innerHTML = html;
+  photos.forEach(fid => _loadThumb(fid));
+}
+function _loadThumb(fid){
+  callGasAction('getPhoto', { fileId: fid }).then(res => {
+    if (!res || res.status !== 'ok' || !res.dataBase64) return;
+    let el = null; try { el = document.querySelector('.ph-thumb[data-fid="'+CSS.escape(fid)+'"]'); } catch(e){}
+    if (!el) return;
+    const src = `data:${res.mimeType||'image/jpeg'};base64,${res.dataBase64}`;
+    const ld = el.querySelector('.ph-load'); if (ld) ld.remove();
+    const img = document.createElement('img');
+    img.src = src; img.style.cssText = 'width:100%;height:100%;object-fit:cover;cursor:pointer;';
+    img.onclick = (e) => { e.stopPropagation(); _showLightbox(src); };
+    el.insertBefore(img, el.firstChild);
+  }).catch(()=>{});
+}
+function _showLightbox(src){
+  const lb = document.getElementById('photoLightbox'), im = document.getElementById('photoLightboxImg');
+  if (!lb || !im) return;
+  im.innerHTML = `<img src="${src}" style="max-width:100%;max-height:100%;border-radius:8px;">`;
+  lb.style.display = 'flex';
+}
+function closePhotoLightbox(){ const lb = document.getElementById('photoLightbox'); if (lb) lb.style.display = 'none'; }
+async function onPhotoPicked(e){
+  const file = e.target.files && e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  const t = _currentEditTask(); if (!t) return;
+  if (_photosOf(t).length >= 3){ alert('一筆任務最多 3 張照片'); return; }
+  let comp;
+  pushLog && pushLog('照片壓縮中…', 'warn');
+  try { comp = await _compressImage(file); } catch(err){ alert('圖片處理失敗'); return; }
+  pushLog && pushLog('照片上傳中…', 'warn');
+  let res;
+  try { res = await callGasAction('uploadTaskPhoto', { taskId: t.ID, dataBase64: comp.base64, mimeType: comp.mime }, 40000); }
+  catch(err){ alert('照片上傳失敗（需要網路連線）。離線暫存會在下一步（1b）加入。'); pushLog && pushLog('照片上傳失敗：'+(err.message||err), 'error'); return; }
+  if (!res || res.status !== 'ok' || !res.fileId){ alert('照片上傳失敗：'+((res&&res.message)||'未知錯誤')); return; }
+  const newPhotos = _photosOf(t).concat([res.fileId]);
+  const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
+  if (idx > -1) allT[idx].Photos = newPhotos;
+  saveLocal(); renderViewPhotos(allT[idx>-1?idx:0]); playSound && playSound('add');
+  await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `加照片「${t.Task||t.ID}」`);
+}
+async function deleteTaskPhoto(fileId){
+  if (!confirm('刪除這張照片？（雲端正本也會一起刪）')) return;
+  const t = _currentEditTask(); if (!t) return;
+  const newPhotos = _photosOf(t).filter(id => String(id) !== String(fileId));
+  const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
+  if (idx > -1) allT[idx].Photos = newPhotos;
+  saveLocal(); renderViewPhotos(allT[idx>-1?idx:0]); playSound && playSound('tap');
+  await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `刪照片「${t.Task||t.ID}」`);
+  try { await callGasAction('deletePhoto', { fileId }); } catch(e){}
+}
 function openEdit(id) {
   const t=allT.find(x=>String(x.ID)===String(id)); if(!t) return;
   document.getElementById('editId').value=id; document.getElementById('taskInput').value=t.Task||"";
@@ -7358,6 +7453,7 @@ function openEdit(id) {
   document.getElementById('viewMeta').innerHTML=`<span>📁 ${t.Category||'未分類'}</span>${d?`<span>📅 ${wday} ${d}</span>`:''}<span>🔢 P${t.Priority||99}</span>`;
   const noteEl=document.getElementById('viewNote');
   if (t.Note && String(t.Note).trim()) { noteEl.textContent=t.Note; noteEl.style.display='block'; } else noteEl.style.display='none';
+  renderViewPhotos(t);
   openModal('taskM');
 }
 function switchToEdit() {
