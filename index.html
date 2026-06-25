@@ -5446,13 +5446,7 @@ async function delCust(name) {
 }
 // v500.31: 在客戶管理裡把某客戶標記為停用詞
 // （標停用 + 清空相關任務的客戶欄 + 推送），用於「襪子和咖啡」這種被誤判成客戶的詞
-async function stopCust(name) {
-  // v502.7: 有聯絡資料的客戶不可停用，避免聯絡資料變孤兒（綁在隱藏 GroupId 上、UI 無法再存取）
-  const _gk = _groupKeyOf(name);
-  if (allContacts.some(x => String(x.groupKey) === String(_gk))) {
-    alert(`「${name}」有聯絡資料，無法停用。\n\n請先到「聯絡資料」把資料刪除（或轉移給其他客戶），再停用此客戶。`);
-    return;
-  }
+async function stopCust(name) {  const _gk = _groupKeyOf(name); if (allContacts.some(x => String(x.groupKey) === String(_gk))) { alert('「' + name + '」有聯絡資料，無法停用。請先到「聯絡資料」把資料刪除或轉移給其他客戶，再停用此客戶。'); return; }
   if (!confirm(`把「${name}」加入停用詞？\n\n這個詞以後不會再被當客戶偵測，並會從客戶清單移除。已關聯此客戶的任務，其客戶標記會被清空（任務本身不受影響）。`)) return;
   playSound('delete');
   const now = Date.now();
@@ -7425,8 +7419,8 @@ async function _flushPending(taskId){
         const idx = allT.findIndex(x => String(x.ID) === String(pr.taskId));
         if (idx > -1){
           const newPhotos = _photosOf(allT[idx]).concat([res.fileId]);
-          allT[idx].Photos = newPhotos; saveLocal();
-          await pushOp('updateTask', { id: pr.taskId, data: { ID: pr.taskId, photos: newPhotos, mTime: Date.now() } }, `補傳照片「${allT[idx].Task||pr.taskId}」`);
+          const _pm = Date.now(); allT[idx].Photos = newPhotos; allT[idx].mTime = _pm; saveLocal();
+          await pushOp('updateTask', { id: pr.taskId, data: { ID: pr.taskId, photos: newPhotos, mTime: _pm } }, `補傳照片「${allT[idx].Task||pr.taskId}」`);
         }
         _cachePut(res.fileId, pr.base64, pr.mime);
         await _pendingDel(pr.localId); changed = true;
@@ -7532,9 +7526,9 @@ async function deleteTaskPhoto(fileId){
   const t = _currentEditTask(); if (!t) return;
   const newPhotos = _photosOf(t).filter(id => String(id) !== String(fileId));
   const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
-  if (idx > -1) allT[idx].Photos = newPhotos;
+  const _pm2 = Date.now(); if (idx > -1) { allT[idx].Photos = newPhotos; allT[idx].mTime = _pm2; }
   saveLocal(); renderTaskPhotos(idx>-1?allT[idx]:t, true); playSound && playSound('tap');
-  await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `刪照片「${t.Task||t.ID}」`);
+  await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: _pm2 } }, `刪照片「${t.Task||t.ID}」`);
   try { await callGasAction('deletePhoto', { fileId }); } catch(e){}
 }
 function openEdit(id) {
