@@ -876,8 +876,10 @@
         </div>
         <textarea id="noteInput" class="f" placeholder="備註（選填）" style="margin-bottom:4px;height:96px"></textarea>
         <div id="editPhotos" style="margin:4px 0 10px"></div>
-        <button class="btn-p" onclick="save()">儲存</button>
-        <button class="btn-ghost" id="delBtn" onclick="delTask()">刪除此任務</button>
+        <div style="position:sticky;bottom:0;background:var(--card);padding:8px 0 2px;box-shadow:0 -8px 10px -6px rgba(0,0,0,.18);">
+          <button class="btn-p" onclick="save()">儲存</button>
+          <button class="btn-ghost" id="delBtn" onclick="delTask()">刪除此任務</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1200,7 +1202,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.5"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.6"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
