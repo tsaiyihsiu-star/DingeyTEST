@@ -852,9 +852,9 @@
         <div id="viewNote" style="font-size:14px;color:var(--gray);background:var(--bg);border-radius:9px;padding:10px 12px;min-height:40px;line-height:1.6;white-space:pre-wrap;display:none"></div>
         <div id="viewPhotos" style="margin-top:14px"></div>
         <input type="file" id="photoFileInput" accept="image/*" style="display:none" onchange="onPhotoPicked(event)">
-        <div id="photoLightbox" onclick="closePhotoLightbox()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;align-items:center;justify-content:center;flex-direction:column;padding:20px;box-sizing:border-box;">
-          <div id="photoLightboxImg" style="max-width:94%;max-height:82%;display:flex;align-items:center;justify-content:center;"></div>
-          <div style="color:#fff;margin-top:14px;font-size:13px;opacity:.6;">點任意處關閉</div>
+        <div id="photoLightbox" style="display:none;position:fixed;inset:0;background:#000;z-index:9999;">
+          <div id="photoLightboxImg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;"></div>
+          <div onclick="closePhotoLightbox()" style="position:absolute;top:0;right:0;width:56px;height:56px;color:#fff;font-size:30px;line-height:56px;text-align:center;z-index:3;cursor:pointer;">×</div>
         </div>
         <button class="btn-p" style="margin-top:12px" onclick="switchToEdit()">編輯任務</button>
       </div>
@@ -875,6 +875,7 @@
           <div style="flex:1"><input type="number" id="priInput" class="f" placeholder="P#" min="1" max="99" style="margin-bottom:0;text-align:center" oninput="this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>2)this.value=this.value.slice(0,2);if(this.value>99)this.value=99;if(this.value<1&&this.value!=='')this.value=1;"></div>
         </div>
         <textarea id="noteInput" class="f" placeholder="備註（選填）" style="margin-bottom:4px;height:96px"></textarea>
+        <div id="editPhotos" style="margin:4px 0 10px"></div>
         <button class="btn-p" onclick="save()">儲存</button>
         <button class="btn-ghost" id="delBtn" onclick="delTask()">刪除此任務</button>
       </div>
@@ -1199,7 +1200,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.0"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.1"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7337,7 +7338,7 @@ function openAdd() {
   // 延遲由呼叫端（fabTouchStart / scatAllLpStart）控制，避免 touch 事件洩漏
   openModal('taskM'); setTimeout(()=>document.getElementById('taskInput').focus(),320);
 }
-// ── v502.0 任務照片（1a 線上核心）─────────────────────────
+// ── v502.1 任務照片（檢視=看圖、編輯=增刪、全螢幕縮放平移）──
 function _photosOf(t){ const p = t && t.Photos; if (Array.isArray(p)) return p; if (typeof p === 'string' && p.trim()){ try{ return JSON.parse(p)||[]; }catch(e){ return []; } } return []; }
 function _currentEditTask(){ const el = document.getElementById('editId'); const id = el ? el.value : ''; return allT.find(x => String(x.ID) === String(id)); }
 function _compressImage(file, maxDim, quality){
@@ -7357,25 +7358,26 @@ function _compressImage(file, maxDim, quality){
     img.src = url;
   });
 }
-function renderViewPhotos(t){
-  const box = document.getElementById('viewPhotos'); if (!box) return;
+function renderTaskPhotos(t, editable){
+  const box = document.getElementById(editable ? 'editPhotos' : 'viewPhotos'); if (!box) return;
   const photos = _photosOf(t);
-  let html = `<div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📷 照片 ${photos.length}/3</div><div style="display:flex;gap:8px;flex-wrap:wrap;">`;
+  if (!editable && photos.length === 0){ box.innerHTML = ''; return; }
+  let html = `<div style="font-size:13px;color:var(--gray);margin-bottom:6px;">📷 照片 ${photos.length}/3${editable?'':'（點圖看大圖）'}</div><div style="display:flex;gap:8px;flex-wrap:wrap;">`;
   photos.forEach(fid => {
     html += `<div class="ph-thumb" data-fid="${escapeAttr(fid)}" style="position:relative;width:74px;height:74px;border-radius:9px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;">
       <div class="ph-load" style="font-size:11px;color:var(--gray);">載入中</div>
-      <div onclick="event.stopPropagation();deleteTaskPhoto('${escapeAttr(fid)}')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:2;cursor:pointer;">×</div>
+      ${editable ? `<div onclick="event.stopPropagation();deleteTaskPhoto('${escapeAttr(fid)}')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:2;cursor:pointer;">×</div>` : ''}
     </div>`;
   });
-  if (photos.length < 3) html += `<div onclick="document.getElementById('photoFileInput').click()" style="width:74px;height:74px;border-radius:9px;border:1.5px dashed var(--gray);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:26px;cursor:pointer;">＋</div>`;
+  if (editable && photos.length < 3) html += `<div onclick="document.getElementById('photoFileInput').click()" style="width:74px;height:74px;border-radius:9px;border:1.5px dashed var(--gray);display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:26px;cursor:pointer;">＋</div>`;
   html += `</div>`;
   box.innerHTML = html;
-  photos.forEach(fid => _loadThumb(fid));
+  photos.forEach(fid => _loadThumb(fid, box));
 }
-function _loadThumb(fid){
+function _loadThumb(fid, box){
   callGasAction('getPhoto', { fileId: fid }).then(res => {
     if (!res || res.status !== 'ok' || !res.dataBase64) return;
-    let el = null; try { el = document.querySelector('.ph-thumb[data-fid="'+CSS.escape(fid)+'"]'); } catch(e){}
+    let el=null; try { el = box.querySelector('.ph-thumb[data-fid="'+CSS.escape(fid)+'"]'); } catch(e){}
     if (!el) return;
     const src = `data:${res.mimeType||'image/jpeg'};base64,${res.dataBase64}`;
     const ld = el.querySelector('.ph-load'); if (ld) ld.remove();
@@ -7385,13 +7387,29 @@ function _loadThumb(fid){
     el.insertBefore(img, el.firstChild);
   }).catch(()=>{});
 }
+let _lb = { scale:1, x:0, y:0 };
+function _lbApply(){ const img=document.getElementById('lbImg'); if(img) img.style.transform = `translate(${_lb.x}px,${_lb.y}px) scale(${_lb.scale})`; }
+function _lbReset(){ _lb = {scale:1,x:0,y:0}; _lbApply(); }
+function _lbDist(ts){ const dx=ts[0].clientX-ts[1].clientX, dy=ts[0].clientY-ts[1].clientY; return Math.hypot(dx,dy); }
 function _showLightbox(src){
-  const lb = document.getElementById('photoLightbox'), im = document.getElementById('photoLightboxImg');
-  if (!lb || !im) return;
-  im.innerHTML = `<img src="${src}" style="max-width:100%;max-height:100%;border-radius:8px;">`;
-  lb.style.display = 'flex';
+  const lb=document.getElementById('photoLightbox'), im=document.getElementById('photoLightboxImg');
+  if(!lb||!im) return;
+  im.innerHTML = `<img id="lbImg" src="${src}" style="max-width:100%;max-height:100%;touch-action:none;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none;">`;
+  lb.style.display='block'; _lbReset();
+  const img=document.getElementById('lbImg'); if(!img) return;
+  let startDist=0,startScale=1,lastX=0,lastY=0,panning=false,pinching=false,lastTap=0;
+  img.addEventListener('touchstart',(e)=>{ e.stopPropagation();
+    if(e.touches.length===2){ pinching=true; startDist=_lbDist(e.touches); startScale=_lb.scale; }
+    else if(e.touches.length===1 && _lb.scale>1){ panning=true; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; }
+  },{passive:false});
+  img.addEventListener('touchmove',(e)=>{ e.stopPropagation(); e.preventDefault();
+    if(pinching && e.touches.length===2){ const d=_lbDist(e.touches); let sc=startScale*(d/startDist); sc=Math.max(1,Math.min(5,sc)); _lb.scale=sc; if(sc<=1){_lb.x=0;_lb.y=0;} _lbApply(); }
+    else if(panning && e.touches.length===1){ const dx=e.touches[0].clientX-lastX, dy=e.touches[0].clientY-lastY; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY; _lb.x+=dx; _lb.y+=dy; _lbApply(); }
+  },{passive:false});
+  img.addEventListener('touchend',(e)=>{ e.stopPropagation(); if((e.touches||[]).length===0){pinching=false;panning=false;} },{passive:false});
+  img.addEventListener('click',(e)=>{ e.stopPropagation(); const now=Date.now(); if(now-lastTap<300){ if(_lb.scale>1)_lbReset(); else {_lb.scale=2.5;_lbApply();} } lastTap=now; });
 }
-function closePhotoLightbox(){ const lb = document.getElementById('photoLightbox'); if (lb) lb.style.display = 'none'; }
+function closePhotoLightbox(){ const lb=document.getElementById('photoLightbox'); if(lb) lb.style.display='none'; }
 async function onPhotoPicked(e){
   const file = e.target.files && e.target.files[0]; e.target.value = '';
   if (!file) return;
@@ -7408,7 +7426,7 @@ async function onPhotoPicked(e){
   const newPhotos = _photosOf(t).concat([res.fileId]);
   const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
   if (idx > -1) allT[idx].Photos = newPhotos;
-  saveLocal(); renderViewPhotos(allT[idx>-1?idx:0]); playSound && playSound('add');
+  saveLocal(); renderTaskPhotos(idx>-1?allT[idx]:t, true); playSound && playSound('add');
   await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `加照片「${t.Task||t.ID}」`);
 }
 async function deleteTaskPhoto(fileId){
@@ -7417,7 +7435,7 @@ async function deleteTaskPhoto(fileId){
   const newPhotos = _photosOf(t).filter(id => String(id) !== String(fileId));
   const idx = allT.findIndex(x => String(x.ID) === String(t.ID));
   if (idx > -1) allT[idx].Photos = newPhotos;
-  saveLocal(); renderViewPhotos(allT[idx>-1?idx:0]); playSound && playSound('tap');
+  saveLocal(); renderTaskPhotos(idx>-1?allT[idx]:t, true); playSound && playSound('tap');
   await pushOp('updateTask', { id: t.ID, data: { ID: t.ID, photos: newPhotos, mTime: Date.now() } }, `刪照片「${t.Task||t.ID}」`);
   try { await callGasAction('deletePhoto', { fileId }); } catch(e){}
 }
@@ -7453,7 +7471,7 @@ function openEdit(id) {
   document.getElementById('viewMeta').innerHTML=`<span>📁 ${t.Category||'未分類'}</span>${d?`<span>📅 ${wday} ${d}</span>`:''}<span>🔢 P${t.Priority||99}</span>`;
   const noteEl=document.getElementById('viewNote');
   if (t.Note && String(t.Note).trim()) { noteEl.textContent=t.Note; noteEl.style.display='block'; } else noteEl.style.display='none';
-  renderViewPhotos(t);
+  renderTaskPhotos(t, false);
   openModal('taskM');
 }
 function switchToEdit() {
@@ -7465,6 +7483,7 @@ function switchToEdit() {
   const sel = document.getElementById('catSelect');
   sel.innerHTML = allC.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
   if (t) sel.value = t.Category || '';
+  if (t) renderTaskPhotos(t, true);
   setTimeout(()=>document.getElementById('taskInput').focus(),100);
 }
 
