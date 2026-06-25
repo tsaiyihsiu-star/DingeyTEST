@@ -1200,7 +1200,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.1"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.2"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7394,6 +7394,7 @@ function _lbDist(ts){ const dx=ts[0].clientX-ts[1].clientX, dy=ts[0].clientY-ts[
 function _showLightbox(src){
   const lb=document.getElementById('photoLightbox'), im=document.getElementById('photoLightboxImg');
   if(!lb||!im) return;
+  if (lb.parentNode !== document.body) document.body.appendChild(lb);  // 脫離 .sheet（will-change:transform 會困住 fixed）
   im.innerHTML = `<img id="lbImg" src="${src}" style="max-width:100%;max-height:100%;touch-action:none;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-drag:none;">`;
   lb.style.display='block'; _lbReset();
   const img=document.getElementById('lbImg'); if(!img) return;
