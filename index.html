@@ -1202,7 +1202,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.6"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.7"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5447,6 +5447,12 @@ async function delCust(name) {
 // v500.31: 在客戶管理裡把某客戶標記為停用詞
 // （標停用 + 清空相關任務的客戶欄 + 推送），用於「襪子和咖啡」這種被誤判成客戶的詞
 async function stopCust(name) {
+  // v502.7: 有聯絡資料的客戶不可停用，避免聯絡資料變孤兒（綁在隱藏 GroupId 上、UI 無法再存取）
+  const _gk = _groupKeyOf(name);
+  if (allContacts.some(x => String(x.groupKey) === String(_gk))) {
+    alert(`「${name}」有聯絡資料，無法停用。\n\n請先到「聯絡資料」把資料刪除（或轉移給其他客戶），再停用此客戶。`);
+    return;
+  }
   if (!confirm(`把「${name}」加入停用詞？\n\n這個詞以後不會再被當客戶偵測，並會從客戶清單移除。已關聯此客戶的任務，其客戶標記會被清空（任務本身不受影響）。`)) return;
   playSound('delete');
   const now = Date.now();
