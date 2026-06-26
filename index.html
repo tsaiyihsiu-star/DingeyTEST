@@ -1001,18 +1001,6 @@
       <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">內容</label>
       <textarea id="cfContent" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #D1D1D6;border-radius:10px;font-size:15px;background:var(--card);color:var(--text);min-height:60px;resize:vertical;" placeholder="內容"></textarea>
       <div id="cfContentHint" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
-      <div id="cfCoordRow" style="display:none;margin-top:12px;padding-top:12px;border-top:.5px solid #E5E5EA;">
-        <label style="display:block;font-size:13px;color:var(--gray);margin:0 0 4px;">座標（給排路線用）</label>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" id="cfLat" class="cat-add-input" style="flex:1;box-sizing:border-box;" placeholder="緯度 lat" oninput="_cfCoordSource='manual';_cfUpdateCoordSrc()">
-          <input type="text" id="cfLng" class="cat-add-input" style="flex:1;box-sizing:border-box;" placeholder="經度 lng" oninput="_cfCoordSource='manual';_cfUpdateCoordSrc()">
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-          <button class="btn-p" style="flex:1;margin:0;padding:8px;font-size:14px;" onclick="cfGeocode()">用地址自動定位</button>
-          <span id="cfCoordSrc" style="font-size:12px;color:var(--gray);white-space:nowrap;"></span>
-        </div>
-        <div style="font-size:12px;color:var(--gray);margin-top:6px;">留空＝排路線時再自動定位。手動填的不會被自動覆蓋；改地址文字會重新定位（手動的除外）。</div>
-      </div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <button class="btn-p" onclick="saveContactItem()">儲存</button>
@@ -1214,7 +1202,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.11"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.10"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5734,16 +5722,13 @@ function renderContactMng() {
 
 // 開新增/編輯聯絡項的小表單
 let _editingContactRowId = null;
-let _cfCoordSource = '';
-let _cfOrigContent = '';
 function addContactItem() {
   _editingContactRowId = null;
   document.getElementById('contactFormTitle').textContent = '新增聯絡項';
   document.getElementById('cfType').value = 'phone';
   document.getElementById('cfLabel').value = '';
   document.getElementById('cfContent').value = '';
-  _cfCoordSource=''; _cfOrigContent=''; { const _la=document.getElementById('cfLat'); if(_la)_la.value=''; const _ln=document.getElementById('cfLng'); if(_ln)_ln.value=''; }
-  updateContactFormHint(); if(typeof _cfUpdateCoordSrc==='function')_cfUpdateCoordSrc();
+  updateContactFormHint();
   openModal('contactFormM');
 }
 function editContactItem(rowId) {
@@ -5754,13 +5739,11 @@ function editContactItem(rowId) {
   document.getElementById('cfType').value = c.type || 'note';
   document.getElementById('cfLabel').value = c.label || '';
   document.getElementById('cfContent').value = c.content || '';
-  _cfOrigContent = c.content || ''; _cfCoordSource = c.coordSource || (((c.lat!==''&&c.lat!=null))?'auto':''); { const _la=document.getElementById('cfLat'); if(_la)_la.value=(c.lat===''||c.lat==null)?'':c.lat; const _ln=document.getElementById('cfLng'); if(_ln)_ln.value=(c.lng===''||c.lng==null)?'':c.lng; }
-  updateContactFormHint(); if(typeof _cfUpdateCoordSrc==='function')_cfUpdateCoordSrc();
+  updateContactFormHint();
   openModal('contactFormM');
 }
 function updateContactFormHint() {
   const t = document.getElementById('cfType').value;
-  const _cr = document.getElementById('cfCoordRow'); if(_cr) _cr.style.display = (t==='address') ? '' : 'none';
   const hint = document.getElementById('cfContentHint');
   const labelInput = document.getElementById('cfLabel');
   if (t === 'phone') {
@@ -5777,28 +5760,6 @@ function updateContactFormHint() {
     document.getElementById('cfContent').placeholder = '備註內容';
   }
 }
-async function cfGeocode(){
-  const addr = document.getElementById('cfContent').value.trim();
-  if(!addr){ alert('請先填地址'); return; }
-  const srcEl = document.getElementById('cfCoordSrc'); if(srcEl) srcEl.textContent='定位中…';
-  try{
-    const res = await callGasAction('geocodeAddress', { address: addr });
-    if(res && res.status==='success' && isFinite(res.lat) && isFinite(res.lng)){
-      document.getElementById('cfLat').value = res.lat;
-      document.getElementById('cfLng').value = res.lng;
-      _cfCoordSource = 'auto'; _cfUpdateCoordSrc();
-    } else {
-      if(srcEl) srcEl.textContent='定位失敗';
-      alert('自動定位失敗：' + ((res&&res.message)?res.message:'找不到座標') + '\n可手動輸入經緯度。');
-    }
-  }catch(e){ if(srcEl) srcEl.textContent='定位失敗'; alert('定位連線失敗：'+e.message); }
-}
-function _cfUpdateCoordSrc(){
-  const el = document.getElementById('cfCoordSrc'); if(!el) return;
-  const la=(document.getElementById('cfLat')||{}).value, ln=(document.getElementById('cfLng')||{}).value;
-  if(!la || !ln || String(la).trim()==='' || String(ln).trim()==='') el.textContent='未定位';
-  else el.textContent = (_cfCoordSource==='manual') ? '手動' : '自動';
-}
 async function saveContactItem() {
   const type = document.getElementById('cfType').value;
   const label = document.getElementById('cfLabel').value.trim();
@@ -5813,17 +5774,6 @@ async function saveContactItem() {
   }
   const existing = _editingContactRowId ? allContacts.find(x => String(x.rowId)===String(_editingContactRowId)) : null;
   const rowId = _editingContactRowId || ('C' + Date.now() + Math.floor(Math.random()*1000));
-  let _lat='', _lng='', _coordSrc='';
-  if (type === 'address') {
-    const _addrChanged = existing && String(existing.content||'') !== content;
-    let _li = (document.getElementById('cfLat')||{}).value; _li = _li?String(_li).trim():'';
-    let _gi = (document.getElementById('cfLng')||{}).value; _gi = _gi?String(_gi).trim():'';
-    if (_addrChanged && _cfCoordSource !== 'manual') { _li=''; _gi=''; }
-    if (_li!=='' && _gi!=='' && isFinite(Number(_li)) && isFinite(Number(_gi))) {
-      _lat = Number(_li); _lng = Number(_gi);
-      _coordSrc = (_cfCoordSource === 'manual') ? 'manual' : 'auto';
-    }
-  }
   const contact = {
     groupKey: _contactEditGroupKey,
     custName: _contactEditCustName,   // v500.32fix #5: 帶客戶名，後端據此確保 g-id、綁 g-id 不綁名字
@@ -5831,7 +5781,7 @@ async function saveContactItem() {
     sortOrder: existing ? existing.sortOrder : _contactsOf(_contactEditGroupKey).length,
     rowId,
     updatedAt: Date.now(),
-    origin: existing ? (existing.origin || '') : '', lat: _lat, lng: _lng, coordSource: _coordSrc   // v500.32: 編輯保留原來源、新建留空（=主客戶自己建的）
+    origin: existing ? (existing.origin || '') : ''   // v500.32: 編輯保留原來源、新建留空（=主客戶自己建的）
   };
   playSound('add');
   // 本機先套用
