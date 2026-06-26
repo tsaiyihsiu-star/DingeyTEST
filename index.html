@@ -1202,7 +1202,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.8"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.9"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7091,7 +7091,7 @@ async function aiRouteRecompute(){
   _aiRetry = aiRouteRecompute;
   _aiBusyShow('AI 排路線中…','依地址分區建議順序 · 可隨時取消');
   _aiAbort = new AbortController(); let timedOut = false;
-  _aiTimer = setTimeout(()=>{ timedOut=true; try{_aiAbort.abort();}catch(e){} }, 20000);
+  var _aiTimeout = Math.min(45000, Math.max(18000, 12000 + sts.length * 900)); _aiTimer = setTimeout(()=>{ timedOut=true; try{_aiAbort.abort();}catch(e){} }, _aiTimeout);
   try {
     const res = await fetch(GAS_URL, { method:'POST', signal:_aiAbort.signal, body: JSON.stringify({ action:'aiRouteOrder', stops: sts.map((st,i)=>({ i, task:'', customer:st.customer, address:st.address })) }) });
     clearTimeout(_aiTimer);
