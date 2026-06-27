@@ -1205,7 +1205,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.14"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.15"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5515,6 +5515,7 @@ function renderStopWordList() {
       <span class="cat-name" style="color:var(--gray);">${escapeHtml(c.name)}</span>
       <div class="cat-acts">
         <span class="cat-act" style="color:#34C759" onclick="restoreCust('${escapeAttr(c.name)}')">恢復</span>
+        <span class="cat-act" style="color:#FF3B30" onclick="deleteStopWord('${escapeAttr(c.name)}')">刪除</span>
       </div>
     </div>`).join('');
 }
@@ -5528,6 +5529,25 @@ async function restoreCust(name) {
   renderStopWordList();    // 從停用清單移除
   updateStopWordTitle();
   await pushOp('unmarkStopWord', { name }, `恢復客戶「${name}」`);
+}
+// v502.15: 刪除停用詞前，先擋「底下有聯絡資料」與「還是有子客戶的主」，避免孤兒/不一致
+async function deleteStopWord(name) {
+  const _gk = _groupKeyOf(name);
+  if (allContacts.some(x => String(x.groupKey) === String(_gk))) {
+    alert('「' + name + '」底下還有客戶聯絡資料，無法刪除。\n請先到「聯絡資料」把資料刪除或轉移給其他客戶，再刪除這個停用詞。');
+    return;
+  }
+  const me = allCust.find(x => x.name === name);
+  if (me && me.groupId && allCust.some(x => x.masterKey && String(x.masterKey) === String(me.groupId))) {
+    alert('「' + name + '」還有附屬的子客戶，無法刪除。請先讓子客戶脫離或升為主，再刪除。');
+    return;
+  }
+  if (!confirm('確定要永久刪除停用詞「' + name + '」嗎？\n此動作無法復原（會從客戶資料移除；已關聯的任務不受影響，只會清掉客戶標記）。')) return;
+  playSound('delete');
+  allCust = allCust.filter(c => c.name !== name);
+  allT.forEach(t => { if (t.Customer === name) t.Customer = ''; });
+  saveLocal(); renderCusList(); renderStopWordList(); updateStopWordTitle(); render();
+  await pushOp('deleteCustomer', { name }, `刪除停用詞「${name}」`);
 }
 
 // ── v500.31: 客戶聯絡資料管理 ─────────────────────────────
