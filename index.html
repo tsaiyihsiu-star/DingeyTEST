@@ -943,6 +943,7 @@
       </button>
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
       <input type="file" id="cImportFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleContactImport(event)">
+      <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeCusM()">完成</button>
     </div>
   </div>
@@ -1202,7 +1203,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.10"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.12"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7899,6 +7900,51 @@ function readXlsx(file,resolve,reject) {
   const reader=new FileReader();
   reader.onload=e=>{ try{ const wb=XLSX.read(e.target.result,{type:'array',cellDates:false,codepage:950,raw:false}); const ws=wb.Sheets[wb.SheetNames[0]]; const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false}); resolve(rows); }catch(err){reject(err);}};
   reader.onerror=()=>reject(new Error('Excel 讀取失敗')); reader.readAsArrayBuffer(file);
+}
+
+// ===== v502.12 一鍵匯出備份（電腦版）=====
+function _backupStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes()); }
+function _downloadBlob(name, blob){
+  const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); },1200);
+}
+function _ensureXLSX(){ return new Promise((resolve,reject)=>{ if(window.XLSX) return resolve();
+  const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  s.onload=()=>resolve(); s.onerror=()=>reject(new Error('無法載入 Excel 產生器，請確認網路連線')); document.head.appendChild(s); }); }
+function _objsToSheet(arr, photoCol){
+  arr=arr||[]; const keys=[];
+  arr.forEach(o=>Object.keys(o||{}).forEach(k=>{ if(keys.indexOf(k)<0) keys.push(k); }));
+  const aoa=[keys];
+  arr.forEach(o=>{ aoa.push(keys.map(k=>{
+    let v=(o||{})[k];
+    if(photoCol && k===photoCol && v){ let ids=v; if(typeof v==='string'){ try{ids=JSON.parse(v);}catch(e){ids=[];} }
+      if(Array.isArray(ids)) return ids.map(id=>'https://drive.google.com/file/d/'+id+'/view').join('\n'); }
+    if(v && typeof v==='object') return JSON.stringify(v);
+    return (v==null)?'':v;
+  })); });
+  return XLSX.utils.aoa_to_sheet(aoa);
+}
+async function exportBackup(btn){
+  try{
+    if(btn){ btn.disabled=true; btn.style.opacity='.6'; btn.textContent='匯出中…'; }
+    const res = await callGasAction('exportAllData', {});
+    if(!res || res.status!=='success') throw new Error((res&&res.message)||'匯出失敗');
+    const stamp=_backupStamp();
+    // JSON（完整、供還原）
+    _downloadBlob('宜修備份_'+stamp+'.json', new Blob([JSON.stringify(res,null,2)],{type:'application/json'}));
+    // Excel（可讀）
+    await _ensureXLSX();
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, _objsToSheet(res.tasks,'Photos'), '任務');
+    XLSX.utils.book_append_sheet(wb, _objsToSheet(res.customers), '客戶');
+    XLSX.utils.book_append_sheet(wb, _objsToSheet(res.contacts), '聯絡資料');
+    XLSX.utils.book_append_sheet(wb, _objsToSheet(res.categories), '分類');
+    XLSX.writeFile(wb, '宜修備份_'+stamp+'.xlsx');
+    const n=(res.tasks||[]).length, c=(res.customers||[]).length, k=(res.contacts||[]).length;
+    alert('匯出完成！已下載：\n• 宜修備份_'+stamp+'.json（供還原）\n• 宜修備份_'+stamp+'.xlsx（供檢視）\n\n任務 '+n+' 筆、客戶 '+c+' 筆、聯絡資料 '+k+' 筆。');
+  }catch(e){ alert('匯出失敗：'+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent='⬇ 匯出備份（JSON + Excel）'; } }
 }
 
 // v500: 改為純本機 filter，不發 HTTP 推送
