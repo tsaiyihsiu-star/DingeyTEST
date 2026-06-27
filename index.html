@@ -944,6 +944,8 @@
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
       <input type="file" id="cImportFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleContactImport(event)">
       <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
+      <button class="import-btn" style="margin-top:8px;background:#7A1F1F;" onclick="restorePickFile()">⟲ 還原備份（從 JSON）</button>
+      <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none;" onchange="_handleRestoreFile(event)">
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeCusM()">完成</button>
     </div>
   </div>
@@ -1203,7 +1205,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.12"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.14"; // v501.01 AI自然語言解析建任務(試點/測試版)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7925,11 +7927,36 @@ function _objsToSheet(arr, photoCol){
   })); });
   return XLSX.utils.aoa_to_sheet(aoa);
 }
-async function exportBackup(btn){
+function _schemaFam(s){ const m=String(s||'').match(/50\d/); return m?m[0]:''; }
+function _validateBackup(d){
+  const issues=[]; const tasks=d.tasks||[], custs=d.customers||[], contacts=d.contacts||[], cats=d.categories||[];
+  const seen={}, dup=[]; let noId=false;
+  tasks.forEach(t=>{ const i=t&&t.ID; if(!i){noId=true;return;} if(seen[i])dup.push(i); else seen[i]=1; });
+  if(noId) issues.push('有任務缺少 ID');
+  if(dup.length) issues.push('有重複任務 ID（'+dup.length+' 個）');
+  const names={}, gid={}; custs.forEach(c=>{ if(c&&c.name)names[c.name]=1; if(c&&c.groupId)gid[c.groupId]=1; });
+  const validKey=Object.assign({},names,gid);
+  const orphan=contacts.filter(c=>c&&c.groupKey&&!validKey[c.groupKey]);
+  if(orphan.length) issues.push('有聯絡資料對不到客戶（孤兒 '+orphan.length+' 筆）');
+  const miss={}; tasks.forEach(t=>{ const cu=t&&t.Customer; if(cu&&!names[cu]&&!gid[cu])miss[cu]=1; });
+  if(Object.keys(miss).length) issues.push('有任務掛的客戶不在客戶表（'+Object.keys(miss).length+' 個）');
+  const catset={}; cats.forEach(c=>{ if(c&&c.name)catset[c.name]=1; });
+  const badcat=tasks.filter(t=>t&&t.Category&&!catset[t.Category]).length;
+  if(badcat) issues.push('有任務的分類不在分類表（'+badcat+' 筆，多為舊分類）');
+  return { ok: issues.length===0, issues };
+}
+async function exportBackup(btn, silent, presetNote){
   try{
     if(btn){ btn.disabled=true; btn.style.opacity='.6'; btn.textContent='匯出中…'; }
+    let note = (presetNote!==undefined && presetNote!==null) ? presetNote : '';
+    if(!silent && presetNote===undefined){
+      const inp = prompt('這份備份的用途備註（可留空）\n例如：v502.13 升級前', '');
+      if(inp===null){ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent='⬇ 匯出備份（JSON + Excel）'; } return; }
+      note = inp.trim();
+    }
     const res = await callGasAction('exportAllData', {});
     if(!res || res.status!=='success') throw new Error((res&&res.message)||'匯出失敗');
+    if(note) res.note = note;
     const stamp=_backupStamp();
     // JSON（完整、供還原）
     _downloadBlob('宜修備份_'+stamp+'.json', new Blob([JSON.stringify(res,null,2)],{type:'application/json'}));
@@ -7942,9 +7969,87 @@ async function exportBackup(btn){
     XLSX.utils.book_append_sheet(wb, _objsToSheet(res.categories), '分類');
     XLSX.writeFile(wb, '宜修備份_'+stamp+'.xlsx');
     const n=(res.tasks||[]).length, c=(res.customers||[]).length, k=(res.contacts||[]).length;
-    alert('匯出完成！已下載：\n• 宜修備份_'+stamp+'.json（供還原）\n• 宜修備份_'+stamp+'.xlsx（供檢視）\n\n任務 '+n+' 筆、客戶 '+c+' 筆、聯絡資料 '+k+' 筆。');
+    if(!silent){ const v=_validateBackup(res);
+      let msg='匯出完成！已下載：\n• 宜修備份_'+stamp+'.json（供還原）\n• 宜修備份_'+stamp+'.xlsx（供檢視）'+(note?('\n• 備註：'+note):'')+'\n\n任務 '+n+' 筆、客戶 '+c+' 筆、聯絡資料 '+k+' 筆。\n';
+      msg += v.ok ? '\n✅ 備份完整，可安心作為升級前快照。' : ('\n⚠️ 發現 '+v.issues.length+' 個小狀況（不影響還原、但建議留意）：\n- '+v.issues.join('\n- '));
+      alert(msg); }
   }catch(e){ alert('匯出失敗：'+e.message); }
   finally{ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent='⬇ 匯出備份（JSON + Excel）'; } }
+}
+
+// ===== v502.13 一鍵還原（電腦版、全覆蓋）=====
+let _restoreParsed = null;
+function restorePickFile(){ const el=document.getElementById('restoreFileInput'); if(el){ el.value=''; el.click(); } }
+function _handleRestoreFile(e){
+  const f = e.target.files && e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try{
+      const d = JSON.parse(ev.target.result);
+      if(!d || (!Array.isArray(d.tasks) && !Array.isArray(d.customers) && !Array.isArray(d.contacts) && !Array.isArray(d.categories)))
+        throw new Error('檔案結構不符（找不到 tasks/customers/contacts/categories）');
+      _restoreParsed = d; _showRestoreDialog(d);
+    }catch(err){ alert('無法讀取備份檔：'+err.message); }
+  };
+  r.onerror = ()=>alert('讀取檔案失敗'); r.readAsText(f);
+}
+function _showRestoreDialog(d){
+  const cnt = k => Array.isArray(d[k]) ? d[k].length : 0;
+  const when = d.exportedAt ? new Date(d.exportedAt).toLocaleString() : '（未知時間）';
+  const ov = document.createElement('div');
+  ov.id='restoreOverlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+    + '<div style="font-size:19px;font-weight:800;color:#1E293B;margin-bottom:4px;">還原備份</div>'
+    + '<div style="font-size:13px;color:#64748B;margin-bottom:14px;">備份時間：'+when+'</div>'
+    + (d.note ? '<div style="font-size:13px;color:#1E293B;margin:-8px 0 12px;background:#F1F5F9;padding:6px 10px;border-radius:6px;">📝 備註：'+String(d.note).replace(/</g,'&lt;')+'</div>' : '')
+    + (_schemaFam(d.schema)!=='502' ? '<div style="font-size:13px;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:8px 10px;margin-bottom:12px;">⚠️ 此備份結構版本（'+(d.schema||'未知')+'）與目前程式不同，欄位可能對不上，還原前請特別確認。</div>' : '')
+    + '<div style="font-size:14px;color:#1E293B;margin-bottom:8px;font-weight:700;">勾選要還原的項目（全覆蓋）：</div>'
+    + '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:15px;"><input type="checkbox" class="rstChk" value="tasks" checked> 任務（'+cnt('tasks')+' 筆）</label>'
+    + '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:15px;"><input type="checkbox" class="rstChk" value="customers" checked> 客戶（'+cnt('customers')+' 筆）</label>'
+    + '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:15px;"><input type="checkbox" class="rstChk" value="contacts" checked> 聯絡資料（'+cnt('contacts')+' 筆）</label>'
+    + '<label style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:15px;"><input type="checkbox" class="rstChk" value="categories" checked> 分類（'+cnt('categories')+' 筆）</label>'
+    + '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:13px;color:#991B1B;margin:12px 0;">⚠️ 全覆蓋：勾選的項目會被備份內容<b>完全取代</b>，目前雲端的資料將被清掉。還原前會自動先匯出一份現況備份。</div>'
+    + '<div style="display:flex;gap:8px;margin-top:6px;">'
+    + '<button onclick="_closeRestore()" style="flex:1;padding:11px;border:none;border-radius:10px;background:#E5E7EB;color:#1E293B;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;">取消</button>'
+    + '<button onclick="_restoreExecute()" style="flex:1;padding:11px;border:none;border-radius:10px;background:#7A1F1F;color:#fff;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;">先匯出現況並還原</button>'
+    + '</div></div>';
+  document.body.appendChild(ov);
+}
+function _closeRestore(){ const o=document.getElementById('restoreOverlay'); if(o) o.remove(); }
+async function _restoreExecute(){
+  const d = _restoreParsed; if(!d){ _closeRestore(); return; }
+  const tables = Array.from(document.querySelectorAll('.rstChk:checked')).map(c=>c.value);
+  if(!tables.length){ alert('請至少勾選一項'); return; }
+  const label = tables.map(t=>({tasks:'任務',customers:'客戶',contacts:'聯絡資料',categories:'分類'}[t])).join('、');
+  if(!confirm('即將「全覆蓋」還原：'+label+'\n\n目前雲端這些資料會被取代。確定繼續嗎？')) return;
+  try{
+    // 1) 還原前自動先匯出現況（安全網）
+    await exportBackup(null, true, '還原前自動備份');
+    // 2) 二次確認
+    if(!confirm('已先下載一份現況備份。\n\n最後確認：要用這個備份覆蓋雲端嗎？此動作無法復原（但現況已備份）。')) return;
+    _closeRestore();
+    const ov=document.createElement('div'); ov.id='restoreBusy';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200001;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-family:inherit;';
+    ov.textContent='還原中…請勿關閉視窗'; document.body.appendChild(ov);
+    const payload = { tables, data: { tasks:d.tasks||[], customers:d.customers||[], contacts:d.contacts||[], categories:d.categories||[] } };
+    const res = await callGasAction('restoreAllData', payload);
+    document.getElementById('restoreBusy')?.remove();
+    if(!res || res.status!=='success') throw new Error((res&&res.message)||'還原失敗');
+    const rep = res.report||{};
+    alert('還原完成！\n'+Object.keys(rep).map(k=>({tasks:'任務',customers:'客戶',contacts:'聯絡資料',categories:'分類'}[k]||k)+'：'+rep[k]+' 筆').join('\n')+'\n\n本機將清空快取並重新整理；其他裝置（手機）請手動重開 App 一次。');
+    _restoreClearLocalAndReload();
+  }catch(e){ document.getElementById('restoreBusy')?.remove(); alert('還原失敗：'+e.message); }
+}
+function _restoreClearLocalAndReload(){
+  try{
+    ['tasks','customers','cats','catColors','catOrder','contactsCache','opLog','cusOpLog','pendingQueue','opSeqCounter'].forEach(k=>localStorage.removeItem(k));
+    localStorage.setItem('lastSyncTime','0'); localStorage.setItem('lastFullSync','0');
+    localStorage.setItem('lastSyncOpSeq','0'); localStorage.setItem('lastSyncCusOpSeq','0');
+    try{ indexedDB.deleteDatabase('yixiu_photos'); }catch(e){}
+  }catch(e){}
+  setTimeout(()=>location.reload(), 300);
 }
 
 // v500: 改為純本機 filter，不發 HTTP 推送
