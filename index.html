@@ -1265,7 +1265,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.21"; // v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.22"; // v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5063,7 +5063,7 @@ async function save() {
       customerHint = det.hint;
     }
   }
-  const data = { task: document.getElementById('taskInput').value.trim(), dueDate: document.getElementById('dateInput').value, category: document.getElementById('catSelect').value, priority: parseInt(document.getElementById('priInput').value)||99, note: document.getElementById('noteInput').value, mTime, ID: id, status: orig ? (orig.Status||'Pending') : 'Pending', customer, customerHint };
+  const data = { task: expandRelDates(document.getElementById('taskInput').value.trim()), dueDate: document.getElementById('dateInput').value, category: document.getElementById('catSelect').value, priority: parseInt(document.getElementById('priInput').value)||99, note: document.getElementById('noteInput').value, mTime, ID: id, status: orig ? (orig.Status||'Pending') : 'Pending', customer, customerHint };
   if (!data.task) { document.getElementById('taskInput').focus(); return; }
   if (!isNew) {
     if (orig) {
@@ -6755,7 +6755,7 @@ function closeQuickEdit() {
 
 async function saveQuickEdit() {
   const id   = _quickEditTaskId;
-  const task = document.getElementById('quickEditInput').value.trim();
+  const task = expandRelDates(document.getElementById('quickEditInput').value.trim());
   const cat  = document.getElementById('quickEditCat').value;
   if (!task) { document.getElementById('quickEditInput').focus(); return; }
   playSound('add');
@@ -7302,8 +7302,16 @@ function showVtMenu(){
 }
 function closeVtMenu(){ document.getElementById('vtMenu').style.display='none'; document.getElementById('vtOverlay').style.display='none'; }
 
+// v502.22: 標題內相對日期字（今天/明天/後天/大後天）自動換成「M/D(週幾)」
+function expandRelDates(s){
+  if(!s) return s;
+  const wk=['日','一','二','三','四','五','六'];
+  const base=new Date(); base.setHours(0,0,0,0);
+  const fmt=off=>{ const d=new Date(base); d.setDate(d.getDate()+off); return (d.getMonth()+1)+'/'+d.getDate()+'('+wk[d.getDay()]+')'; };
+  return s.replace(/大後天/g,fmt(3)).replace(/後天/g,fmt(2)).replace(/明天/g,fmt(1)).replace(/今天/g,fmt(0));
+}
 async function saveQuick() {
-  const task = document.getElementById('quickInput').value.trim();
+  const task = expandRelDates(document.getElementById('quickInput').value.trim());
   if (!task) { document.getElementById('quickInput').focus(); return; }
   playSound('add');
   const category = document.getElementById('quickCat').value;
