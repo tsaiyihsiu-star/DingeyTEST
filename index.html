@@ -659,23 +659,24 @@
     #syncReminder .sr-btn:disabled{opacity:0.5;cursor:default;}
 
     /* ===== v502.16 第四段：全螢幕行事曆 ===== */
-    #calOverlay{display:none;position:fixed;inset:0;z-index:700;background:var(--bg);flex-direction:column;padding-top:var(--sat);}
+    #calOverlay{display:none;position:fixed;inset:0;z-index:700;background:var(--bg);flex-direction:column;}
     #calOverlay.open{display:flex;}
-    .cal-head{display:flex;align-items:center;gap:4px;padding:10px 10px;background:var(--card);border-bottom:.5px solid rgba(0,0,0,.08);}
+    .cal-head{display:flex;align-items:center;gap:4px;padding:calc(10px + var(--sat)) 10px 10px;background:var(--sidebar-bg);}
     .cal-x{font-size:20px;line-height:1;color:var(--primary);background:none;border:none;padding:6px 10px;cursor:pointer;font-family:inherit;}
     .cal-nav{font-size:22px;line-height:1;color:var(--primary);background:none;border:none;padding:6px 10px;cursor:pointer;font-family:inherit;}
-    .cal-title{font-size:17px;font-weight:700;color:var(--label);flex:1;text-align:center;}
+    .cal-title{font-size:17px;font-weight:700;color:#fff;flex:1;text-align:center;}
     .cal-today-btn{font-size:13px;font-weight:600;color:var(--primary);background:none;border:none;padding:6px 8px;cursor:pointer;font-family:inherit;}
-    .cal-grid-wrap{background:var(--card);padding:0 8px 10px;border-bottom:.5px solid rgba(0,0,0,.08);}
+    .cal-grid-wrap{background:var(--sidebar-bg);padding:0 8px 12px;}
     .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);}
     .cal-dow span{text-align:center;font-size:11px;font-weight:600;color:var(--gray);padding:7px 0;}
     .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
-    .cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:var(--label);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;}
     .cal-cell.other{cursor:default;}
     .cal-cell.today{font-weight:800;color:var(--primary);}
     .cal-cell.sel{background:var(--primary);color:#fff !important;font-weight:700;}
-    .cal-dot{position:absolute;bottom:5px;width:5px;height:5px;border-radius:50%;background:var(--orange);}
-    .cal-cell.sel .cal-dot{background:#fff;}
+    .cal-dots{position:absolute;bottom:5px;left:0;right:0;display:flex;justify-content:center;gap:3px;pointer-events:none;}
+    .cal-dot{width:5px;height:5px;border-radius:50%;background:var(--orange);}
+    .cal-cell.sel .cal-dot{box-shadow:0 0 0 1px rgba(255,255,255,.9);}
     .cal-confirm-bar{margin:8px 12px 0;background:#FFF4E5;border:1px solid var(--orange);border-radius:10px;padding:9px 12px;font-size:13px;color:#9A5B00;font-weight:600;cursor:pointer;}
     .cal-confirm-list{margin:6px 12px 0;}
     .cal-day{flex:1;overflow-y:auto;padding:6px 12px calc(var(--sab) + 16px);-webkit-overflow-scrolling:touch;}
@@ -8331,11 +8332,18 @@ async function _autoLoginTest() {
     document.getElementById('calGrid').innerHTML = cells.map(d=>{
       if(d===null) return '<div class="cal-cell other"></div>';
       const key = _calY + '-' + pad(_calM) + '-' + pad(d);
-      const has = _calCache.byDate.has(key);
+      const arr = _calCache.byDate.get(key);
       const cls = ['cal-cell'];
       if(key===today) cls.push('today');
       if(key===_calSel) cls.push('sel');
-      return `<div class="${cls.join(' ')}" onclick="calPick('${key}')">${d}${has?'<span class="cal-dot"></span>':''}</div>`;
+      let dots = '';
+      if(arr && arr.length){
+        dots = '<span class="cal-dots">' + arr.slice(0,3).map(o=>{
+          const col = (typeof getCatColor==='function') ? getCatColor(o.t.Category||'') : 'var(--orange)';
+          return `<span class="cal-dot" style="background:${col}"></span>`;
+        }).join('') + '</span>';
+      }
+      return `<div class="${cls.join(' ')}" onclick="calPick('${key}')">${d}${dots}</div>`;
     }).join('');
   }
 
