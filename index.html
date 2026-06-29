@@ -685,6 +685,7 @@
     .cal-task{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:11px;padding:11px 13px;margin-bottom:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;border-left:3px solid var(--gray);}
     .cal-task:active{opacity:.7;}
     .cal-task-name{font-size:15px;color:var(--label);flex:1;line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+    .cal-cat{font-size:11px;font-weight:700;color:#fff;background:var(--gray);padding:2px 8px;border-radius:6px;flex-shrink:0;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .cal-empty{text-align:center;color:var(--gray);font-size:14px;padding:36px 0;}
     /* 右欄容器：手機版透明（不改變原本上下堆疊），桌面版才成為右欄 */
     .cal-right{display:contents;}
@@ -1264,7 +1265,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.19"; // v502.19 行事曆手機橫放亦兩欄；v502.18 桌面左右兩欄；v502.17 週末紅字；v502.16 行事曆（第四段滑動、解析主旨日期、分類色點、上半黑底）
+const APP_VERSION = "TESTtodo-v502.20"; // v502.20 行事曆任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆（第四段滑動、解析主旨日期、分類色點、上半黑底）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8351,7 +8352,9 @@ async function _autoLoginTest() {
 
   function taskRow(t){
     const col = (typeof getCatColor==='function') ? getCatColor(t.Category||'') : 'var(--gray)';
-    return `<div class="cal-task" style="border-left-color:${col}" onclick="openEdit('${t.ID}')"><span class="cal-task-name">${esc(t.Task||'')}</span></div>`;
+    const cat = String(t.Category||'').trim() || '未分類';
+    const pill = `<span class="cal-cat" style="background:${col}">${esc(cat)}</span>`;
+    return `<div class="cal-task" style="border-left-color:${col}" onclick="openEdit('${t.ID}')"><span class="cal-task-name">${esc(t.Task||'')}</span>${pill}</div>`;
   }
 
   function renderMonth(){
