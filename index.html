@@ -658,6 +658,32 @@
     #syncReminder.urgent .sr-btn.secondary{color:#721C24;}
     #syncReminder .sr-btn:disabled{opacity:0.5;cursor:default;}
 
+    /* ===== v502.16 第四段：全螢幕行事曆 ===== */
+    #calOverlay{display:none;position:fixed;inset:0;z-index:700;background:var(--bg);flex-direction:column;padding-top:var(--sat);}
+    #calOverlay.open{display:flex;}
+    .cal-head{display:flex;align-items:center;gap:4px;padding:10px 10px;background:var(--card);border-bottom:.5px solid rgba(0,0,0,.08);}
+    .cal-x{font-size:20px;line-height:1;color:var(--primary);background:none;border:none;padding:6px 10px;cursor:pointer;font-family:inherit;}
+    .cal-nav{font-size:22px;line-height:1;color:var(--primary);background:none;border:none;padding:6px 10px;cursor:pointer;font-family:inherit;}
+    .cal-title{font-size:17px;font-weight:700;color:var(--label);flex:1;text-align:center;}
+    .cal-today-btn{font-size:13px;font-weight:600;color:var(--primary);background:none;border:none;padding:6px 8px;cursor:pointer;font-family:inherit;}
+    .cal-grid-wrap{background:var(--card);padding:0 8px 10px;border-bottom:.5px solid rgba(0,0,0,.08);}
+    .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);}
+    .cal-dow span{text-align:center;font-size:11px;font-weight:600;color:var(--gray);padding:7px 0;}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+    .cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:var(--label);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .cal-cell.other{cursor:default;}
+    .cal-cell.today{font-weight:800;color:var(--primary);}
+    .cal-cell.sel{background:var(--primary);color:#fff !important;font-weight:700;}
+    .cal-dot{position:absolute;bottom:5px;width:5px;height:5px;border-radius:50%;background:var(--orange);}
+    .cal-cell.sel .cal-dot{background:#fff;}
+    .cal-confirm-bar{margin:8px 12px 0;background:#FFF4E5;border:1px solid var(--orange);border-radius:10px;padding:9px 12px;font-size:13px;color:#9A5B00;font-weight:600;cursor:pointer;}
+    .cal-confirm-list{margin:6px 12px 0;}
+    .cal-day{flex:1;overflow-y:auto;padding:6px 12px calc(var(--sab) + 16px);-webkit-overflow-scrolling:touch;}
+    .cal-day-title{font-size:13px;font-weight:700;color:var(--gray);margin:12px 2px 6px;letter-spacing:.5px;}
+    .cal-task{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:11px;padding:11px 13px;margin-bottom:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;border-left:3px solid var(--gray);}
+    .cal-task:active{opacity:.7;}
+    .cal-task-name{font-size:15px;color:var(--label);flex:1;line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+    .cal-empty{text-align:center;color:var(--gray);font-size:14px;padding:36px 0;}
   </style>
 </head>
 <body>
@@ -2621,7 +2647,7 @@ _mainEl.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - _txS, dy = e.changedTouches[0].clientY - _tyS;
   if (Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
   const prevState = sideState;
-  if (dx > 0 && sideState < 2) sideState++; else if (dx < 0 && sideState > 0) sideState--;
+  if (dx > 0 && sideState < 3) sideState++; else if (dx < 0 && sideState > 0) sideState--;
   if (sideState !== prevState) playSound('swipe');
   applySide();
 }, {passive:true});
@@ -2630,9 +2656,12 @@ function applySide() {
   const sb = document.getElementById('sidebar');
   const fab = document.getElementById('fab');
   const rs = document.getElementById('sidebarResizer');
+  // v502.16: 第四段 = 全螢幕行事曆
+  if (sideState === 3) { if (typeof openCalendar === 'function') openCalendar(); }
+  else { if (typeof closeCalendar === 'function') closeCalendar(); }
   // v500.13-15: 支援使用者拖曳記住的自由寬度
   // v500.17: Tab 永遠 0/76/130 三段、拖曳不改寬版定義
-  const widths = [0, 76, 130];
+  const widths = [0, 76, 130, 130];
   const w = widths[sideState];
   sb.style.width = w + 'px';
   sb.classList.toggle('wide', w >= 100);
@@ -2691,9 +2720,11 @@ function sidebarResizeEnd(e) {
   } else if (finalW < 100) {
     sideState = 1;
     localStorage.removeItem('sideWidth');
-  } else {
+  } else if (finalW < 220) {
     sideState = 2;
     localStorage.setItem('sideWidth', String(finalW));
+  } else {
+    sideState = 3;
   }
   applySide();
 }
@@ -2705,7 +2736,7 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   e.preventDefault();
   // v500.15: Tab 一律走 3 段循環（拖過後寬段用 customW）
-  sideState = (sideState + 1) % 3;
+  sideState = (sideState + 1) % 4;
   playSound('swipe');
   applySide();
 });
@@ -8197,6 +8228,178 @@ async function _autoLoginTest() {
       regs.forEach(r => r.unregister());
     }).catch(() => {});
   }
+</script>
+
+<!-- ===== v502.16 第四段：全螢幕行事曆 ===== -->
+<div id="calOverlay">
+  <div class="cal-head">
+    <button class="cal-x" onclick="calExit()" aria-label="關閉行事曆">✕</button>
+    <button class="cal-nav" onclick="calPrevMonth()" aria-label="上個月">‹</button>
+    <div class="cal-title" id="calTitle">—</div>
+    <button class="cal-nav" onclick="calNextMonth()" aria-label="下個月">›</button>
+    <button class="cal-today-btn" onclick="calGoToday()">今天</button>
+  </div>
+  <div class="cal-grid-wrap">
+    <div class="cal-dow"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+  <div id="calConfirmBar" class="cal-confirm-bar" style="display:none;" onclick="calToggleConfirm()"></div>
+  <div class="cal-day" id="calDay"></div>
+</div>
+
+<script>
+/* ===== v502.16 第四段全螢幕行事曆：純前端，開啟時即時解析主旨日期，不寫入後端 ===== */
+(function(){
+  let _calY, _calM, _calSel = null;   // 顯示中的年、月(1-12)、選取日(YYYY-MM-DD)
+  let _calCache = null;               // {byDate:Map, needConfirm:[]}
+  let _calConfirmOpen = false;
+
+  const DIM = [31,28,31,30,31,30,31,31,30,31,30,31];
+  function daysInMonth(y,m){
+    if(m===2 && ((y%4===0&&y%100!==0)||y%400===0)) return 29;
+    return DIM[m-1];
+  }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ---- 解析主旨日期（避開 M0520、里程數、型號等假數字）----
+  const RE_CN = /(\d{1,2})月(\d{1,2})日/;
+  const RE_SL = /(?:^|[^\dA-Za-z/])(\d{1,2})\/(\d{1,2})(?![\d/])/g;
+  const RE_AM = /(上午|早上|清晨)/;
+  const RE_PM = /(下午|中午|傍晚|晚上|晚間)/;
+
+  function bucketOf(s){
+    if(RE_PM.test(s)) return '下午';
+    if(RE_AM.test(s)) return '上午';
+    return '整天';
+  }
+  // 取最先出現的有效日期；若只有「像日期但無效」(如 11/31) 回 valid:false
+  function firstDate(s){
+    const cands = [];
+    const m1 = RE_CN.exec(s);
+    if(m1) cands.push([+m1[1], +m1[2], m1.index]);
+    RE_SL.lastIndex = 0; let m2;
+    while((m2 = RE_SL.exec(s))) cands.push([+m2[1], +m2[2], m2.index]);
+    if(!cands.length) return null;
+    cands.sort((a,b)=>a[2]-b[2]);
+    // 年份：在去年/今年/明年中，挑「離今天最近」的那一年 → 跨年也正確
+    const now = new Date();
+    const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    function bestYear(mo,d){
+      let by=null, bd=Infinity;
+      for(const yy of [now.getFullYear()-1, now.getFullYear(), now.getFullYear()+1]){
+        if(d<1 || d>daysInMonth(yy,mo)) continue;
+        const dist = Math.abs(new Date(yy, mo-1, d).getTime() - t0);
+        if(dist < bd){ bd=dist; by=yy; }
+      }
+      return by;
+    }
+    for(const c of cands){ if(c[0]>=1&&c[0]<=12){ const yy=bestYear(c[0],c[1]); if(yy!==null) return {y:yy,mo:c[0],d:c[1],valid:true}; } }
+    for(const c of cands){ if(c[0]>=1&&c[0]<=12) return {y:now.getFullYear(),mo:c[0],d:c[1],valid:false}; }
+    return null;
+  }
+
+  function collect(){
+    const byDate = new Map(); const needConfirm = [];
+    for(const t of allT){
+      if(t.Status === 'Done') continue;
+      const name = String(t.Task||'');
+      const r = firstDate(name);
+      if(!r) continue;
+      if(!r.valid){ needConfirm.push(t); continue; }
+      const key = r.y + '-' + pad(r.mo) + '-' + pad(r.d);
+      if(!byDate.has(key)) byDate.set(key, []);
+      byDate.get(key).push({ t, bucket: bucketOf(name) });
+    }
+    return { byDate, needConfirm };
+  }
+
+  function taskRow(t){
+    const col = (typeof getCatColor==='function') ? getCatColor(t.Category||'') : 'var(--gray)';
+    return `<div class="cal-task" style="border-left-color:${col}" onclick="openEdit('${t.ID}')"><span class="cal-task-name">${esc(t.Task||'')}</span></div>`;
+  }
+
+  function renderMonth(){
+    document.getElementById('calTitle').textContent = _calY + '年' + _calM + '月';
+    const startDow = new Date(_calY, _calM-1, 1).getDay();
+    const dim = daysInMonth(_calY, _calM);
+    const today = getToday();
+    const cells = [];
+    for(let i=0;i<startDow;i++) cells.push(null);
+    for(let d=1; d<=dim; d++) cells.push(d);
+    while(cells.length % 7 !== 0) cells.push(null);
+    document.getElementById('calGrid').innerHTML = cells.map(d=>{
+      if(d===null) return '<div class="cal-cell other"></div>';
+      const key = _calY + '-' + pad(_calM) + '-' + pad(d);
+      const has = _calCache.byDate.has(key);
+      const cls = ['cal-cell'];
+      if(key===today) cls.push('today');
+      if(key===_calSel) cls.push('sel');
+      return `<div class="${cls.join(' ')}" onclick="calPick('${key}')">${d}${has?'<span class="cal-dot"></span>':''}</div>`;
+    }).join('');
+  }
+
+  function renderDay(){
+    const items = (_calCache.byDate.get(_calSel) || []);
+    const groups = { '上午':[], '下午':[], '整天':[] };
+    items.forEach(o=>groups[o.bucket].push(o.t));
+    let html = '';
+    if(!items.length){
+      html = '<div class="cal-empty">這天沒有排定任務</div>';
+    } else {
+      for(const g of ['上午','下午','整天']){
+        if(!groups[g].length) continue;
+        html += `<div class="cal-day-title">${g}</div>` + groups[g].map(taskRow).join('');
+      }
+    }
+    document.getElementById('calDay').innerHTML = html;
+    const bar = document.getElementById('calConfirmBar');
+    const n = _calCache.needConfirm.length;
+    if(n){ bar.style.display='block'; bar.textContent = `⚠ ${n} 筆日期看不懂，點此${_calConfirmOpen?'收合':'檢視'}`; }
+    else { bar.style.display='none'; _calConfirmOpen=false; }
+    renderConfirmList();
+  }
+
+  function renderConfirmList(){
+    let box = document.getElementById('calConfirmList');
+    if(!_calConfirmOpen){ if(box) box.remove(); return; }
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'calConfirmList'; box.className = 'cal-confirm-list';
+      document.getElementById('calConfirmBar').after(box);
+    }
+    box.innerHTML = _calCache.needConfirm.map(taskRow).join('');
+  }
+
+  // ---- 對外接口 ----
+  window.openCalendar = function(){
+    _calCache = collect();
+    const ov = document.getElementById('calOverlay');
+    if(_calSel === null){
+      const [y,m] = getToday().split('-').map(Number);
+      _calSel = getToday(); _calY = y; _calM = m;
+    }
+    ov.classList.add('open');
+    renderMonth(); renderDay();
+  };
+  window.closeCalendar = function(){ document.getElementById('calOverlay').classList.remove('open'); };
+  window.calExit = function(){ sideState = 2; if(typeof playSound==='function') playSound('swipe'); applySide(); };
+  window.calPick = function(key){ _calSel = key; renderMonth(); renderDay(); };
+  window.calPrevMonth = function(){ _calM--; if(_calM<1){_calM=12;_calY--;} renderMonth(); };
+  window.calNextMonth = function(){ _calM++; if(_calM>12){_calM=1;_calY++;} renderMonth(); };
+  window.calGoToday = function(){ const [y,m]=getToday().split('-').map(Number); _calY=y; _calM=m; _calSel=getToday(); renderMonth(); renderDay(); };
+  window.calToggleConfirm = function(){ _calConfirmOpen=!_calConfirmOpen; renderDay(); };
+
+  // overlay 蓋住 #main，主畫面滑動偵測不到 → 在 overlay 上自己接「向左滑退出」
+  let _cx=0,_cy=0;
+  const ov = document.getElementById('calOverlay');
+  ov.addEventListener('touchstart', e=>{ _cx=e.touches[0].clientX; _cy=e.touches[0].clientY; }, {passive:true});
+  ov.addEventListener('touchend', e=>{
+    const dx=e.changedTouches[0].clientX-_cx, dy=e.changedTouches[0].clientY-_cy;
+    if(Math.abs(dx)<44 || Math.abs(dx)<Math.abs(dy)*1.3) return;
+    if(dx<0) window.calExit();
+  }, {passive:true});
+})();
 </script>
 
 </body>
