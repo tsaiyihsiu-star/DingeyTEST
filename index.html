@@ -672,6 +672,7 @@
     .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
     .cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;}
     .cal-cell.other{cursor:default;}
+    .cal-cell.weekend{color:var(--red);}
     .cal-cell.today{font-weight:800;color:var(--primary);}
     .cal-cell.sel{background:var(--primary);color:#fff !important;font-weight:700;}
     .cal-dots{position:absolute;bottom:5px;left:0;right:0;display:flex;justify-content:center;gap:3px;pointer-events:none;}
@@ -1232,7 +1233,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.16"; // v501.01 AI自然語言解析建任務(試點/測試版)
+const APP_VERSION = "TESTtodo-v502.17"; // v502.17 行事曆週末(六日)日期紅字；v502.16 行事曆（第四段滑動、解析主旨日期、分類色點、上半黑底）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8334,6 +8335,8 @@ async function _autoLoginTest() {
       const key = _calY + '-' + pad(_calM) + '-' + pad(d);
       const arr = _calCache.byDate.get(key);
       const cls = ['cal-cell'];
+      const dow = new Date(_calY, _calM-1, d).getDay();
+      if(dow===0 || dow===6) cls.push('weekend');
       if(key===today) cls.push('today');
       if(key===_calSel) cls.push('sel');
       let dots = '';
