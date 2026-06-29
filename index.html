@@ -670,7 +670,7 @@
     .cal-dow{display:grid;grid-template-columns:repeat(7,1fr);}
     .cal-dow span{text-align:center;font-size:11px;font-weight:600;color:var(--gray);padding:7px 0;}
     .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
-    .cal-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .cal-cell{position:relative;min-height:46px;display:flex;align-items:center;justify-content:center;border-radius:9px;font-size:15px;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;}
     .cal-cell.other{cursor:default;}
     .cal-cell.weekend{color:var(--red);}
     .cal-cell.today{font-weight:800;color:var(--primary);}
@@ -1265,7 +1265,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.20"; // v502.20 行事曆任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆（第四段滑動、解析主旨日期、分類色點、上半黑底）
+const APP_VERSION = "TESTtodo-v502.21"; // v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8446,6 +8446,14 @@ async function _autoLoginTest() {
     if(Math.abs(dx)<44 || Math.abs(dx)<Math.abs(dy)*1.3) return;
     if(dx<0) window.calExit();
   }, {passive:true});
+
+  // 旋轉/視窗尺寸變化時，若行事曆開著就重繪，避免轉向來回後格線錯位殘留
+  let _calRz;
+  window.addEventListener('resize', ()=>{
+    if(!document.getElementById('calOverlay').classList.contains('open')) return;
+    clearTimeout(_calRz);
+    _calRz = setTimeout(()=>{ try{ renderMonth(); renderDay(); }catch(e){} }, 120);
+  });
 })();
 </script>
 
