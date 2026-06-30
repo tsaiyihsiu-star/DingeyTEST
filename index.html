@@ -662,8 +662,8 @@
     #calOverlay{display:flex;position:fixed;inset:0;z-index:700;background:var(--bg);flex-direction:row;transform:translateX(-100%);visibility:hidden;transition:transform .3s cubic-bezier(.32,.72,0,1),visibility 0s linear .3s;will-change:transform;}
     #calOverlay.open{transform:translateX(0);visibility:visible;transition:transform .3s cubic-bezier(.32,.72,0,1),visibility 0s;}
     .cal-main{flex:1;min-width:0;display:flex;flex-direction:column;}
-    .cal-side{width:76px;flex-shrink:0;background:var(--sidebar-bg);display:flex;flex-direction:column;border-left:.5px solid var(--sep);padding-top:calc(var(--sat) + 6px);}
-    .cal-side-list{flex:1;overflow-y:auto;padding:6px;pointer-events:none;}
+    .cal-side{width:76px;flex-shrink:0;background:var(--sidebar-bg);display:flex;flex-direction:column;border-left:.5px solid var(--sep);padding-top:calc(var(--sat) + 58px);}
+    .cal-side-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:2px 0 8px;pointer-events:none;}
     .cal-side-list::-webkit-scrollbar{display:none;}
     .cal-back-btn{margin:6px 8px calc(var(--sab) + 10px);padding:11px 0;border:none;background:#2C2C2E;color:var(--primary);border-radius:11px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:3px;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;}
     .cal-back-btn:active{opacity:.7;}
@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.24"; // v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.26"; // v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8299,7 +8299,7 @@ async function _autoLoginTest() {
   </div>
   <aside class="cal-side">
     <div class="cal-side-list" id="calSideList"></div>
-    <button class="cal-back-btn" onclick="calExit()" aria-label="回待辦清單">‹ 待辦</button>
+    <button class="cal-back-btn" onclick="calExit()" aria-label="回待辦清單">待辦 ›</button>
   </aside>
 </div>
 
@@ -8467,6 +8467,19 @@ async function _autoLoginTest() {
     if(Math.abs(dx)<44 || Math.abs(dx)<Math.abs(dy)*1.3) return;
     if(dx<0) window.calExit();
   }, {passive:true});
+
+  // 月曆格子區上下滑換月：上滑→下個月、下滑→上個月（需垂直位移為主，避免與左滑回待辦衝突）
+  const _gw = ov.querySelector('.cal-grid-wrap');
+  if(_gw){
+    let _gx=0,_gy=0;
+    _gw.addEventListener('touchstart', e=>{ _gx=e.touches[0].clientX; _gy=e.touches[0].clientY; }, {passive:true});
+    _gw.addEventListener('touchend', e=>{
+      const dx=e.changedTouches[0].clientX-_gx, dy=e.changedTouches[0].clientY-_gy;
+      if(Math.abs(dy)<40 || Math.abs(dy)<Math.abs(dx)*1.3) return;
+      if(typeof playSound==='function') playSound('swipe');
+      if(dy<0) window.calNextMonth(); else window.calPrevMonth();
+    }, {passive:true});
+  }
 
   // 旋轉/視窗尺寸變化時，若行事曆開著就重繪，避免轉向來回後格線錯位殘留
   let _calRz;
