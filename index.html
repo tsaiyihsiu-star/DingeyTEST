@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.31"; // v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.33"; // v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8495,13 +8495,14 @@ async function _autoLoginTest() {
   };
   window.closeCalendar = function(){ document.getElementById('calOverlay').classList.remove('open'); };
   window.calExit = function(){ sideState = 2; if(typeof playSound==='function') playSound('swipe'); applySide(); };
-  window.calPick = function(key){ _calSel = key; renderMonth(); renderDay(); };
+  window.calPick = function(key){ _calSel = key; if(typeof playSound==='function') playSound('tap'); renderMonth(); renderDay(); };
   let _calAnim = false;
   function changeMonth(d){
     const g = document.getElementById('calGrid');
     const step = () => { if(d>0){ _calM++; if(_calM>12){_calM=1;_calY++;} } else { _calM--; if(_calM<1){_calM=12;_calY--;} } renderMonth(); };
     if(!g){ step(); return; }
     if(_calAnim) return; _calAnim = true;
+    if(typeof playSound==='function') playSound('swipe');
     const out = d>0 ? -22 : 22;   // 下個月：舊月往上離開；上個月：往下離開
     g.style.transition = 'transform .15s ease, opacity .15s ease';
     g.style.transform = 'translateY(' + out + 'px)';
@@ -8521,7 +8522,7 @@ async function _autoLoginTest() {
   }
   window.calPrevMonth = function(){ changeMonth(-1); };
   window.calNextMonth = function(){ changeMonth(1); };
-  window.calGoToday = function(){ const [y,m]=getToday().split('-').map(Number); _calY=y; _calM=m; _calSel=getToday(); renderMonth(); renderDay(); };
+  window.calGoToday = function(){ if(typeof playSound==='function') playSound('tap'); const [y,m]=getToday().split('-').map(Number); _calY=y; _calM=m; _calSel=getToday(); renderMonth(); renderDay(); };
   window.calToggleConfirm = function(){ _calConfirmOpen=!_calConfirmOpen; renderDay(); };
 
   // overlay 蓋住 #main，主畫面滑動偵測不到 → 在 overlay 上自己接「向左滑退出」
@@ -8542,7 +8543,6 @@ async function _autoLoginTest() {
     _gw.addEventListener('touchend', e=>{
       const dx=e.changedTouches[0].clientX-_gx, dy=e.changedTouches[0].clientY-_gy;
       if(Math.abs(dy)<40 || Math.abs(dy)<Math.abs(dx)*1.3) return;
-      if(typeof playSound==='function') playSound('swipe');
       if(dy<0) window.calNextMonth(); else window.calPrevMonth();
     }, {passive:true});
   }
