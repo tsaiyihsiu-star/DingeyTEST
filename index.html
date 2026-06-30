@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.27"; // v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.28"; // v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8324,9 +8324,12 @@ async function _autoLoginTest() {
   const RE_AM = /(上午|早上|清晨)/;
   const RE_PM = /(下午|中午|傍晚|晚上|晚間)/;
 
+  const RE_HM = /(?:^|[^\d])([01]?\d|2[0-3]):([0-5]\d)(?![\d])/;
   function bucketOf(s){
     if(RE_PM.test(s)) return '下午';
     if(RE_AM.test(s)) return '上午';
+    const hm = RE_HM.exec(s);
+    if(hm) return parseInt(hm[1],10) < 12 ? '上午' : '下午';
     return '整天';
   }
   // 取最先出現的有效日期；若只有「像日期但無效」(如 11/31) 回 valid:false
@@ -8410,13 +8413,16 @@ async function _autoLoginTest() {
     const items = (_calCache.byDate.get(_calSel) || []);
     const groups = { '上午':[], '下午':[], '整天':[] };
     items.forEach(o=>groups[o.bucket].push(o.t));
+    const _wk=['日','一','二','三','四','五','六'];
+    const [_yy,_mm,_dd]=_calSel.split('-').map(Number);
+    const dateLabel = _yy+'/'+_mm+'/'+_dd+'('+_wk[new Date(_yy,_mm-1,_dd).getDay()]+')';
     let html = '';
     if(!items.length){
-      html = '<div class="cal-empty">這天沒有排定任務</div>';
+      html = `<div class="cal-day-title">${dateLabel}</div><div class="cal-empty">這天沒有排定任務</div>`;
     } else {
       for(const g of ['上午','下午','整天']){
         if(!groups[g].length) continue;
-        html += `<div class="cal-day-title">${g}</div>` + groups[g].map(taskRow).join('');
+        html += `<div class="cal-day-title">${dateLabel} ${g}</div>` + groups[g].map(taskRow).join('');
       }
     }
     document.getElementById('calDay').innerHTML = html;
