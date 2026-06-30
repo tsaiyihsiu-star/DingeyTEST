@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.28"; // v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.30"; // v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -2705,18 +2705,34 @@ function applySide() {
   const w = widths[sideState];
   sb.style.width = w + 'px';
   sb.classList.toggle('wide', w >= 100);
-  if (rs) rs.style.left = w + 'px';  // v500.15: 握把跟著 sidebar 寬度移動
+  if (rs) {
+    if (sideState === 3) {
+      const cs = document.querySelector('.cal-side');
+      const isTouch = window.matchMedia('(hover:none) and (pointer:coarse)').matches;
+      if (isTouch) { if (cs) cs.style.width = ''; rs.style.display = 'none'; }
+      else {
+        const cw = Math.max(76, Math.min(300, parseInt(localStorage.getItem('calSideWidth') || '76', 10) || 76));
+        if (cs) cs.style.width = cw + 'px';
+        rs.style.left = (window.innerWidth - cw) + 'px';
+        rs.style.display = '';
+      }
+    } else {
+      rs.style.left = w + 'px';
+      rs.style.display = '';
+    }
+  }  // v502.30: 第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度（僅電腦版）
   if (sideState === 0) { fab.style.opacity = '0'; fab.style.pointerEvents = 'none'; }
   else { fab.style.opacity = '1'; fab.style.pointerEvents = ''; }
 }
 
 // v500.13: 桌面版側邊欄拖曳調整寬度
-let _resizing = false, _resizeStartX = 0, _resizeStartW = 0;
+let _resizing = false, _resizeStartX = 0, _resizeStartW = 0, _resizeMode = 'side';
 function sidebarResizeStart(e) {
   e.preventDefault();
   _resizing = true;
+  _resizeMode = (sideState === 3) ? 'cal' : 'side';
   _resizeStartX = e.clientX;
-  _resizeStartW = document.getElementById('sidebar').offsetWidth;
+  _resizeStartW = (_resizeMode === 'cal') ? ((document.querySelector('.cal-side') || {}).offsetWidth || 76) : document.getElementById('sidebar').offsetWidth;
   document.getElementById('sidebarResizer').classList.add('dragging');
   document.getElementById('sidebar').classList.add('resizing');
   document.body.style.cursor = 'col-resize';
@@ -2726,6 +2742,14 @@ function sidebarResizeStart(e) {
 }
 function sidebarResizeMove(e) {
   if (!_resizing) return;
+  if (_resizeMode === 'cal') {
+    const cs = document.querySelector('.cal-side');
+    const rs = document.getElementById('sidebarResizer');
+    const cw = Math.max(76, Math.min(300, window.innerWidth - e.clientX));
+    if (cs) cs.style.width = cw + 'px';
+    if (rs) rs.style.left = (window.innerWidth - cw) + 'px';
+    return;
+  }
   const newW = _resizeStartW + (e.clientX - _resizeStartX);
   const sb = document.getElementById('sidebar');
   const rs = document.getElementById('sidebarResizer');
@@ -2748,6 +2772,11 @@ function sidebarResizeEnd(e) {
   document.body.style.userSelect = '';
   document.removeEventListener('mousemove', sidebarResizeMove);
   document.removeEventListener('mouseup', sidebarResizeEnd);
+  if (_resizeMode === 'cal') {
+    const cs = document.querySelector('.cal-side');
+    localStorage.setItem('calSideWidth', String(cs ? cs.offsetWidth : 76));
+    return;
+  }
   // v500.16: 三段判定（更直覺）
   //   < 30      → 收起 (sideState=0)
   //   30-99     → 中段 (sideState=1, 寬度 76, 不存 customW)
