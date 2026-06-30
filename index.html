@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.26"; // v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.27"; // v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8453,8 +8453,31 @@ async function _autoLoginTest() {
   window.closeCalendar = function(){ document.getElementById('calOverlay').classList.remove('open'); };
   window.calExit = function(){ sideState = 2; if(typeof playSound==='function') playSound('swipe'); applySide(); };
   window.calPick = function(key){ _calSel = key; renderMonth(); renderDay(); };
-  window.calPrevMonth = function(){ _calM--; if(_calM<1){_calM=12;_calY--;} renderMonth(); };
-  window.calNextMonth = function(){ _calM++; if(_calM>12){_calM=1;_calY++;} renderMonth(); };
+  let _calAnim = false;
+  function changeMonth(d){
+    const g = document.getElementById('calGrid');
+    const step = () => { if(d>0){ _calM++; if(_calM>12){_calM=1;_calY++;} } else { _calM--; if(_calM<1){_calM=12;_calY--;} } renderMonth(); };
+    if(!g){ step(); return; }
+    if(_calAnim) return; _calAnim = true;
+    const out = d>0 ? -22 : 22;   // 下個月：舊月往上離開；上個月：往下離開
+    g.style.transition = 'transform .15s ease, opacity .15s ease';
+    g.style.transform = 'translateY(' + out + 'px)';
+    g.style.opacity = '0';
+    setTimeout(() => {
+      step();
+      g.style.transition = 'none';
+      g.style.transform = 'translateY(' + (-out) + 'px)';   // 新月份從反向進場
+      g.style.opacity = '0';
+      requestAnimationFrame(() => {
+        g.style.transition = 'transform .22s cubic-bezier(.32,.72,0,1), opacity .2s ease';
+        g.style.transform = 'translateY(0)';
+        g.style.opacity = '1';
+        setTimeout(() => { _calAnim = false; }, 240);
+      });
+    }, 150);
+  }
+  window.calPrevMonth = function(){ changeMonth(-1); };
+  window.calNextMonth = function(){ changeMonth(1); };
   window.calGoToday = function(){ const [y,m]=getToday().split('-').map(Number); _calY=y; _calM=m; _calSel=getToday(); renderMonth(); renderDay(); };
   window.calToggleConfirm = function(){ _calConfirmOpen=!_calConfirmOpen; renderDay(); };
 
