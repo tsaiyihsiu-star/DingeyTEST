@@ -1271,7 +1271,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.33"; // v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.34"; // v502.34 進出第四段時待辦主畫面同步推出/推回(整頁推擠連動，僅手機)；v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -8490,11 +8490,17 @@ async function _autoLoginTest() {
       _calSel = getToday(); _calY = y; _calM = m;
     }
     ov.classList.add('open');
+    try { if(window.matchMedia('(hover:none) and (pointer:coarse)').matches){ const _m=document.getElementById('main'); if(_m){ _m.style.transition='transform .3s cubic-bezier(.32,.72,0,1)'; _m.style.transform='translateX(100%)'; setTimeout(()=>{ _m.style.transition=''; _m.style.transform=''; }, 320); } } } catch(e){}
     renderMonth(); renderDay();
     try { const sl=document.getElementById('sideList'), cs=document.getElementById('calSideList'); if(sl&&cs) cs.innerHTML=sl.innerHTML; } catch(e){}
   };
   window.closeCalendar = function(){ document.getElementById('calOverlay').classList.remove('open'); };
-  window.calExit = function(){ sideState = 2; if(typeof playSound==='function') playSound('swipe'); applySide(); };
+  window.calExit = function(){
+    sideState = 2;
+    if(typeof playSound==='function') playSound('swipe');
+    try { if(window.matchMedia('(hover:none) and (pointer:coarse)').matches){ const _m=document.getElementById('main'); if(_m){ _m.style.transition='none'; _m.style.transform='translateX(100%)'; requestAnimationFrame(()=>{ _m.style.transition='transform .3s cubic-bezier(.32,.72,0,1)'; _m.style.transform='translateX(0)'; setTimeout(()=>{ _m.style.transition=''; _m.style.transform=''; }, 320); }); } } } catch(e){}
+    applySide();
+  };
   window.calPick = function(key){ _calSel = key; if(typeof playSound==='function') playSound('tap'); renderMonth(); renderDay(); };
   let _calAnim = false;
   function changeMonth(d){
