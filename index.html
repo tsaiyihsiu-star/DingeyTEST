@@ -1234,6 +1234,9 @@
   <div class="sheet" onclick="event.stopPropagation()">
     <div class="sh-handle"></div>
     <div class="sh-title">選擇「公司」客戶（作為回公司目的地）</div>
+    <div style="padding:2px 12px 8px;flex-shrink:0;">
+      <input type="text" id="companyPickSearch" class="cat-add-input" style="width:100%;box-sizing:border-box;margin:0;" placeholder="搜尋客戶名稱…" oninput="renderCompanyPick()">
+    </div>
     <div class="sh-body"><div id="companyPickList"></div></div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <button class="btn-p" style="background:#636366;" onclick="closeM('companyPickM')">取消</button>
@@ -1299,7 +1302,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.40"; // v502.40 修正長按客戶管理小選單位置(改為往上彈出、提高層級避免被側欄遮住並夾在畫面內)；v502.39 長按客戶管理：回公司(Apple/Google)、公司地址編輯(選有地址客戶設為目的地，本機儲存)
+const APP_VERSION = "TESTtodo-v502.41"; // v502.41 「選擇公司客戶」視窗加入名稱搜尋即時篩選；v502.40 修正長按客戶管理選單位置與層級；v502.39 長按客戶管理：回公司(Apple/Google)、公司地址編輯
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7455,12 +7458,16 @@ function goHome(kind){
   if(kind==='apple'){ playSound('tap'); _openExt(_appleMapURL(t)); }
   else { openGoogleMap(t); }
 }
-function openCompanyPick(){ closeCusMgrMenu(); renderCompanyPick(); openModal('companyPickM'); }
+function openCompanyPick(){ closeCusMgrMenu(); var si=document.getElementById('companyPickSearch'); if(si) si.value=''; renderCompanyPick(); openModal('companyPickM'); }
 function renderCompanyPick(){
   const hc=_getHomeCompany();
   const list=document.getElementById('companyPickList');
-  const custs=(allCust||[]).filter(function(c){ return c && !c.isStopWord && _custHasAddress(c.name); });
-  if(!custs.length){ list.innerHTML='<div style="padding:16px;color:var(--gray);font-size:14px;line-height:1.6;text-align:center;">目前沒有「有地址」的客戶。<br>請先到客戶管理，幫某個客戶新增「地址」聯絡項。</div>'; return; }
+  var se=document.getElementById('companyPickSearch'); var q=(se&&se.value?se.value:'').trim().toLowerCase();
+  var custs=(allCust||[]).filter(function(c){ return c && !c.isStopWord && _custHasAddress(c.name); });
+  if(q) custs=custs.filter(function(c){ return String(c.name).toLowerCase().indexOf(q)>=0; });
+  if(!custs.length){ list.innerHTML = q
+    ? '<div style="padding:16px;color:var(--gray);font-size:14px;text-align:center;">找不到符合「'+escapeHtml(q)+'」的客戶</div>'
+    : '<div style="padding:16px;color:var(--gray);font-size:14px;line-height:1.6;text-align:center;">目前沒有「有地址」的客戶。<br>請先到客戶管理，幫某個客戶新增「地址」聯絡項。</div>'; return; }
   list.innerHTML = custs.map(function(c){
     const it=_custAddrItem(c.name); const addr=it?it.content:'';
     const cur = hc && String(hc.name)===String(c.name);
