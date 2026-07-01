@@ -1,4 +1,4 @@
-const CACHE_NAME = 'TESTtodo-v502.36';
+const CACHE_NAME = 'TESTtodo-v502.37';
 
 const urlsToCache = [
   './',
