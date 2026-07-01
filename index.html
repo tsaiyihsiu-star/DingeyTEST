@@ -1073,7 +1073,7 @@
           <input type="text" id="cfLabel" class="cat-add-input" style="width:100%;box-sizing:border-box;margin:0;" placeholder="稱呼/提示">
         </div>
       </div>
-      <label style="display:block;font-size:13px;color:var(--gray);margin:2px 0 4px;">內容</label>
+      <label id="cfContentLabel" style="display:block;font-size:13px;color:var(--gray);margin:2px 0 4px;">內容</label>
       <textarea id="cfContent" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #D1D1D6;border-radius:10px;font-size:15px;background:var(--card);color:var(--text);min-height:60px;resize:vertical;" placeholder="內容"></textarea>
       <div id="cfContentHint" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
       <div id="cfNavFixWrap" style="display:none;margin-top:14px;">
@@ -1285,7 +1285,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.36"; // v502.36 編輯聯絡項表單：類型與稱呼提示改左右一列(類型較窄)、壓縮上下間距；v502.35 客戶地址聯絡項新增「導航定位修正」(座標或地標，Apple/Google通用，跨裝置同步)+用目前位置；v502.34 進出第四段時待辦主畫面同步推出/推回(整頁推擠連動，僅手機)；v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.38"; // v502.38 還原表單高度；地址類型的內容提示改放「內容」標題括號、隱藏下方提示列；v502.37 編輯聯絡項表單拉高、內容區自動填滿空白(儲存取消下移、內容顯示更多)；v502.36 編輯聯絡項表單：類型與稱呼提示改左右一列(類型較窄)、壓縮上下間距；v502.35 客戶地址聯絡項新增「導航定位修正」(座標或地標，Apple/Google通用，跨裝置同步)+用目前位置；v502.34 進出第四段時待辦主畫面同步推出/推回(整頁推擠連動，僅手機)；v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5926,19 +5926,24 @@ function updateContactFormHint() {
   const t = document.getElementById('cfType').value;
   const hint = document.getElementById('cfContentHint');
   const labelInput = document.getElementById('cfLabel');
+  const cLabel = document.getElementById('cfContentLabel');
   if (t === 'phone') {
+    cLabel.textContent = '內容';
     hint.textContent = '內容填可撥打的號碼（如 04-23456789）；稱呼可填「李小姐#123」當提示';
     labelInput.placeholder = '稱呼/提示（如 李小姐#123）';
     document.getElementById('cfContent').placeholder = '電話號碼';
   } else if (t === 'address') {
-    hint.textContent = '內容填地址，點按會用 Apple 地圖開啟';
+    cLabel.textContent = '內容（填地址，點按開地圖）';
+    hint.textContent = '';
     labelInput.placeholder = '地點名（如 台中辦公室）';
     document.getElementById('cfContent').placeholder = '地址';
   } else {
+    cLabel.textContent = '內容';
     hint.textContent = '備註純文字顯示，不可點按';
     labelInput.placeholder = '標題（選填）';
     document.getElementById('cfContent').placeholder = '備註內容';
   }
+  hint.style.display = (t === 'address') ? 'none' : '';
   document.getElementById('cfNavFixWrap').style.display = (t === 'address') ? 'block' : 'none';
 }
 async function saveContactItem() {
