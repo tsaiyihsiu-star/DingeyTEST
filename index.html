@@ -1227,8 +1227,8 @@
 <div id="vtMenu" onclick="event.stopPropagation()" style="display:none;position:fixed;z-index:600;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.22);padding:6px;min-width:210px;"></div>
 <div id="vtOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeVtMenu()"></div>
 <!-- v502.39: 客戶管理長按選單（回公司 / 公司地址編輯） -->
-<div id="cusMgrMenu" onclick="event.stopPropagation()" style="display:none;position:fixed;z-index:600;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.22);padding:6px;min-width:230px;"></div>
-<div id="cusMgrOverlay" style="display:none;position:fixed;inset:0;z-index:599;" onclick="closeCusMgrMenu()"></div>
+<div id="cusMgrMenu" onclick="event.stopPropagation()" style="display:none;position:fixed;z-index:900;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.22);padding:6px;min-width:230px;"></div>
+<div id="cusMgrOverlay" style="display:none;position:fixed;inset:0;z-index:899;" onclick="closeCusMgrMenu()"></div>
 <!-- v502.39: 選擇「公司」客戶 -->
 <div id="companyPickM" class="modal modal-top" onclick="if(event.target===this)closeM('companyPickM')">
   <div class="sheet" onclick="event.stopPropagation()">
@@ -1299,7 +1299,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.39"; // v502.39 長按「客戶管理」跳出小選單：回公司(Apple/Google導航)、公司地址編輯(選一個有地址的客戶設為回公司目的地，本機儲存)
+const APP_VERSION = "TESTtodo-v502.40"; // v502.40 修正長按客戶管理小選單位置(改為往上彈出、提高層級避免被側欄遮住並夾在畫面內)；v502.39 長按客戶管理：回公司(Apple/Google)、公司地址編輯(選有地址客戶設為目的地，本機儲存)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -7439,9 +7439,13 @@ function showCusMgrMenu(){
   html += '<div class="vt-sep"></div>';
   html += '<div class="vt-item" onclick="openCompanyPick()"><span class="vt-tx">公司地址編輯 <span style="color:var(--gray);font-size:12px;">'+escapeHtml(cur)+'</span></span></div>';
   menu.innerHTML=html;
-  menu.style.left = Math.round(Math.min(r.left, window.innerWidth-240)) + 'px';
-  menu.style.top = Math.round(r.bottom + 6) + 'px';
-  menu.style.display='block';
+  menu.style.visibility='hidden'; menu.style.display='block';
+  const mw=menu.offsetWidth, mh=menu.offsetHeight;
+  let left=Math.min(r.left, window.innerWidth-mw-8); left=Math.max(8,left);
+  let top=r.top-mh-6;                 // 按鈕在底部→往上開
+  if(top<8) top=Math.max(8, Math.min(r.bottom+6, window.innerHeight-mh-8));
+  menu.style.left=Math.round(left)+'px'; menu.style.top=Math.round(top)+'px';
+  menu.style.visibility='visible';
   document.getElementById('cusMgrOverlay').style.display='block';
 }
 function closeCusMgrMenu(){ document.getElementById('cusMgrMenu').style.display='none'; document.getElementById('cusMgrOverlay').style.display='none'; }
