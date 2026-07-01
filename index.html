@@ -1070,6 +1070,14 @@
       <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">內容</label>
       <textarea id="cfContent" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #D1D1D6;border-radius:10px;font-size:15px;background:var(--card);color:var(--text);min-height:60px;resize:vertical;" placeholder="內容"></textarea>
       <div id="cfContentHint" style="font-size:12px;color:var(--gray);margin-top:6px;"></div>
+      <div id="cfNavFixWrap" style="display:none;margin-top:14px;">
+        <label style="display:block;font-size:13px;color:var(--gray);margin:4px 0 4px;">導航定位修正（選填）</label>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input type="text" id="cfNavFix" class="cat-add-input" style="flex:1;box-sizing:border-box;margin:0;" placeholder="座標(緯度,經度) 或 地標／更精準地址">
+          <button type="button" onclick="contactUseCurrentLoc(this)" style="flex-shrink:0;border:none;background:#007AFF;color:#fff;border-radius:10px;padding:0 12px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">📍 目前位置</button>
+        </div>
+        <div style="font-size:12px;color:var(--gray);margin-top:6px;line-height:1.5;">填了就用它定位（Apple／Google 都適用）；空白則用上面的地址。座標可在 Google 地圖長按該點複製。</div>
+      </div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <button class="btn-p" onclick="saveContactItem()">儲存</button>
@@ -1271,7 +1279,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.34"; // v502.34 進出第四段時待辦主畫面同步推出/推回(整頁推擠連動，僅手機)；v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
+const APP_VERSION = "TESTtodo-v502.35"; // v502.35 客戶地址聯絡項新增「導航定位修正」(座標或地標，Apple/Google通用，跨裝置同步)+用目前位置；v502.34 進出第四段時待辦主畫面同步推出/推回(整頁推擠連動，僅手機)；v502.33 行事曆換月‹›與今天鈕補上音效(滑動換月改由changeMonth統一播放避免重複)；v502.32 行事曆點選日期加上 tap 觸控音效；v502.31 第四段拉條往左拉超過半螢幕可退回第三段待辦(同前段邏輯)；v502.30 電腦版第四段拉條移到行事曆/分類欄交界、可拖曳調整分類欄寬度並記住(僅電腦版)；v502.29 修正電腦版第四段(行事曆)時側欄拖曳拉條仍浮在版面上(進行事曆隱藏拉條)；v502.28 行事曆下方分段標題改為「年/月/日(週幾)+時段」、時段判定加入XX:XX(<12上午/≥12下午)；v502.27 月曆換月加滑動動畫(上滑下月由下而上/下滑上月由上而下，標題箭頭同步)；v502.26 行事曆右側分類欄頂部對齊寬版側欄(補+鈕高度)、內距一致；v502.25 返回鈕改「待辦›」、月曆格子區上下滑換月(上滑下月/下滑上月)；v502.24 行事曆改從左側滑入、右側保留分類窄欄(視覺保留功能停用)+返回鈕；v502.23 行事曆改為右側滑入／滑出的頁面轉場（右滑滑入、左滑滑回待辦）；v502.22 新增任務時標題的今天/明天/後天自動換成日期(週幾)；v502.21 修正行事曆轉向來回後直放版面錯位（固定列高+轉向重繪）；v502.20 任務清單顯示分類標籤；v502.19 手機橫放兩欄；v502.18 桌面兩欄；v502.17 週末紅字；v502.16 行事曆
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5670,6 +5678,39 @@ function isAppleDevice() {
   return false;
 }
 
+// v502.35: 從字串辨識「緯度,經度」（需含小數點，避免誤判門牌），範圍合法才算座標
+function _navCoord(s){
+  if(!s) return null;
+  const m = String(s).match(/(-?\d{1,3}\.\d+)\s*[,，]\s*(-?\d{1,3}\.\d+)/);
+  if(!m) return null;
+  const lat=parseFloat(m[1]), lng=parseFloat(m[2]);
+  if(!isFinite(lat)||!isFinite(lng)||lat<-90||lat>90||lng<-180||lng>180) return null;
+  return lat+','+lng;
+}
+// v502.35: 依 navFix/地址組 Apple 地圖 URL（座標用 ll+q 精準落點，否則搜尋）
+function _appleMapURL(t){
+  const c=_navCoord(t);
+  if(c) return 'https://maps.apple.com/?ll='+c+'&q='+encodeURIComponent(c);
+  return 'https://maps.apple.com/?q='+encodeURIComponent(t);
+}
+// v502.35: 外勤取得目前 GPS 座標，確認後填入導航定位修正
+function contactUseCurrentLoc(btn){
+  if(!navigator.geolocation){ alert('此裝置不支援定位功能'); return; }
+  const old = btn ? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='定位中…'; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+    const lat=pos.coords.latitude.toFixed(6), lng=pos.coords.longitude.toFixed(6);
+    const acc=Math.round(pos.coords.accuracy||0);
+    if(confirm('取得目前位置：\n'+lat+', '+lng+'\n(誤差約 '+acc+' 公尺)\n\n填入「導航定位修正」？')){
+      document.getElementById('cfNavFix').value = lat+','+lng;
+    }
+  }, function(err){
+    if(btn){ btn.disabled=false; btn.textContent=old; }
+    alert('取得位置失敗：'+(err && err.message ? err.message : '請確認已允許定位權限'));
+  }, {enableHighAccuracy:true, timeout:10000, maximumAge:0});
+}
+
 // v500.31: 開 Google 地圖——手機優先開 App、沒裝則退回網頁
 function openGoogleMap(addr) {
   playSound('tap');
@@ -5859,6 +5900,7 @@ function addContactItem() {
   document.getElementById('cfType').value = 'phone';
   document.getElementById('cfLabel').value = '';
   document.getElementById('cfContent').value = '';
+  document.getElementById('cfNavFix').value = '';
   updateContactFormHint();
   openModal('contactFormM');
 }
@@ -5870,6 +5912,7 @@ function editContactItem(rowId) {
   document.getElementById('cfType').value = c.type || 'note';
   document.getElementById('cfLabel').value = c.label || '';
   document.getElementById('cfContent').value = c.content || '';
+  document.getElementById('cfNavFix').value = c.navFix || '';
   updateContactFormHint();
   openModal('contactFormM');
 }
@@ -5890,6 +5933,7 @@ function updateContactFormHint() {
     labelInput.placeholder = '標題（選填）';
     document.getElementById('cfContent').placeholder = '備註內容';
   }
+  document.getElementById('cfNavFixWrap').style.display = (t === 'address') ? 'block' : 'none';
 }
 async function saveContactItem() {
   const type = document.getElementById('cfType').value;
@@ -5912,7 +5956,8 @@ async function saveContactItem() {
     sortOrder: existing ? existing.sortOrder : _contactsOf(_contactEditGroupKey).length,
     rowId,
     updatedAt: Date.now(),
-    origin: existing ? (existing.origin || '') : ''   // v500.32: 編輯保留原來源、新建留空（=主客戶自己建的）
+    origin: existing ? (existing.origin || '') : '',   // v500.32: 編輯保留原來源、新建留空（=主客戶自己建的）
+    navFix: (type === 'address') ? document.getElementById('cfNavFix').value.trim() : ''   // v502.35: 導航定位修正（僅地址）
   };
   playSound('add');
   // 本機先套用
@@ -6719,20 +6764,21 @@ function openContactView(cust) {
             </div>
           </div>`;
       } else if (c.type === 'address') {
+        const navT = (c.navFix && String(c.navFix).trim()) ? String(c.navFix).trim() : c.content;
         const amap = isAppleDevice()
-          ? `<a href="https://maps.apple.com/?q=${encodeURIComponent(c.content)}" target="_blank" rel="noopener" onclick="playSound('tap')" aria-label="Apple地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
+          ? `<a href="${_appleMapURL(navT)}" target="_blank" rel="noopener" onclick="playSound('tap')" aria-label="Apple地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FF9500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
               <span style="font-size:10px;color:#FF9500;">Apple</span>
             </a>`
           : '';
-        const gmap = `<a href="javascript:void(0)" onclick="openGoogleMap('${escapeAttr(c.content)}')" aria-label="Google地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
+        const gmap = `<a href="javascript:void(0)" onclick="openGoogleMap('${escapeAttr(navT)}')" aria-label="Google地圖" style="display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;padding:2px 4px;">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#4285F4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
               <span style="font-size:10px;color:#4285F4;">Google</span>
             </a>`;
         return `<div class="cat-row" style="align-items:flex-start;">
             <div style="flex:1;min-width:0;">
               ${label?`<div style="font-size:13px;color:var(--gray);">${label}</div>`:''}
-              <div style="font-size:15px;color:#FF9500;font-weight:600;word-break:break-all;">📍 ${escapeHtml(c.content)}</div>
+              <div style="font-size:15px;color:#FF9500;font-weight:600;word-break:break-all;">📍 ${escapeHtml(c.content)}</div>${(c.navFix&&String(c.navFix).trim())?`<div style="font-size:12px;color:#34C759;margin-top:3px;">↳ 導航定位修正：${escapeHtml(String(c.navFix).trim())}</div>`:''}
             </div>
             <div style="display:flex;gap:10px;flex-shrink:0;align-items:flex-start;padding-top:2px;">
               ${amap}
