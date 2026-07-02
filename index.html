@@ -1309,7 +1309,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.46"; // v502.46 修正 PWA 離線（飛航模式）開啟：sw.js 核心檔改必成功快取、外部 CDN 改非致命，開啟 App 離線時 fallback 到 index.html，並確保新快取建好才清舊，避免更新時快取被清空導致離線打不開
+const APP_VERSION = "TESTtodo-v502.47"; // v502.47 電腦版新增關閉前提醒：仍有未同步變更且在線上時，關閉分頁/視窗會跳出瀏覽器原生確認框，避免以為已同步就關掉（手機不受影響）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -4827,6 +4827,16 @@ window.addEventListener('online', () => {
   fullSync('網路恢復');
 });
 window.addEventListener('offline', () => { pushLog('網路中斷','warn'); updateBanner(); updateSyncMeta(); });
+
+// v502.47: 僅電腦版——關閉/離開前若仍有未同步變更且在線上，跳出瀏覽器原生確認框（手機 standalone PWA 不會觸發）
+if (!window.matchMedia('(hover:none) and (pointer:coarse)').matches) {
+  window.addEventListener('beforeunload', (e) => {
+    const _hasPending = pendingQueue.length > 0
+      || opLog.some(o => o.status === 'pending')
+      || cusOpLog.some(o => o.status === 'pending');
+    if (_hasPending && isOnline()) { e.preventDefault(); e.returnValue = ''; }
+  });
+}
 
 // 每分鐘更新「最後同步」時間顯示和角標警示
 setInterval(() => { updateSyncMeta(); }, 60000);
