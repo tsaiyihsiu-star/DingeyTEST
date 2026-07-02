@@ -1,4 +1,4 @@
-const CACHE_NAME = 'TESTtodo-v502.48';
+const CACHE_NAME = 'TESTtodo-v502.49';
 
 // 核心本地檔：同源、可靠 → 原子式快取（必須全部成功）
 const CORE_ASSETS = [
