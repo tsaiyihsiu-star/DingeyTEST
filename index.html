@@ -997,7 +997,7 @@
         <button class="cat-add-btn" onclick="addCust()">新增</button>
       </div>
       <!-- v500.31: 客戶搜尋框（預設收起，點放大鏡才展開；只比對客戶名、只找啟用中）-->
-      <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" oninput="renderCusList()">
+      <input type="text" id="cusSearchInput" class="cat-add-input" placeholder="搜尋客戶名…" style="width:100%;box-sizing:border-box;margin-bottom:10px;display:none;" oninput="renderCusList();_cusSearchSync()">
       <div id="cusList"></div>
       <!-- v500.31: 已停用的詞（可展開、可恢復）-->
       <div id="stopWordSection" style="margin-top:14px;border-top:.5px solid #E5E5EA;padding-top:10px;">
@@ -1309,7 +1309,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.47"; // v502.47 電腦版新增關閉前提醒：仍有未同步變更且在線上時，關閉分頁/視窗會跳出瀏覽器原生確認框，避免以為已同步就關掉（手機不受影響）
+const APP_VERSION = "TESTtodo-v502.48"; // v502.48 客戶管理搜尋同時涵蓋停用詞：輸入關鍵字會自動展開「已停用的詞」並只顯示符合的項目、標題顯示符合筆數，方便快速找到已停用的字串
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5517,7 +5517,7 @@ function toggleCusAdd() {
     playSound && playSound('swipe');
     // v500.32: 互斥——展開新增列時收起搜尋框
     const si = document.getElementById('cusSearchInput');
-    if (si && si.style.display !== 'none') { si.value = ''; si.style.display = 'none'; si.blur(); renderCusList(); }
+    if (si && si.style.display !== 'none') { si.value = ''; si.style.display = 'none'; si.blur(); renderCusList(); _cusSearchSync(); }
     _expandedCusName = '';   // v500.32fix: 收合展開的客戶，避免新增列被擠到看不到
     renderCusList();
     const _b = document.getElementById('cusM') && document.getElementById('cusM').querySelector('.sh-body');
@@ -5551,6 +5551,7 @@ function toggleCusSearch() {
     si.value = '';
     si.style.display = 'none';
     renderCusList();  // 清空搜尋、恢復完整清單
+    _cusSearchSync();
     si.blur();
   }
 }
@@ -5756,6 +5757,27 @@ function updateStopWordTitle() {
   // 沒有任何停用詞時整個區塊隱藏，不佔版面
   sec.style.display = n ? 'block' : 'none';
 }
+function _cusSearchSync() {
+  // v502.48: 主搜尋框同時搜停用詞——有關鍵字就自動展開「已停用的詞」、只顯示符合的、標題顯示符合數
+  const kwEl = document.getElementById('cusSearchInput');
+  const kw = kwEl ? kwEl.value.trim() : '';
+  const sec = document.getElementById('stopWordSection');
+  const listEl = document.getElementById('stopWordList');
+  const arrow = document.getElementById('stopWordArrow');
+  const t = document.getElementById('stopWordTitle');
+  if (!sec) return;
+  const total = getStopWords().length;
+  if (kw && total) {
+    const m = getStopWords().filter(c => String(c.name).includes(kw)).length;
+    sec.style.display = 'block';
+    if (t) t.textContent = '已停用的詞（' + m + ' 筆符合）';
+    if (listEl && listEl.style.display === 'none') { listEl.style.display = 'block'; if (arrow) arrow.style.transform = 'rotate(90deg)'; }
+    renderStopWordList();
+  } else {
+    updateStopWordTitle();
+    renderStopWordList();
+  }
+}
 function toggleStopWordList() {
   const list = document.getElementById('stopWordList');
   const arrow = document.getElementById('stopWordArrow');
@@ -5766,9 +5788,12 @@ function toggleStopWordList() {
 }
 function renderStopWordList() {
   const el = document.getElementById('stopWordList');
-  const list = getStopWords();
+  const kwEl = document.getElementById('cusSearchInput');
+  const kw = kwEl ? kwEl.value.trim() : '';
+  let list = getStopWords();
+  if (kw) list = list.filter(c => String(c.name).includes(kw));  // v502.48: 搜尋同時涵蓋停用詞
   if (!list.length) {
-    el.innerHTML = '<p style="color:var(--gray);font-size:13px;padding:8px 2px;">目前沒有停用的詞</p>';
+    el.innerHTML = '<p style="color:var(--gray);font-size:13px;padding:8px 2px;">' + (kw ? '找不到符合的停用詞' : '目前沒有停用的詞') + '</p>';
     return;
   }
   el.innerHTML = list.map(c => `
