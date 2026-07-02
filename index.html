@@ -126,6 +126,11 @@
       pointer-events:none;
     }
     #fabBadge.show{display:flex;}
+    #fabBadge.alert{display:flex;background:#FF3B30;animation:fabPulse 1s ease-in-out infinite;}
+    @keyframes fabPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.25);}}
+    #cusMgrBtn{position:relative;}
+    #cusMgrDot{display:none;position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:#FF3B30;box-shadow:0 0 0 1.5px rgba(0,0,0,.6);}
+    #cusMgrDot.show{display:block;}
     #sideList{
       flex:1;
       overflow-y:scroll;overflow-x:hidden;
@@ -779,6 +784,7 @@
       </button>
       <!-- v500.31: 客戶管理 -->
       <button id="cusMgrBtn" class="sbtn" onclick="cusMgrClick()" ontouchstart="cusMgrLpStart(event)" ontouchend="cusMgrLpEnd()" ontouchmove="cusMgrLpEnd()" onmousedown="cusMgrLpStart(event)" onmouseup="cusMgrLpEnd()" onmouseleave="cusMgrLpEnd()" aria-label="客戶" style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;">
+        <span id="cusMgrDot"></span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="22" height="22">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
@@ -1118,6 +1124,7 @@
         <span id="syncNetTxt"></span>
       </div>
       <div class="qpill" id="queuePill"></div>
+      <div id="syncAnomalyBox" style="display:none;text-align:left;margin:4px 0;"></div>
       <div id="lastSyncPill" style="font-size:12px;color:var(--gray);text-align:center;padding:4px 0;"></div>
       <div id="syncLog"><p class="log-empty">尚無同步記錄</p></div>
       <div class="sync-row">
@@ -1302,7 +1309,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.44"; // v502.44 修正設為子/主從變更後子↔獨立反覆橫跳：主從變更加保護期，雲端確認前合併時暫時保留本機意圖(15秒TTL、確認即解除、推送失敗清除)
+const APP_VERSION = "TESTtodo-v502.45"; // v502.45 新增同步異常提醒：被後端拒絕或卡住>5分鐘的客戶/任務變更會標記為異常(停止盲目重試)，FAB角標顯示「!」脈動、客戶管理紅點，同步視窗列出異常清單可逐筆重試/捨棄或全部重試，首次發生記錄一次提示
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -1870,6 +1877,9 @@ async function pushOpsToCloud(fetchFn) {
 
     if (rejected.length > 0) {
       console.log('[pushOps] rejected ops:', rejected);
+      const _rm = {}; rejected.forEach(function(r){ _rm[String(r && r.opId != null ? r.opId : r)] = (r && r.reason) || ''; });
+      for (const op of opLog) { if (_rm[String(op.opId)] !== undefined && op.status !== 'acked') { op.status = 'rejected'; op.rejectedReason = _rm[String(op.opId)]; op.rejectedAt = Date.now(); } }
+      saveOpLog();
     }
 
     return { acked, rejected };
@@ -1946,8 +1956,13 @@ async function pushCustomerOpsToCloud(fetchFn) {
         op.ackedAt = Date.now();
       }
     }
+    const _rej = data.rejected || [];
+    if (_rej.length > 0) {
+      const _rm = {}; _rej.forEach(function(r){ _rm[String(r && r.opId != null ? r.opId : r)] = (r && r.reason) || ''; });
+      for (const op of cusOpLog) { if (_rm[String(op.opId)] !== undefined && op.status !== 'acked') { op.status = 'rejected'; op.rejectedReason = _rm[String(op.opId)]; op.rejectedAt = Date.now(); } }
+    }
     saveOpLog();
-    return { acked, rejected: data.rejected || [] };
+    return { acked, rejected: _rej };
   } catch (e) {
     console.log('[pushCustomerOps] error: ' + e);
     throw e;
@@ -2880,6 +2895,100 @@ function updateBanner() {
     fab.classList.remove('syncing', 'offline');
     badge.classList.remove('show');
   }
+  // v502.45: 同步異常 → 角標改「!」並脈動；客戶管理紅點
+  try {
+    const _an = getSyncAnomalies();
+    if (!isSyncRunning && _an.length > 0) { badge.textContent = '!'; badge.classList.add('show','alert'); }
+    else { badge.classList.remove('alert'); }
+    const _dot = document.getElementById('cusMgrDot');
+    if (_dot) _dot.classList.toggle('show', _an.some(function(a){ return a.kind === 'cus'; }));
+  } catch(e) {}
+}
+// ══ v502.45: 同步異常（被後端拒絕 / 卡住 >5 分鐘）偵測與處理 ══
+function _anLabel(a) {
+  if (a.kind === 'cus') {
+    const t = a.opType === 'add' ? '新增' : (a.opType === 'delete' ? '刪除' : '更新');
+    return '客戶「' + (a.name || '') + '」' + t;
+  }
+  let title = '';
+  try { const t = (allT || []).find(function(x){ return String(x.ID) === String(a.taskId); }); if (t) title = t.Task || ''; } catch(e){}
+  const tt = a.opType === 'add' ? '新增' : (a.opType === 'delete' ? '刪除' : '更新');
+  return '任務' + (title ? ('「' + title + '」') : '') + tt;
+}
+function _anAge(ms) { const m = Math.floor(ms/60000); if (m < 1) return '剛剛'; if (m < 60) return m + ' 分鐘'; return Math.floor(m/60) + ' 小時'; }
+function getSyncAnomalies() {
+  const out = []; const now = Date.now();
+  const online = (typeof isOnline === 'function') ? isOnline() : true;
+  const STUCK = 5 * 60 * 1000;
+  (typeof cusOpLog !== 'undefined' ? cusOpLog : []).forEach(function(o){
+    if (o.status === 'rejected') out.push({ opId:o.opId, source:'cusOpLog', kind:'cus', name:o.customerName, opType:o.op, reason:o.rejectedReason||'伺服器拒絕', ageMs: now-(o.rejectedAt||o.timestamp||now) });
+    else if (o.status === 'pending' && online && (now-(o.timestamp||now)) > STUCK) out.push({ opId:o.opId, source:'cusOpLog', kind:'cus', name:o.customerName, opType:o.op, reason:'', ageMs: now-(o.timestamp||now) });
+  });
+  (typeof opLog !== 'undefined' ? opLog : []).forEach(function(o){
+    if (o.status === 'rejected') out.push({ opId:o.opId, source:'opLog', kind:'task', taskId:o.taskId, opType:o.op, reason:o.rejectedReason||'伺服器拒絕', ageMs: now-(o.rejectedAt||o.timestamp||now) });
+    else if (o.status === 'pending' && online && (now-(o.timestamp||now)) > STUCK) out.push({ opId:o.opId, source:'opLog', kind:'task', taskId:o.taskId, opType:o.op, reason:'', ageMs: now-(o.timestamp||now) });
+  });
+  return out;
+}
+let _notifiedAnomalies = {};
+function _checkAnomalyToast() {
+  const list = getSyncAnomalies();
+  list.forEach(function(a){
+    if (!_notifiedAnomalies[a.opId]) {
+      _notifiedAnomalies[a.opId] = true;
+      pushLog('⚠️ ' + _anLabel(a) + ' 尚未同步' + (a.reason ? ('：' + a.reason) : '（已卡住，請到同步記錄重試）'), 'warn');
+    }
+  });
+  Object.keys(_notifiedAnomalies).forEach(function(k){ if (!list.some(function(a){ return String(a.opId) === String(k); })) delete _notifiedAnomalies[k]; });
+}
+function renderSyncAnomalies() {
+  const box = document.getElementById('syncAnomalyBox'); if (!box) return;
+  const list = getSyncAnomalies();
+  if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'block';
+  let html = '<div style="font-weight:700;color:#FF3B30;margin:6px 0 4px;">⚠️ ' + list.length + ' 筆同步異常</div>';
+  list.forEach(function(a){
+    const rej = a.reason ? '被拒絕' : '卡住';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:rgba(255,59,48,.08);border-radius:8px;margin-bottom:4px;">'
+      + '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(_anLabel(a)) + '</div>'
+      + '<div style="font-size:11px;color:var(--gray);">' + rej + ' · ' + _anAge(a.ageMs) + (a.reason ? (' · ' + escapeHtml(a.reason)) : '') + '</div></div>'
+      + '<button onclick="retrySyncAnomaly(\'' + a.opId + '\')" style="font-size:12px;padding:5px 9px;border:none;border-radius:6px;background:#007AFF;color:#fff;">重試</button>'
+      + '<button onclick="discardSyncAnomaly(\'' + a.opId + '\')" style="font-size:12px;padding:5px 9px;border:none;border-radius:6px;background:#8E8E93;color:#fff;">捨棄</button>'
+      + '</div>';
+  });
+  html += '<button onclick="retryAllSyncAnomalies()" style="width:100%;font-size:12px;padding:7px;border:none;border-radius:6px;background:#FF9500;color:#fff;margin-top:2px;">全部重試</button>';
+  box.innerHTML = html;
+}
+function _findOpByOpId(opId) {
+  let o = (cusOpLog || []).find(function(x){ return String(x.opId) === String(opId); });
+  if (o) return { op:o, source:'cusOpLog' };
+  o = (opLog || []).find(function(x){ return String(x.opId) === String(opId); });
+  if (o) return { op:o, source:'opLog' };
+  return null;
+}
+function _resetOpForRetry(op){ op.status = 'pending'; delete op.rejectedReason; delete op.rejectedAt; delete op.inflight; delete op.inflightAt; }
+function retrySyncAnomaly(opId) {
+  const f = _findOpByOpId(opId); if (!f) return;
+  _resetOpForRetry(f.op); delete _notifiedAnomalies[opId]; saveOpLog();
+  pushLog('↻ 重試同步', 'info');
+  renderSyncAnomalies(); updateBanner();
+  if (typeof flushQueue === 'function') flushQueue().then(function(){ renderSyncAnomalies(); updateSyncMeta(); }).catch(function(){});
+}
+function retryAllSyncAnomalies() {
+  getSyncAnomalies().forEach(function(a){ const f=_findOpByOpId(a.opId); if(f){ _resetOpForRetry(f.op); delete _notifiedAnomalies[a.opId]; } });
+  saveOpLog(); pushLog('↻ 全部重試同步', 'info');
+  renderSyncAnomalies(); updateBanner();
+  if (typeof flushQueue === 'function') flushQueue().then(function(){ renderSyncAnomalies(); updateSyncMeta(); }).catch(function(){});
+}
+function discardSyncAnomaly(opId) {
+  const f = _findOpByOpId(opId); if (!f) return;
+  if (!confirm('捨棄這筆變更的同步？\n（本機這筆改動不再嘗試上傳，之後會以雲端為準）')) return;
+  if (f.source === 'cusOpLog') cusOpLog = cusOpLog.filter(function(x){ return String(x.opId) !== String(opId); });
+  else opLog = opLog.filter(function(x){ return String(x.opId) !== String(opId); });
+  pendingQueue = (pendingQueue || []).filter(function(x){ return String(x._opId) !== String(opId); });
+  delete _notifiedAnomalies[opId]; saveOpLog(); saveLocal();
+  pushLog('🗑 已捨棄一筆同步', 'warn');
+  renderSyncAnomalies(); updateBanner(); updateSyncMeta();
 }
 function pushLog(msg, type='info') {
   syncLogs.unshift({time: fmtTime(), msg, type});
@@ -2911,6 +3020,7 @@ function updateSyncMeta() {
 
   if (totalPending > 0) { pill.className = 'qpill pending'; pill.textContent = `佇列 ${totalPending} 筆未同步`; }
   else { pill.className = 'qpill ok'; pill.textContent = '全部已同步 ✓'; }
+  try { const _an = getSyncAnomalies(); if (_an.length) { pill.className = 'qpill pending'; pill.textContent = `⚠️ ${_an.length} 筆同步異常`; } renderSyncAnomalies(); _checkAnomalyToast(); } catch(e) {}
 
   // 最後同步時間
   const lastEl = document.getElementById('lastSyncPill');
