@@ -1302,7 +1302,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.43"; // v502.43 修正主從操作連續執行時第二筆畫面延遲：序列鎖改為只鎖「本機套用+重畫」，雲端推送移到鎖外背景進行
+const APP_VERSION = "TESTtodo-v502.44"; // v502.44 修正設為子/主從變更後子↔獨立反覆橫跳：主從變更加保護期，雲端確認前合併時暫時保留本機意圖(15秒TTL、確認即解除、推送失敗清除)
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -3706,7 +3706,7 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
     }
     // v500.27: customers 拉取容錯
     if (Array.isArray(resCust)) {
-      allCust = resCust;
+      allCust = _mergeCloudCustomers(resCust);   // v502.44: 改走合併，保留 pending 與剛做的主從意圖
     }
     // v500.31: 背景刷新聯絡資料快取（不阻塞載入）
     refreshContactsCache();
@@ -5797,6 +5797,20 @@ function _mergeCloudCustomers(cloudArr) {
       if (e) e.isStopWord = o.payload.isStopWord === true;
     }
   });
+  // v502.44: 保留剛做的主從變更，直到雲端反映（避免讀取延遲造成子↔獨立反覆橫跳）
+  try {
+    const _nowM = Date.now();
+    Object.keys(_roleIntent).forEach(function (nm) {
+      const it = _roleIntent[nm];
+      if (!it || _nowM - it.at > 15000) { delete _roleIntent[nm]; return; }
+      const e = merged.find(function (c) { return String(c.name) === String(nm); });
+      if (!e) return;
+      const cRole = String(e.role || ''), cMk = String(e.masterKey || '');
+      const confirmed = (cRole === it.role) && (cMk === it.masterKey || (it.masterKey === '' && it.role === 'sub' && cMk !== ''));
+      if (confirmed) { delete _roleIntent[nm]; }
+      else { e.role = it.role; if (it.masterKey) e.masterKey = it.masterKey; }
+    });
+  } catch (e) {}
   return merged;
 }
 
@@ -6462,6 +6476,7 @@ function _rekeyContactsLocal(fromKey, toKey, originName) {
 // v502.42/43: 結構操作序列鎖——只序列化「本機套用+重畫」（瞬間、按順序），
 // 網路推送移到鎖外背景進行，避免第二個操作的畫面被前一個的雲端來回卡住
 let _structLock = Promise.resolve();
+let _roleIntent = {};  // v502.44: 剛做的主從意圖，雲端確認前暫時保留，避免子↔獨立橫跳
 function _runExclusive(fn){ const run = _structLock.then(fn, fn); _structLock = run.then(function(){}, function(){}); return run; }
 async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
   // ①（鎖內、瞬間）：確保已同步 → 快照 → 套用 → 重畫；多個操作按順序、立即生效
@@ -6483,11 +6498,24 @@ async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
     }
     saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
     renderCusList(); render(); try { renderContactMng(); } catch(e) {}   // 畫面瞬間生效
-    return { snapCust: snapCust, snapContacts: snapContacts };
+    // v502.44: 記錄主從意圖（合併時保留，直到雲端確認一致才解除）
+    const _changedNames = [];
+    try {
+      const _nowI = Date.now();
+      (allCust || []).forEach(function (c) {
+        const prev = snapCust.find(function (x) { return String(x.name) === String(c.name); });
+        if (!prev || String(prev.role || '') !== String(c.role || '') || String(prev.masterKey || '') !== String(c.masterKey || '')) {
+          _roleIntent[String(c.name)] = { role: String(c.role || ''), masterKey: String(c.masterKey || ''), at: _nowI };
+          _changedNames.push(String(c.name));
+        }
+      });
+    } catch (e) {}
+    return { snapCust: snapCust, snapContacts: snapContacts, changedNames: _changedNames };
   });
   if (!ctx) return;   // 未同步 / mutate 失敗 → 已中止
   // ②（鎖外、背景）：推雲端；失敗才還原並對齊雲端
   const _restore = function () {
+    (ctx.changedNames || []).forEach(function (nm) { delete _roleIntent[nm]; });
     allCust = ctx.snapCust; allContacts = ctx.snapContacts;
     saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
     renderCusList(); render(); try { renderContactMng(); } catch(e) {}
