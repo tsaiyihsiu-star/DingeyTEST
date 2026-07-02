@@ -1302,7 +1302,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.42"; // v502.42 客戶新增/改名/刪除/停用詞改為立即同步(g-id盡快建立、減少後續卡頓)；主從與移轉加入序列鎖並於鎖內重查客戶，避免快照互相覆蓋或改到過期資料
+const APP_VERSION = "TESTtodo-v502.43"; // v502.43 修正主從操作連續執行時第二筆畫面延遲：序列鎖改為只鎖「本機套用+重畫」，雲端推送移到鎖外背景進行
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -6118,8 +6118,7 @@ function moveContactItem(rowId) {
     emptyMsg: '沒有可移轉的客戶', title: '把這筆聯絡資料移轉給？'
   });
 }
-function doMoveContact(targetName){ return _runExclusive(function(){ return _doMoveContactInner(targetName); }); }
-async function _doMoveContactInner(targetName) {
+async function doMoveContact(targetName) {
   const rowId = _moveContactRowId;
   if (!rowId || !targetName) return;
   closeM('groupPickM');
@@ -6460,37 +6459,49 @@ function _rekeyContactsLocal(fromKey, toKey, originName) {
   allContacts = kept;
 }
 
-// v502.42: 結構操作序列鎖——主從/移轉一次只跑一個，避免快照互相覆蓋
+// v502.42/43: 結構操作序列鎖——只序列化「本機套用+重畫」（瞬間、按順序），
+// 網路推送移到鎖外背景進行，避免第二個操作的畫面被前一個的雲端來回卡住
 let _structLock = Promise.resolve();
 function _runExclusive(fn){ const run = _structLock.then(fn, fn); _structLock = run.then(function(){}, function(){}); return run; }
-function _roleOptimistic(label, mutate, action, payload, needRefresh){ return _runExclusive(function(){ return _roleOptimisticInner(label, mutate, action, payload, needRefresh); }); }
-async function _roleOptimisticInner(label, mutate, action, payload, needRefresh) {
-  // v500.32fix: 先確保相關客戶（含主）已在雲端建好，避免後端找不到列而失敗
-  const _names = [payload.name, payload.masterName].filter(Boolean);
-  for (const _nm of _names) {
-    const ok = await _ensureCustomerSynced(_nm);
-    if (!ok) { alert(label + '無法進行：「' + _nm + '」尚未同步到雲端，請先連線同步後再試'); return; }
-  }
-  // v500.32fix(#1): 角色操作也會動到聯絡資料 → allCust 與 allContacts 都要快照/還原/存檔
-  const snapCust = JSON.parse(JSON.stringify(allCust));
-  const snapContacts = JSON.parse(JSON.stringify(allContacts));
-  const _persist = () => { saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {} };
-  const _restore = () => { allCust = snapCust; allContacts = snapContacts; _persist(); renderCusList(); render(); try { renderContactMng(); } catch(e) {} };
-  playSound('tap');
-  try { mutate(); } catch(err) { _restore(); alert(label + '失敗：' + err.message); return; }
-  _persist(); renderCusList(); render(); try { renderContactMng(); } catch(e) {}   // 先讓畫面瞬間生效
+async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
+  // ①（鎖內、瞬間）：確保已同步 → 快照 → 套用 → 重畫；多個操作按順序、立即生效
+  const ctx = await _runExclusive(async function () {
+    const _names = [payload.name, payload.masterName].filter(Boolean);
+    for (const _nm of _names) {
+      const ok = await _ensureCustomerSynced(_nm);
+      if (!ok) { alert(label + '無法進行：「' + _nm + '」尚未同步到雲端，請先連線同步後再試'); return null; }
+    }
+    const snapCust = JSON.parse(JSON.stringify(allCust));
+    const snapContacts = JSON.parse(JSON.stringify(allContacts));
+    playSound('tap');
+    try { mutate(); }
+    catch (err) {
+      allCust = snapCust; allContacts = snapContacts;
+      saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
+      renderCusList(); render(); try { renderContactMng(); } catch(e) {}
+      alert(label + '失敗：' + err.message); return null;
+    }
+    saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
+    renderCusList(); render(); try { renderContactMng(); } catch(e) {}   // 畫面瞬間生效
+    return { snapCust: snapCust, snapContacts: snapContacts };
+  });
+  if (!ctx) return;   // 未同步 / mutate 失敗 → 已中止
+  // ②（鎖外、背景）：推雲端；失敗才還原並對齊雲端
+  const _restore = function () {
+    allCust = ctx.snapCust; allContacts = ctx.snapContacts;
+    saveLocal(); try { localStorage.setItem('contactsCache', JSON.stringify(allContacts)); } catch(e) {}
+    renderCusList(); render(); try { renderContactMng(); } catch(e) {}
+  };
   _roleInflight++;
   try {
     const res = await callGasAction(action, payload);   // 背景送雲端
     if (!res || res.status !== 'success') {
-      // 後端打回：通常是本機快取與雲端不同步 → 還原後強制重抓對齊（解除卡住）
       _restore();
       alert(label + '未完成：' + (res && res.message ? res.message : '未知') + '\n（已重新同步為雲端最新狀態）');
       if (typeof refreshContactsCache === 'function') refreshContactsCache();
       return;
     }
     pushLog && pushLog(label + '完成：' + (payload.name || ''), 'success');
-    // 成功 → 動到聯絡資料的操作排一次「合併重抓」（連續操作只會抓最後一次）
     if (needRefresh) _scheduleRoleRefresh();
   } catch(e) {
     _restore(); alert(label + '推送失敗，已還原：' + e.message);
