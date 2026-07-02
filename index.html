@@ -1302,7 +1302,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.41"; // v502.41 「選擇公司客戶」視窗加入名稱搜尋即時篩選；v502.40 修正長按客戶管理選單位置與層級；v502.39 長按客戶管理：回公司(Apple/Google)、公司地址編輯
+const APP_VERSION = "TESTtodo-v502.42"; // v502.42 客戶新增/改名/刪除/停用詞改為立即同步(g-id盡快建立、減少後續卡頓)；主從與移轉加入序列鎖並於鎖內重查客戶，避免快照互相覆蓋或改到過期資料
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -4201,7 +4201,9 @@ function schedulePush(immediate = false) {
 
 async function pushOp(action, payload, label) {
   enqueue(action, payload, label);
-  schedulePush();
+  // v502.42: 客戶管理編輯（新增/改名/刪除/停用詞/合併）立即同步，讓分組 g-id 盡快建立；任務仍走批次
+  var _immCus = (action === 'addCustomer' || action === 'renameCustomer' || action === 'deleteCustomer' || action === 'markAsStopWord' || action === 'unmarkStopWord' || action === 'mergeCustomer');
+  schedulePush(_immCus);
 }
 
 // v500.31: 直接呼叫後端 action（不走 op log，給群組/聯絡資料等即時操作用）
@@ -6116,7 +6118,8 @@ function moveContactItem(rowId) {
     emptyMsg: '沒有可移轉的客戶', title: '把這筆聯絡資料移轉給？'
   });
 }
-async function doMoveContact(targetName) {
+function doMoveContact(targetName){ return _runExclusive(function(){ return _doMoveContactInner(targetName); }); }
+async function _doMoveContactInner(targetName) {
   const rowId = _moveContactRowId;
   if (!rowId || !targetName) return;
   closeM('groupPickM');
@@ -6457,7 +6460,11 @@ function _rekeyContactsLocal(fromKey, toKey, originName) {
   allContacts = kept;
 }
 
-async function _roleOptimistic(label, mutate, action, payload, needRefresh) {
+// v502.42: 結構操作序列鎖——主從/移轉一次只跑一個，避免快照互相覆蓋
+let _structLock = Promise.resolve();
+function _runExclusive(fn){ const run = _structLock.then(fn, fn); _structLock = run.then(function(){}, function(){}); return run; }
+function _roleOptimistic(label, mutate, action, payload, needRefresh){ return _runExclusive(function(){ return _roleOptimisticInner(label, mutate, action, payload, needRefresh); }); }
+async function _roleOptimisticInner(label, mutate, action, payload, needRefresh) {
   // v500.32fix: 先確保相關客戶（含主）已在雲端建好，避免後端找不到列而失敗
   const _names = [payload.name, payload.masterName].filter(Boolean);
   for (const _nm of _names) {
@@ -6502,6 +6509,10 @@ function doSetSub(masterName) {
   const mk = master.groupId ? String(master.groupId) : '';
   _roleOptimistic('設為子',
     () => {
+      const master = allCust.find(c => c.name === masterName);
+      const sub = allCust.find(c => c.name === name);
+      if (!master || !sub) throw new Error('客戶清單已更新，請重試');
+      const mk = master.groupId ? String(master.groupId) : '';
       const now = Date.now();
       if ((master.role || '') !== 'master') { master.role = 'master'; master.updatedAt = now; }
       sub.role = 'sub'; sub.masterKey = mk; sub.updatedAt = now;
@@ -6519,17 +6530,21 @@ function promoteCust(name) {
   const A = allCust.find(c => c.role === 'master' && String(c.groupId) === oldGid);
   _roleOptimistic('升為主',
     () => {
+      const B = allCust.find(c => c.name === name);
+      if (!B) throw new Error('客戶清單已更新，請重試');
+      const oldGid2 = String(B.masterKey || '');
+      const A = allCust.find(c => c.role === 'master' && String(c.groupId) === oldGid2);
       const now = Date.now();
       if (A && !B.custCode && A.custCode) { B.custCode = A.custCode; A.custCode = ''; }  // 編號：B 沒、A 有 → 搬
       B.role = 'master'; B.masterKey = ''; B.updatedAt = now;
       if (A) { A.role = 'sub'; A.masterKey = String(B.groupId); A.updatedAt = now; }
       allCust.forEach(c => {                       // 其他子改拜 B
-        if (c !== B && c !== A && c.role === 'sub' && String(c.masterKey) === oldGid) {
+        if (c !== B && c !== A && c.role === 'sub' && String(c.masterKey) === oldGid2) {
           c.masterKey = String(B.groupId); c.updatedAt = now;
         }
       });
       // v500.32fix(#1): 舊主(A)的聯絡資料本機即時搬到 B（避免短暫消失）
-      if (B.groupId) _rekeyContactsLocal(oldGid, String(B.groupId), A ? A.name : '');
+      if (B.groupId) _rekeyContactsLocal(oldGid2, String(B.groupId), A ? A.name : '');
     },
     'promoteToMaster', { name }, true);
 }
@@ -6541,6 +6556,9 @@ function detachCust(name) {
   const oldMk = String(c.masterKey || '');
   _roleOptimistic('脫離',
     () => {
+      const c = allCust.find(x => x.name === name);
+      if (!c) throw new Error('客戶清單已更新，請重試');
+      const oldMk = String(c.masterKey || '');
       const subGid = c.groupId ? String(c.groupId) : '';
       // v500.32fix(#2): 還原——主底下 origin===子名 的聯絡資料搬回子、清 origin
       if (subGid && oldMk) {
