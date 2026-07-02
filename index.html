@@ -1309,7 +1309,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.45"; // v502.45 新增同步異常提醒：被後端拒絕或卡住>5分鐘的客戶/任務變更會標記為異常(停止盲目重試)，FAB角標顯示「!」脈動、客戶管理紅點，同步視窗列出異常清單可逐筆重試/捨棄或全部重試，首次發生記錄一次提示
+const APP_VERSION = "TESTtodo-v502.46"; // v502.46 修正 PWA 離線（飛航模式）開啟：sw.js 核心檔改必成功快取、外部 CDN 改非致命，開啟 App 離線時 fallback 到 index.html，並確保新快取建好才清舊，避免更新時快取被清空導致離線打不開
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
