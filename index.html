@@ -1309,7 +1309,7 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.48"; // v502.48 客戶管理搜尋同時涵蓋停用詞：輸入關鍵字會自動展開「已停用的詞」並只顯示符合的項目、標題顯示符合筆數，方便快速找到已停用的字串
+const APP_VERSION = "TESTtodo-v502.49"; // v502.49 修正：新增客戶時若名稱與既有停用詞相同，改以 unmarkStopWord 同步解除停用（先前只在本機解除、未同步雲端，重抓後會被打回已停用）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
 // ── 修正方案 v500 新增常數 ──
@@ -5684,8 +5684,13 @@ async function addCust() {
   }
   inp.value = '';
   saveLocal(); renderCusList();
-  // 推送到雲端（後端 addCustomer：不存在則新增）
-  await pushOp('addCustomer', { name:n }, `新增客戶「${n}」`);
+  // 推送到雲端
+  if (existing) {
+    // v502.49: 原本是停用詞 → 用 unmarkStopWord 同步解除（addCustomer 不帶 isStopWord、後端「已存在不動作」會導致雲端沒解除、重抓還原）
+    await pushOp('unmarkStopWord', { name:n }, `恢復客戶「${n}」`);
+  } else {
+    await pushOp('addCustomer', { name:n }, `新增客戶「${n}」`);
+  }
 }
 async function renameCust(oldN) {
   const newN = prompt('客戶新名稱：', oldN);
