@@ -1011,9 +1011,6 @@
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       
       <input type="file" id="cImportFileInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleContactImport(event)">
-      <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
-      <button class="import-btn" style="margin-top:8px;background:#7A1F1F;" onclick="restorePickFile()">⟲ 還原備份（從 JSON）</button>
-      <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none;" onchange="_handleRestoreFile(event)">
       <button class="btn-p" style="margin-top:8px;background:#636366;" onclick="closeCusM()">完成</button>
     </div>
   </div>
@@ -1229,6 +1226,10 @@
         ⬆ 匯入客戶（聯絡資料 Excel）
       </button>
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
+      <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">備份（電腦版）</div>
+      <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
+      <button class="import-btn" style="margin-top:8px;background:#7A1F1F;" onclick="restorePickFile()">⟲ 還原備份（從 JSON）</button>
+      <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none;" onchange="_handleRestoreFile(event)">
       </div>
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">外部連結 <span id="extLinkNote" style="font-weight:400;font-size:11px;color:var(--gray);"></span></div>
       <div id="extLinkList"></div>
@@ -1341,7 +1342,9 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.51"; // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
+const APP_VERSION = "TESTtodo-v502.53"; // v502.53 版面：「匯出備份/還原備份」移進「設定→備份（電腦版）」，與其他電腦版功能整合（只電腦版顯示）
+// v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
+// v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
 // v502.49 修正：新增客戶時若名稱與既有停用詞相同，改以 unmarkStopWord 同步解除停用（先前只在本機解除、未同步雲端，重抓後會被打回已停用）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -7859,10 +7862,16 @@ function renderExtLinks(){
   const el=document.getElementById('extLinkList'); if(!el) return;
   if(!extLinks.length){ el.innerHTML='<p style="color:var(--gray);font-size:13px;padding:8px 2px;">尚無外部連結</p>'; return; }
   const isDesktop = !window.matchMedia('(hover:none) and (pointer:coarse)').matches;
-  el.innerHTML = extLinks.map(function(L){
-    return '<div class="cat-row"><a href="'+escapeHtml(L.url)+'" target="_blank" rel="noopener" style="flex:1;color:var(--primary);text-decoration:none;word-break:break-all;">'+escapeHtml(L.name||L.url)+'</a>'
-      + (isDesktop ? '<span class="cat-act" style="color:#FF3B30" onclick="delExtLink(\''+escapeAttr(String(L.id))+'\')">刪除</span>' : '')
-      + '</div>';
+  const n = extLinks.length;
+  el.innerHTML = extLinks.map(function(L, i){
+    const eid = escapeAttr(String(L.id));
+    let ctrls = '';
+    if (isDesktop) {
+      ctrls = '<span class="cat-act" style="color:#8E8E93;'+(i===0?'opacity:.3;pointer-events:none;':'')+'" onclick="moveExtLink(\''+eid+'\',-1)">\u25B2</span>'
+            + '<span class="cat-act" style="color:#8E8E93;'+(i===n-1?'opacity:.3;pointer-events:none;':'')+'" onclick="moveExtLink(\''+eid+'\',1)">\u25BC</span>'
+            + '<span class="cat-act" style="color:#FF3B30" onclick="delExtLink(\''+eid+'\')">刪除</span>';
+    }
+    return '<div class="cat-row"><a href="'+escapeHtml(L.url)+'" target="_blank" rel="noopener" style="flex:1;color:var(--primary);text-decoration:none;word-break:break-all;">'+escapeHtml(L.name||L.url)+'</a>'+ctrls+'</div>';
   }).join('');
 }
 async function fetchExtLinks(){
@@ -7901,8 +7910,28 @@ async function delExtLink(id){
     else fetchExtLinks();
   }catch(e){ pushLog && pushLog('刪除推送失敗：'+e.message,'warn'); }
 }
+async function moveExtLink(id, dir){
+  const i = extLinks.findIndex(function(x){ return String(x.id)===String(id); });
+  if(i<0) return;
+  const j = i + dir;
+  if(j<0 || j>=extLinks.length) return;
+  const tmp = extLinks[i]; extLinks[i] = extLinks[j]; extLinks[j] = tmp;
+  extLinks.forEach(function(L, k){ L.sortOrder = k + 1; });
+  saveExtLinksCache(); renderExtLinks();
+  try{
+    const res = await callGasAction('reorderExternalLinks', { order: extLinks.map(function(L){ return L.id; }) });
+    if(!res || res.status!=='success'){ pushLog && pushLog('外部連結排序雲端儲存失敗（本機已暫存）','warn'); }
+    else fetchExtLinks();
+  }catch(e){ pushLog && pushLog('排序推送失敗（本機已暫存）：'+e.message,'warn'); }
+}
 // v502.50: 版本說明（內嵌 changelog）+ 雲端最新版比對
 const CHANGELOG = [
+  { v: 'v502.53', date: '2026-07', notes: [
+    '「匯出備份 / 還原備份」移到「設定 → 備份（電腦版）」，和其他電腦版功能放在一起（只在電腦版顯示）。'
+  ]},
+  { v: 'v502.52', date: '2026-07', notes: [
+    '外部連結可在電腦版用上下箭頭調整顯示順序，順序會同步雲端（手機與同事看到的順序一致）。'
+  ]},
   { v: 'v502.51', date: '2026-07', notes: [
     '「匯入（電腦版）」區塊在手機上完全隱藏，只在電腦版顯示（手機不再出現空的匯入標題）。'
   ]},
