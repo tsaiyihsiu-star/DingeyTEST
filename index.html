@@ -1216,6 +1216,7 @@
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:2px 2px 6px;">顯示</div>
       <div class="cat-row"><span class="cat-name">字級</span><div class="cat-acts"><button class="cat-add-btn" onclick="toggleDensity()" style="padding:8px 16px;"><span id="densityBtn">標準</span></button></div></div>
       <div class="cat-row"><span class="cat-name">按鍵音效</span><div class="cat-acts"><button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效" style="width:48px;height:40px;">🔇</button></div></div>
+      <div id="importSection">
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">匯入（電腦版）</div>
       <button class="import-btn" onclick="document.getElementById('importFileInput').click()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1228,6 +1229,7 @@
         ⬆ 匯入客戶（聯絡資料 Excel）
       </button>
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
+      </div>
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">外部連結 <span id="extLinkNote" style="font-weight:400;font-size:11px;color:var(--gray);"></span></div>
       <div id="extLinkList"></div>
       <div id="extLinkAddWrap" style="margin-top:8px;display:none;">
@@ -1339,7 +1341,8 @@
 <script>
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz6rJXNWWb0vCXElv8Cw7AFCrxdsgPJlHbdFYglc7X81ZByIPsItXGbtjNB5HaG_ffu/exec";
 
-const APP_VERSION = "TESTtodo-v502.50"; // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
+const APP_VERSION = "TESTtodo-v502.51"; // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
+// v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
 // v502.49 修正：新增客戶時若名稱與既有停用詞相同，改以 unmarkStopWord 同步解除停用（先前只在本機解除、未同步雲端，重抓後會被打回已停用）
 const TOKEN_TTL = 30 * 24 * 60 * 60 * 1000;
 
@@ -7838,6 +7841,8 @@ function openSettings(){
   try{ updateDensityBtn(); }catch(e){}
   const addWrap=document.getElementById('extLinkAddWrap');
   if(addWrap) addWrap.style.display = window.matchMedia('(hover:none) and (pointer:coarse)').matches ? 'none' : 'block';
+  const impSec=document.getElementById('importSection');
+  if(impSec) impSec.style.display = window.matchMedia('(hover:none) and (pointer:coarse)').matches ? 'none' : 'block';
   loadExtLinksCache(); renderExtLinks();
   renderChangelog();
   const mlb=document.getElementById('markLatestBtn');
@@ -7898,6 +7903,9 @@ async function delExtLink(id){
 }
 // v502.50: 版本說明（內嵌 changelog）+ 雲端最新版比對
 const CHANGELOG = [
+  { v: 'v502.51', date: '2026-07', notes: [
+    '「匯入（電腦版）」區塊在手機上完全隱藏，只在電腦版顯示（手機不再出現空的匯入標題）。'
+  ]},
   { v: 'v502.50', date: '2026-07', notes: [
     '版面調整：側邊欄的「標準/緊湊」按鈕改成齒輪，點了打開新的「設定」視窗。',
     '把字級（標準/緊湊）、按鍵音效、匯入任務、匯入客戶、版本號都整合進「設定」視窗。',
