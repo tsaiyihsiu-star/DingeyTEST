@@ -585,6 +585,17 @@
       <p style="color:#3a3a3c;line-height:1.7;margin:0 0 8px;">回到 Apps Script 編輯器，上方函式下拉選 <strong>setupTriggers</strong>，按 <strong>▶ 執行</strong>一次。第一次會要求授權（Drive），點「進階 → 允許」。看到執行記錄出現「<strong>setupTriggers 完成</strong>」就成功。</p>
       <p style="color:#b00020;line-height:1.7;margin:0 0 16px;font-weight:600;">⚠️ 這一步會幫你補上新版需要的試算表結構（照片欄、聯絡資料表、主從欄位等）。漏跑的話，照片、聯絡資料、匯出備份這些新功能會無法使用。重複執行是安全的，已存在的會自動跳過。</p>
 
+      <div style="margin:0 0 16px;padding:14px 16px;border:2px solid #FF9500;border-radius:12px;background:#FFF8E8;">
+        <p style="margin:0 0 6px;font-size:16px;font-weight:800;color:#B25E00;">🔑 順便設定 Gemini API 金鑰（要用 AI 功能才需要）</p>
+        <p style="margin:0 0 8px;color:#3a3a3c;line-height:1.7;">若你要用「AI 解析任務」「AI 排路線」，需要設定自己的免費金鑰；<strong>沒設定的話這些 AI 功能會一直跳「尚未設定 GEMINI_API_KEY」</strong>（其他功能照常）。<br>之前已經設過的人：金鑰是「指令碼屬性」，換 Code.gs、重新部署都<strong>不會清掉</strong>，這一版直接沿用、不用重設。</p>
+        <ol style="padding-left:24px;line-height:1.8;margin:0;color:#3a3a3c;">
+          <li>到 Google AI Studio（aistudio.google.com）→ 左側「Get API key / 取得 API 金鑰」→ 建立並複製你的金鑰</li>
+          <li>回 Apps Script → 左側齒輪「專案設定」→ 捲到「指令碼屬性」→ 點「新增指令碼屬性」</li>
+          <li>「屬性」填 GEMINI_API_KEY（一字不差、全大寫、底線）、「值」貼上你的金鑰 → 儲存</li>
+        </ol>
+        <p style="color:#6e6e73;font-size:13px;margin:8px 0 0;">※ 每個人用自己的金鑰，額度各自獨立；即時讀取，設定後不用重新部署就生效。</p>
+      </div>
+
       <h3 style="font-size:17px;color:#1d1d1f;margin:0 0 4px;">步驟 5 — 產生新版網頁檔案包</h3>
       <p style="color:#3a3a3c;line-height:1.7;margin:0 0 8px;">把剛剛複製的 GAS 網址貼進來，按下載：</p>
       <div style="margin:0 0 16px;">
