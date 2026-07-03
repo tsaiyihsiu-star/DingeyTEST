@@ -1237,9 +1237,10 @@
           <button class="cat-add-btn" onclick="addExtLink()">新增</button>
         </div>
       </div>
-      <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">說明</div>
-      <div class="cat-row"><span class="cat-name" style="color:var(--gray);">版本說明</span><span class="cat-act" style="color:var(--gray);">即將推出</span></div>
-      <div class="cat-row"><span class="cat-name" style="color:var(--gray);">操作說明</span><span class="cat-act" style="color:var(--gray);">即將推出</span></div>
+      <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">版本說明</div>
+      <div id="verStatus" style="font-size:13px;margin:0 2px 8px;"></div>
+      <button id="markLatestBtn" class="cat-add-btn" onclick="markLatestVersion()" style="display:none;margin:0 0 10px;padding:8px 14px;">把目前版本設為最新版</button>
+      <div id="changelogList"></div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <div style="text-align:center;font-size:12px;color:#8E8E93;margin-bottom:8px;">版本 <span id="settingsVer">—</span></div>
@@ -7838,8 +7839,12 @@ function openSettings(){
   const addWrap=document.getElementById('extLinkAddWrap');
   if(addWrap) addWrap.style.display = window.matchMedia('(hover:none) and (pointer:coarse)').matches ? 'none' : 'block';
   loadExtLinksCache(); renderExtLinks();
+  renderChangelog();
+  const mlb=document.getElementById('markLatestBtn');
+  if(mlb) mlb.style.display = window.matchMedia('(hover:none) and (pointer:coarse)').matches ? 'none' : 'inline-block';
   openModal('settingsM');
   fetchExtLinks();
+  fetchLatestVersion();
 }
 // v502.50: 外部連結（雲端同步 + 本機快取容錯）
 let extLinks = [];
@@ -7891,6 +7896,52 @@ async function delExtLink(id){
     else fetchExtLinks();
   }catch(e){ pushLog && pushLog('刪除推送失敗：'+e.message,'warn'); }
 }
+// v502.50: 版本說明（內嵌 changelog）+ 雲端最新版比對
+const CHANGELOG = [
+  { v: 'v502.50', date: '2026-07', notes: [
+    '版面調整：側邊欄的「標準/緊湊」按鈕改成齒輪，點了打開新的「設定」視窗。',
+    '把字級（標準/緊湊）、按鍵音效、匯入任務、匯入客戶、版本號都整合進「設定」視窗。',
+    '新增「外部連結」：可在電腦版新增常用連結，同步雲端，手機和同事也看得到。',
+    '新增「版本說明」，並會顯示是否有新版本可升級。'
+  ]},
+  { v: 'v502.49', date: '2026-07', notes: [
+    '修正：新增客戶時若名稱和已停用的詞相同，現在會正確解除停用並同步雲端（以前重新整理後會被打回停用）。'
+  ]}
+];
+function renderChangelog(){
+  const el=document.getElementById('changelogList'); if(!el) return;
+  el.innerHTML = CHANGELOG.map(function(c){
+    return '<div style="margin-bottom:12px;"><div style="font-weight:700;color:var(--label);font-size:14px;">'+c.v+(c.date?' <span style="font-weight:400;color:var(--gray);font-size:12px;">'+c.date+'</span>':'')+'</div>'
+      + '<ul style="margin:4px 0 0;padding-left:20px;line-height:1.7;color:var(--label);font-size:13px;">'+c.notes.map(function(n){ return '<li>'+escapeHtml(n)+'</li>'; }).join('')+'</ul></div>';
+  }).join('');
+}
+function _verNums(s){ const m=String(s).match(/v?(\d+)\.(\d+)/); return m?[Number(m[1]),Number(m[2])]:[0,0]; }
+function _verCmp(a,b){ const A=_verNums(a),B=_verNums(b); if(A[0]!==B[0])return A[0]-B[0]; return A[1]-B[1]; }
+function _verShort(s){ const m=String(s).match(/v\d+\.\d+/); return m?m[0]:String(s); }
+async function fetchLatestVersion(){
+  const el=document.getElementById('verStatus'); if(!el) return;
+  el.textContent='目前 '+_verShort(APP_VERSION);
+  if(typeof isOnline==='function' && !isOnline()) return;
+  try{
+    const res=await callGasAction('getLatestVersion', {});
+    const latest = (res && res.version) ? String(res.version) : '';
+    if(!latest){ return; }
+    if(_verCmp(APP_VERSION, latest) < 0){
+      el.innerHTML='<span style="color:#FF9500;font-weight:700;">目前 '+_verShort(APP_VERSION)+'・最新 '+_verShort(latest)+'（有新版，請用安裝精靈升級）</span>';
+    } else {
+      el.innerHTML='<span style="color:#34C759;">已是最新版 '+_verShort(APP_VERSION)+'</span>';
+    }
+  }catch(e){}
+}
+async function markLatestVersion(){
+  if(!confirm('把目前版本 '+_verShort(APP_VERSION)+' 設為「最新版」？\n（其他還在舊版的裝置／同事會看到「有新版」提示）')) return;
+  try{
+    const res=await callGasAction('setLatestVersion', { version: APP_VERSION });
+    if(res && res.status==='success'){ pushLog && pushLog('已將最新版設為 '+_verShort(APP_VERSION),'success'); fetchLatestVersion(); }
+    else pushLog && pushLog('設定最新版失敗（後端可能尚未更新）','warn');
+  }catch(e){ pushLog && pushLog('設定最新版失敗：'+e.message,'warn'); }
+}
+
 
 
 function openAdd() {
