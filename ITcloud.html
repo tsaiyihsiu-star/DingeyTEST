@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT 運維雲端知識庫</title>
+    <style>
+        /* --- 變數與基礎設定 --- */
+        :root {
+            --primary: #4f46e5; --primary-hover: #4338ca; --secondary: #e0e7ff;
+            --bg-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            --card-bg: #ffffff; --text-main: #1e293b; --text-muted: #64748b;
+            --danger: #ef4444; --success: #10b981; --warning: #f59e0b;
+            --border-radius-lg: 16px; --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+        }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-gradient); color: var(--text-main); padding: 20px; min-height: 100vh; margin: 0; box-sizing: border-box; }
+        .container { max-width: 960px; margin: auto; }
+        h1 { text-align: center; color: var(--primary); font-size: clamp(1.8rem, 4vw, 2.2rem); font-weight: 800; margin-bottom: 30px; letter-spacing: 1px; }
+        
+        /* --- 控制列 --- */
+        .controls { 
+            display: flex; gap: 12px; margin-bottom: 30px; flex-wrap: wrap; 
+            background: rgba(255, 255, 255, 0.85); padding: 16px; 
+            border-radius: var(--border-radius-lg); box-shadow: 0 4px 6px rgba(0,0,0,0.05); backdrop-filter: blur(10px); 
+        }
+        input[type="text"], select, textarea { 
+            padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 15px; outline: none; transition: 0.2s; color: var(--text-main);
+        }
+        input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+        .filter-box { flex: 1 1 150px; cursor: pointer; }
+        .search-box { flex: 2 1 200px; }
+        button { padding: 12px 20px; border: none; border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: 600; transition: 0.3s; flex: 1 1 auto; white-space: nowrap; }
+        .btn-add { background: var(--primary); color: white; }
+        .btn-add:hover:not(:disabled) { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
+        .btn-add:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .btn-move { background: var(--warning); color: white; }
+        .btn-move:hover:not(:disabled) { background: #d97706; }
+
+        /* --- 首頁歡迎儀表板 --- */
+        .welcome-hero { text-align: center; padding: 20px 0; animation: fadeIn 0.5s ease; }
+        .welcome-hero h2 { font-size: 1.8rem; color: var(--text-main); margin-bottom: 10px; }
+        .welcome-hero p { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 30px; }
+        
+        .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; padding: 10px; }
+        .cat-card { 
+            background: var(--card-bg); padding: 25px 20px; border-radius: var(--border-radius-lg); 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; 
+            cursor: pointer; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+        }
+        .cat-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); border-color: var(--primary); color: var(--primary); }
+        .cat-icon { font-size: 2.5rem; }
+        .cat-title { font-weight: 700; font-size: 1.1rem; }
+        .cat-card.all-notes { background: var(--primary); color: white; border: none; }
+        .cat-card.all-notes:hover { background: var(--primary-hover); color: white; }
+        
+        /* --- 筆記卡片 --- */
+        .note-card { background: var(--card-bg); padding: 24px; margin-bottom: 20px; border-radius: var(--border-radius-lg); box-shadow: 0 4px 6px rgba(0,0,0,0.05); position: relative; transition: 0.3s; animation: fadeIn 0.4s ease; border: 1px solid rgba(255,255,255,0.5); }
+        .note-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+        .note-category { display: inline-block; background: var(--secondary); color: var(--primary); padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
+        .note-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 10px 0; padding-right: 110px; line-height: 1.4; }
+        .note-content { white-space: pre-wrap; background: #f8fafc; padding: 15px; border-left: 4px solid var(--primary); border-radius: 6px; font-family: 'Consolas', monospace; font-size: 14px; color: #334155; word-break: break-all; line-height: 1.6; }
+        .card-actions { position: absolute; top: 20px; right: 20px; display: flex; gap: 8px; }
+        .action-btn { background: #f1f5f9; border: none; border-radius: 8px; padding: 8px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+        .action-btn:hover { background: #e2e8f0; }
+        .action-btn.delete:hover { background: #fee2e2; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- 動畫與其他元件 --- */
+        .loading-container { text-align: center; margin-top: 60px; color: var(--text-muted); font-weight: 600; }
+        .spinner { width: 40px; height: 40px; border: 4px solid var(--secondary); border-top: 4px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 1000; padding: 20px; }
+        .modal { background: white; padding: 30px; border-radius: var(--border-radius-lg); width: 100%; max-width: 550px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: modalIn 0.3s ease; box-sizing: border-box; }
+        .modal.small { max-width: 400px; }
+        @keyframes modalIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .toast { position: fixed; bottom: 30px; right: 30px; padding: 14px 24px; border-radius: 10px; color: white; font-weight: bold; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); transform: translateY(100px); opacity: 0; transition: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 9999; display: flex; align-items: center; gap: 8px; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+        .toast.warning { background: var(--warning); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>IT 雲端知識庫</h1>
+    
+    <div id="loading" class="loading-container">
+        <div class="spinner"></div>
+        <div>正在與 Google 雲端同步資料...</div>
+    </div>
+
+    <div id="mainContent" style="display:none">
+        <div class="controls">
+            <select id="categoryFilter" class="filter-box">
+                <option value="none" selected>✨ 請選擇分類開始...</option>
+                <option value="all">📁 顯示全部筆記</option>
+                <option value="Windows 系統修復">🛠️ Windows 系統修復</option>
+                <option value="網路與伺服器">🌐 網路與伺服器</option>
+                <option value="系統設定與登錄檔">⚙️ 系統設定與登錄檔</option>
+                <option value="指令與腳本">💻 指令與腳本</option>
+                <option value="帳號密碼與聯絡資訊">🔑 帳號密碼與聯絡資訊</option>
+                <option value="資料庫與 ERP">🗄️ 資料庫與 ERP</option>
+            </select>
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 搜尋筆記標題或內容...">
+            <button class="btn-add" onclick="openModal()">✨ 新增筆記</button>
+        </div>
+        <div id="notesContainer"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="noteModal">
+    <div class="modal">
+        <h2 id="modalTitle" style="margin-top:0; color:var(--text-main)">新增筆記</h2>
+        <input type="hidden" id="editRow" value="">
+        
+        <div style="margin-bottom:16px">
+            <label style="display:block; font-weight:600; margin-bottom:6px; color:#475569">分類</label>
+            <select id="noteCategory" style="width:100%">
+                <option value="Windows 系統修復">Windows 系統修復</option>
+                <option value="網路與伺服器">網路與伺服器</option>
+                <option value="系統設定與登錄檔">系統設定與登錄檔</option>
+                <option value="指令與腳本">指令與腳本</option>
+                <option value="帳號密碼與聯絡資訊">帳號密碼與聯絡資訊</option>
+                <option value="資料庫與 ERP">資料庫與 ERP</option>
+            </select>
+        </div>
+        <div style="margin-bottom:16px">
+            <label style="display:block; font-weight:600; margin-bottom:6px; color:#475569">標題</label>
+            <input type="text" id="noteTitleText" style="width:100%" placeholder="請輸入明確的標題">
+        </div>
+        <div style="margin-bottom:20px">
+            <label style="display:block; font-weight:600; margin-bottom:6px; color:#475569">內容</label>
+            <textarea id="noteContentText" style="width:100%; height:160px" placeholder="請輸入詳細內容、指令或程式碼..."></textarea>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:12px">
+            <button onclick="closeModal()" style="background:#f1f5f9; color:#334155; border:none; padding:12px 20px; border-radius:10px; cursor:pointer; font-weight:600; transition:0.2s;">取消</button>
+            <button class="btn-add" onclick="saveNote()" id="saveBtn">☁️ 儲存至雲端</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="moveModal">
+    <div class="modal small">
+        <h2 style="margin-top:0; color:var(--text-main)">🔀 移動分類</h2>
+        <input type="hidden" id="moveRow" value="">
+        <p style="color:var(--text-muted); font-size:14px; margin-bottom:20px;">請選擇您想將此筆記移動到的新分類：</p>
+        
+        <div style="margin-bottom:25px">
+            <label style="display:block; font-weight:600; margin-bottom:6px; color:#475569">目標分類</label>
+            <select id="moveCategory" style="width:100%">
+                <option value="Windows 系統修復">Windows 系統修復</option>
+                <option value="網路與伺服器">網路與伺服器</option>
+                <option value="系統設定與登錄檔">系統設定與登錄檔</option>
+                <option value="指令與腳本">指令與腳本</option>
+                <option value="帳號密碼與聯絡資訊">帳號密碼與聯絡資訊</option>
+                <option value="資料庫與 ERP">資料庫與 ERP</option>
+            </select>
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:12px">
+            <button onclick="closeMoveModal()" style="background:#f1f5f9; color:#334155; border:none; padding:12px 20px; border-radius:10px; cursor:pointer; font-weight:600; transition:0.2s;">取消</button>
+            <button class="btn-move" onclick="submitMove()" id="moveBtn">確認移動</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+    // ⚠️ 請在此替換您的網頁應用程式 URL
+    const API_URL = "https://script.google.com/macros/s/AKfycbwj_A7ayK-lqiIq3TyojdQxHE5j4ZXVcZ-k9NYBoS8B-U41rMJmZR-Rw4HVRRw_i1Z6/exec"; 
+    let notesData = [];
+    let searchTimeout = null; 
+
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast');
+        toast.className = `toast ${type}`;
+        
+        let icon = '✅';
+        if(type === 'error') icon = '❌';
+        if(type === 'warning') icon = '⚠️';
+        
+        toast.innerHTML = `${icon} ${message}`;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    async function fetchFromCloud(silent = false) {
+        if (!silent) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('mainContent').style.display = 'none';
+        }
+        try {
+            const response = await fetch(API_URL);
+            notesData = await response.json();
+            renderNotes();
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+        } catch (e) { 
+            document.getElementById('loading').innerHTML = "❌ 連線失敗，請檢查網路或 API 網址設定"; 
+        }
+    }
+
+    function setCategory(cat) {
+        document.getElementById('categoryFilter').value = cat;
+        document.getElementById('searchInput').value = '';
+        renderNotes();
+    }
+
+    function renderNotes() {
+        const container = document.getElementById('notesContainer');
+        const term = document.getElementById('searchInput').value.trim().toLowerCase();
+        const category = document.getElementById('categoryFilter').value; 
+        
+        container.innerHTML = '';
+        
+        if (category === 'none' && term === '') {
+            container.innerHTML = `
+                <div class="welcome-hero">
+                    <h2>👋 歡迎回到 IT 運維知識庫</h2>
+                    <p>請點擊下方卡片瀏覽分類，或在上方輸入關鍵字直接搜尋。</p>
+                    <div class="category-grid">
+                        <div class="cat-card" onclick="setCategory('Windows 系統修復')">
+                            <div class="cat-icon">🛠️</div>
+                            <div class="cat-title">Windows 系統修復</div>
+                        </div>
+                        <div class="cat-card" onclick="setCategory('網路與伺服器')">
+                            <div class="cat-icon">🌐</div>
+                            <div class="cat-title">網路與伺服器</div>
+                        </div>
+                        <div class="cat-card" onclick="setCategory('系統設定與登錄檔')">
+                            <div class="cat-icon">⚙️</div>
+                            <div class="cat-title">系統設定與登錄檔</div>
+                        </div>
+                        <div class="cat-card" onclick="setCategory('指令與腳本')">
+                            <div class="cat-icon">💻</div>
+                            <div class="cat-title">指令與腳本</div>
+                        </div>
+                        <div class="cat-card" onclick="setCategory('帳號密碼與聯絡資訊')">
+                            <div class="cat-icon">🔑</div>
+                            <div class="cat-title">帳號密碼與聯絡資訊</div>
+                        </div>
+                        <div class="cat-card" onclick="setCategory('資料庫與 ERP')">
+                            <div class="cat-icon">🗄️</div>
+                            <div class="cat-title">資料庫與 ERP</div>
+                        </div>
+                        <div class="cat-card all-notes" onclick="setCategory('all')">
+                            <div class="cat-icon">📁</div>
+                            <div class="cat-title">顯示全部筆記</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const searchAllCategories = (category === 'none' || category === 'all');
+
+        const filtered = notesData.filter(n => {
+            const matchText = (n.Title && n.Title.toLowerCase().includes(term)) || 
+                              (n.Content && n.Content.toLowerCase().includes(term));
+            const matchCategory = searchAllCategories || n.Category === category;
+            return matchText && matchCategory;
+        });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:60px 0; font-size:1.2rem; font-weight:bold;">📭 查無相符的資料，換個關鍵字或分類試試吧！</div>';
+            return;
+        }
+
+        filtered.reverse().forEach(n => {
+            const card = document.createElement('div');
+            card.className = 'note-card';
+            card.innerHTML = `
+                <span class="note-category">${n.Category}</span>
+                <div class="card-actions">
+                    <button class="action-btn" onclick="openMoveModal(${n.rowNum})" title="移動分類">🔀</button>
+                    <button class="action-btn" onclick="openModal(${n.rowNum})" title="修改內容">✏️</button>
+                    <button class="action-btn delete" onclick="deleteNote(${n.rowNum})" title="刪除筆記">🗑️</button>
+                </div>
+                <h3 class="note-title">${n.Title}</h3>
+                <div class="note-content">${n.Content}</div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(renderNotes, 300);
+    });
+    document.getElementById('categoryFilter').addEventListener('change', renderNotes);
+
+    // --- 編輯/新增 Modal 邏輯 ---
+    function openModal(rowNum = null) {
+        document.getElementById('noteModal').style.display = 'flex';
+        if (rowNum) {
+            const n = notesData.find(i => i.rowNum === rowNum);
+            document.getElementById('modalTitle').innerText = '✏️ 修改筆記';
+            document.getElementById('editRow').value = rowNum;
+            document.getElementById('noteCategory').value = n.Category;
+            document.getElementById('noteTitleText').value = n.Title;
+            document.getElementById('noteContentText').value = n.Content;
+        } else {
+            document.getElementById('modalTitle').innerText = '✨ 新增筆記';
+            document.getElementById('editRow').value = '';
+            document.getElementById('noteTitleText').value = '';
+            document.getElementById('noteContentText').value = '';
+            
+            let currentFilter = document.getElementById('categoryFilter').value;
+            document.getElementById('noteCategory').value = (currentFilter !== 'none' && currentFilter !== 'all') ? currentFilter : 'Windows 系統修復';
+        }
+    }
+    function closeModal() { document.getElementById('noteModal').style.display = 'none'; }
+
+    // --- 移動分類 Modal 邏輯 ---
+    function openMoveModal(rowNum) {
+        document.getElementById('moveModal').style.display = 'flex';
+        const n = notesData.find(i => i.rowNum === rowNum);
+        document.getElementById('moveRow').value = rowNum;
+        document.getElementById('moveCategory').value = n.Category; // 預設為原分類
+    }
+    function closeMoveModal() { document.getElementById('moveModal').style.display = 'none'; }
+
+    // 背景點擊關閉視窗
+    window.onclick = function(e) { 
+        if (e.target === document.getElementById('noteModal')) closeModal(); 
+        if (e.target === document.getElementById('moveModal')) closeMoveModal(); 
+    }
+
+    // --- 儲存與 API 邏輯 ---
+    async function saveNote() {
+        const rowNum = document.getElementById('editRow').value;
+        const title = document.getElementById('noteTitleText').value.trim();
+        const content = document.getElementById('noteContentText').value.trim();
+        const category = document.getElementById('noteCategory').value;
+        
+        if(!title || !content) { showToast('標題與內容不能為空！', 'error'); return; }
+        
+        const saveBtn = document.getElementById('saveBtn');
+        saveBtn.innerHTML = "<div class='spinner' style='width:16px;height:16px;border-width:2px;margin:0'></div>";
+        saveBtn.disabled = true;
+
+        const payload = { action: rowNum ? "update" : "add", rowNum, category, title, content };
+
+        try {
+            await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
+            closeModal();
+            showToast(rowNum ? '筆記已成功更新！' : '筆記已成功新增！', 'success');
+            fetchFromCloud(true); 
+        } catch(e) {
+            showToast('儲存失敗，請檢查網路連線', 'error');
+        } finally {
+            saveBtn.innerHTML = "☁️ 儲存至雲端";
+            saveBtn.disabled = false;
+        }
+    }
+
+    // --- 確認移動邏輯 ---
+    async function submitMove() {
+        const rowNum = parseInt(document.getElementById('moveRow').value);
+        const newCategory = document.getElementById('moveCategory').value;
+        const n = notesData.find(i => i.rowNum === rowNum);
+
+        if (n.Category === newCategory) {
+            showToast('分類沒有變更，請選擇不同的分類。', 'warning');
+            return;
+        }
+
+        const moveBtn = document.getElementById('moveBtn');
+        moveBtn.innerHTML = "<div class='spinner' style='width:16px;height:16px;border-width:2px;border-top-color:#fff;margin:0'></div>";
+        moveBtn.disabled = true;
+
+        // 我們將 action 設為 update，並保留原本的 title 和 content
+        const payload = { 
+            action: "update", 
+            rowNum: rowNum, 
+            category: newCategory, 
+            title: n.Title, 
+            content: n.Content 
+        };
+
+        try {
+            await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
+            closeMoveModal();
+            showToast(`筆記已成功移動至「${newCategory}」！`, 'success');
+            
+            // 如果當前是在特定分類下查看，移動後該筆記會從當前畫面消失
+            // 我們重新載入資料讓畫面正確反映現況
+            fetchFromCloud(true); 
+        } catch(e) {
+            showToast('移動失敗，請檢查網路連線', 'error');
+        } finally {
+            moveBtn.innerHTML = "確認移動";
+            moveBtn.disabled = false;
+        }
+    }
+
+    async function deleteNote(rowNum) { 
+        if(confirm("⚠️ 確定要刪除這筆資料嗎？刪除後無法復原！")) { 
+            showToast('正在刪除...', 'success');
+            try {
+                await fetch(API_URL, { method: "POST", body: JSON.stringify({action:"delete", rowNum}) }); 
+                showToast('筆記已成功刪除！', 'success');
+                fetchFromCloud(true); 
+            } catch(e) {
+                showToast('刪除失敗', 'error');
+            }
+        } 
+    }
+
+    fetchFromCloud();
+</script>
+</body>
+</html>
