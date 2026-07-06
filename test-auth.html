@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>宜修待辦 — 架構驗證原型</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
+         max-width: 480px; margin: 0 auto; padding: 16px; background: #f5f5f5; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  h1 { font-size: 1.2em; } h2 { font-size: 1em; color: #555; }
+  button { padding: 10px 16px; border: none; border-radius: 8px; font-size: 1em;
+           cursor: pointer; background: #2e7d32; color: #fff; }
+  button.secondary { background: #757575; }
+  input { padding: 10px; border: 1px solid #ccc; border-radius: 8px;
+          font-size: 1em; width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+  ul { padding-left: 20px; } li { margin-bottom: 4px; }
+  .ok { color: #2e7d32; } .err { color: #c62828; }
+  #status { font-size: .9em; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>宜修待辦 — 架構驗證原型</h1>
+
+<div class="card" id="authCard">
+  <h2>① 認證</h2>
+  <div id="loggedOut">
+    <button onclick="signIn()">使用 Google 登入</button>
+  </div>
+  <div id="loggedIn" style="display:none">
+    <p>登入者：<b id="userEmail"></b></p>
+    <p>Drive 權杖（provider_token）：<b id="driveToken"></b></p>
+    <button class="secondary" onclick="signOut()">登出</button>
+  </div>
+</div>
+
+<div class="card" id="taskCard" style="display:none">
+  <h2>② 資料寫入／讀取（RLS 驗證）</h2>
+  <input id="taskTitle" placeholder="輸入任務名稱">
+  <button onclick="addTask()">新增任務</button>
+  <ul id="taskList"></ul>
+</div>
+
+<div class="card">
+  <h2>狀態</h2>
+  <div id="status">尚未初始化</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ====== 只需改這兩行 ====== */
+const SUPABASE_URL = "https://vzrnkzokushqhixngrsi.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_iCAX3ygzF5s0gVMBy7eqmw_CNs78Cf_";
+/* ========================== */
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const log = (msg, ok = true) => {
+  $("status").innerHTML = `<span class="${ok ? "ok" : "err"}">${msg}</span>`;
+};
+
+async function signIn() {
+  const { error } = await db.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: location.origin + location.pathname,
+      scopes: "https://www.googleapis.com/auth/drive.file",
+      queryParams: { access_type: "offline", prompt: "consent" }
+    }
+  });
+  if (error) log("登入啟動失敗：" + error.message, false);
+}
+
+async function signOut() {
+  await db.auth.signOut();
+  location.reload();
+}
+
+async function addTask() {
+  const title = $("taskTitle").value.trim();
+  if (!title) return;
+  const { error } = await db.from("tasks").insert({ title });
+  if (error) { log("寫入失敗：" + error.message, false); return; }
+  $("taskTitle").value = "";
+  log("寫入成功");
+  loadTasks();
+}
+
+async function loadTasks() {
+  const { data, error } = await db.from("tasks")
+    .select("id,title,status,updated_at")
+    .order("updated_at", { ascending: false });
+  if (error) { log("讀取失敗：" + error.message, false); return; }
+  $("taskList").innerHTML = data.length
+    ? data.map(t => `<li>${t.title} <small>(${t.status})</small></li>`).join("")
+    : "<li><i>目前沒有任務</i></li>";
+  log(`讀取成功，共 ${data.length} 筆（RLS 生效：只看得到自己的資料）`);
+}
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    $("loggedOut").style.display = "none";
+    $("loggedIn").style.display = "block";
+    $("taskCard").style.display = "block";
+    $("userEmail").textContent = session.user.email;
+    $("driveToken").textContent = session.provider_token ? "✔ 已取得" : "✘ 未取得";
+    loadTasks();
+  } else {
+    log("未登入。按上方按鈕以 Google 登入。");
+  }
+}
+
+db.auth.onAuthStateChange((_event, session) => { if (session) init(); });
+init();
+</script>
+</body>
+</html>
