@@ -1,54 +1,65 @@
-const CACHE_NAME = 'TESTtodo-v502.53';
+// ============================================================
+// 宜修待辦 Supabase 世代 Service Worker
+// 【切換日部署用】開發測試期間不啟用(supa-test-todo.html 目前主動解除 SW)
+// 切換日三件事(同一個 commit):
+//   1. 本檔改名 sw.js 覆蓋舊檔,CORE_ASSETS 的頁面改成接管後的 index.html
+//   2. CACHE_NAME 與 APP_VERSION 同步 bump
+//   3. 前端把「解除註冊」改回「註冊 sw.js」
+// ============================================================
+const CACHE_NAME = 'SUPAtodo-v600.50';   // 每次改版必同步 bump
 
-// 核心本地檔：同源、可靠 → 原子式快取（必須全部成功）
 const CORE_ASSETS = [
   './',
-  './index.html',
+  './index.html',        // 切換日:v600 接管 index.html 後生效
   './manifest.json',
-  './icon.png'
+  './icon.png',
+  './version.json'
 ];
-// 外部資源：非致命 → 抓不到就略過，不讓它拖垮整個安裝
+// 外部資源:非致命,抓不到就略過
+// v600 重要:supabase-js 必須快取——離線開 App 時認證閘才起得來(getSession 走本機)
 const EXTRA_ASSETS = [
-  'https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd/index.js'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);                                // 核心：全有或全無
-    await Promise.allSettled(EXTRA_ASSETS.map(u => cache.add(u)));  // 外部：非致命
+    await cache.addAll(CORE_ASSETS);                                // 核心:全有或全無
+    await Promise.allSettled(EXTRA_ASSETS.map(u => cache.add(u)));  // 外部:非致命
   })());
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)));  // 此時核心已快取，刪舊才安全
+    await Promise.all(keys.map(k => (k !== CACHE_NAME ? caches.delete(k) : null)));
     await self.clients.claim();
   })());
 });
 
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET') return;   // 只接管 GET；同步等 POST 交給網路自己處理
-
-  // 導覽請求（從主畫面開啟 App）：快取優先，離線且沒對到時 fallback 到 index.html → 保證離線開得起來
+  if (req.method !== 'GET') return;
+  // version.json 永遠走網路優先(版本檢查要即時;離線退快取)
+  if (req.url.includes('version.json')) {
+    e.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
+    return;
+  }
+  // Supabase/Google API 一律不快取(資料與認證必須即時)
+  if (req.url.includes('supabase.co') || req.url.includes('googleapis.com')
+      || req.url.includes('script.google.com') || req.url.includes('generativelanguage')) return;
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       const cached = await caches.match(req, { ignoreSearch: true });
       if (cached) return cached;
       try { return await fetch(req); }
       catch (err) {
-        return (await caches.match('./index.html'))
-            || (await caches.match('./'))
-            || Response.error();
+        return (await caches.match('./index.html')) || (await caches.match('./')) || Response.error();
       }
     })());
     return;
   }
-
-  // 其他資源：快取優先、網路 fallback
   e.respondWith(
     caches.match(req).then(r => r || fetch(req).catch(() => r || Response.error()))
   );
