@@ -1601,11 +1601,12 @@ async function supaCheckGeneration(){
     const localGen = localStorage.getItem('supaDataGen');
     if (localGen === null){ localStorage.setItem('supaDataGen', String(gen)); return true; }
     if (String(gen) !== String(localGen)){
-      pushLog('偵測到雲端資料還原(紀元 ' + localGen + '→' + gen + '),放棄本地並全量重拉', 'warn');
-      opLog = []; cusOpLog = []; saveOpLog(); saveCusOpLog();          // 紀元事件:佇列廢棄
+      // v600.42: 狀態更新先行(紀元/水位線/佇列),任何一步拋錯都不會留下半套狀態
+      localStorage.setItem('supaDataGen', String(gen));
       supaTaskSync = null; supaCustSync = null;
       localStorage.removeItem('supaTaskSync'); localStorage.removeItem('supaCustSync');
-      localStorage.setItem('supaDataGen', String(gen));
+      opLog = []; cusOpLog = []; try { saveOpLog(); } catch (e) {}   // 紀元事件:佇列廢棄
+      pushLog('偵測到雲端資料還原(紀元 ' + localGen + '→' + gen + '),放棄本地並全量重拉', 'warn');
       sb.from('sync_logs').insert({ reason: 'generation_change', meta: { from: localGen, to: gen } }).then(() => {}, () => {});
       await pullFromCloudFull('generation_change', 1);
       return false;   // 已處理,呼叫端跳過本輪增量
@@ -1967,7 +1968,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.41"; // v600.41 五期修正:手動匯出前先增量同步拉齊;指紋升級 count+max updated_at 雙指標(定案設計);安全網匯出維持現況快照語意
+const APP_VERSION = "SUPATESTtodo-v600.42"; // v600.42 修復:saveCusOpLog 幽靈函式(實為 saveOpLog 統一持久化)x3;紀元分支狀態更新先行防半套(真機截圖破案)
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -2569,13 +2570,13 @@ async function pushCustomerOpsToCloud(fetchFn) {
     }
     if (error) {
       console.log('[pushCustomerOps] error: ' + error.message);
-      saveCusOpLog();
+      saveOpLog();
       return { acked, rejected: [] };
     }
     acked.push(op.opId);
   }
   cusOpLog = cusOpLog.filter(o => !acked.includes(o.opId));
-  saveCusOpLog();
+  saveOpLog();
   return { acked, rejected: [] };
 }
 
