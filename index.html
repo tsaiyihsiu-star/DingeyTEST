@@ -1409,12 +1409,11 @@ function supaShowLogin(){
   const d = document.createElement('div');
   d.id = 'supaLoginOverlay';
   d.style.cssText = 'position:fixed;inset:0;background:#f5f5f5;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;';
-  const _desk = !window.matchMedia('(hover:none) and (pointer:coarse)').matches;
   d.innerHTML = '<div style="font-size:1.3em;font-weight:700">宜修待辦</div>'
     + '<button onclick="supaSignIn()" style="padding:14px 28px;border:none;border-radius:12px;background:#2e7d32;color:#fff;font-size:1.1em">使用 Google 登入</button>'
     + '<div style="color:#888;font-size:.85em">v600 Supabase 世代</div>'
-    + (_desk ? '<button onclick="supaRescueExport()" style="margin-top:20px;padding:8px 16px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#555;font-size:.85em;cursor:pointer">📦 本地備份匯出(電腦版・免登入)</button>'
-             + '<div style="color:#aaa;font-size:.72em;max-width:300px;text-align:center">登入異常時的救援出口:直接匯出此裝置的本地快取資料(含未推送變更),格式與正式備份相容可還原</div>' : '');
+    + '<button onclick="supaRescueExport()" style="margin-top:20px;padding:8px 16px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#555;font-size:.85em;cursor:pointer">📦 本地備份匯出(免登入)</button>'
+    + '<div style="color:#aaa;font-size:.72em;max-width:300px;text-align:center">登入異常時的救援出口:直接匯出此裝置的本地快取資料(含未推送變更),格式與正式備份相容可還原</div>';
   document.body.appendChild(d);
 }
 async function supaSignIn(){
@@ -2130,7 +2129,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.50"; // v600.50 六期收尾:版本查詢/發布改 version.json(GAS 最後領土攻下);規則式清理三條(30天照片/12月Done/90天清墓,週節流);30天未同步保護性全量兜底
+const APP_VERSION = "SUPATESTtodo-v600.51"; // v600.51 修正:登入畫面救援匯出開放全裝置(原限電腦版;外勤手機的本地資料含未推送變更,反而最需要救援出口)
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
