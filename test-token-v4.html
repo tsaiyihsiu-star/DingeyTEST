@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Token驗證v4">
 <title>宜修待辦 — Token 刷新驗證 v4</title>
 <style>
   body { font-family: system-ui, -apple-system, "Microsoft JhengHei", sans-serif;
@@ -32,6 +35,7 @@
   </div>
   <div style="margin-top:8px">
     <button id="loginBtn" onclick="signIn()">Google 登入</button>
+    <button id="reAuthBtn" class="secondary" onclick="signIn()" style="display:none">重新登入取票</button>
     <button class="secondary" onclick="signOut()">登出</button>
   </div>
 </div>
@@ -162,6 +166,8 @@ async function init(){
     logLine('登入取得新票' + (session.provider_refresh_token ? '+refresh_token' : '(未附 refresh_token,沿用舊存)'));
   }
   paintStatus();
+  const t = await getTok();
+  $("reAuthBtn").style.display = (t?.refresh_token) ? 'none' : 'inline-block';
   setInterval(paintStatus, 30000);   // 票齡顯示每 30 秒更新
 }
 db.auth.onAuthStateChange((_e,s)=>{ if(s && $("loginBtn").style.display!=='none') init(); });
