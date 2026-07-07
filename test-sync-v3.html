@@ -45,7 +45,7 @@
     <button id="loginBtn" onclick="signIn()">Google 登入</button>
     <button class="secondary" onclick="syncNow('manual')">立即同步</button>
     <button class="secondary" onclick="fullResync('manual_reset')">全量重拉</button>
-    <label class="sw"><input type="checkbox" id="simOffline" onchange="logLine('模擬離線: '+(this.checked?'開':'關'))">模擬離線</label>
+    <label class="sw"><input type="checkbox" id="simOffline" onchange="onSimToggle(this)">模擬離線</label>
   </div>
 </div>
 
@@ -140,6 +140,12 @@ function paintStatus() {
   const off = $("simOffline").checked || !navigator.onLine;
   $("stNet").textContent = off ? '離線' : '連線';
   $("stNet").className = off ? 'warn' : 'ok';
+}
+
+function onSimToggle(el) {
+  logLine('模擬離線: ' + (el.checked ? '開' : '關'));
+  paintStatus();
+  if (!el.checked) pushSoon(300);   // 恢復連線 → 立即喚醒佇列
 }
 
 // ---------- 本地寫入(樂觀更新:先寫本地+進佇列,畫面即時) ----------
@@ -271,7 +277,7 @@ async function init() {
   $("loginBtn").style.display = 'none';
   pushSoon(100);                                // 先清佇列
   pullDelta(lastSync ? 'startup' : 'first_full');
-  setInterval(() => pullDelta('interval'), 60000);   // 週期背景拉(節流 60s)
+  setInterval(() => { if (queue.length) pushSoon(0); else pullDelta('interval'); }, 60000);   // 週期背景:有佇列先推(推完自帶拉取),否則拉
   window.addEventListener('online', () => { paintStatus(); pushSoon(500); });
   window.addEventListener('offline', paintStatus);
 }
