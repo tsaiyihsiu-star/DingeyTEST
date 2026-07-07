@@ -2025,7 +2025,7 @@ function cleanupAckedOpsByCloudResponse(cloudOps) {
   }
 }
 
-const genID = () => 'T' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+const genID = () => crypto.randomUUID();   // v600: 決策2定案,新資料用 uuid(舊 T- 格式 ID 相容並存)
 
 const fmtD = s => s ? String(s).split('T')[0].replace(/\//g, '-') : "";
 // v500.27.5: 卡片用簡短日期、當年省略年份
