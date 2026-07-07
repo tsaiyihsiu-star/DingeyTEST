@@ -1564,7 +1564,12 @@ async function supaRoute(action, extra){
           nav_fix: String(c.navFix || ''), deleted: false };
         const { error } = await sb.from('customer_contacts').upsert(row, { onConflict: 'id' });
         if (error) {
-          if (error.code === '23505') return { status: existing ? 'updated' : 'added', rowId: String(c.rowId), groupKey };  // 唯一衝突靜默成功(防連點雙寫)
+          if (error.code === '23505') {
+            // 唯一衝突靜默成功(防連點雙寫):雲端已有同內容,回報成功;
+            // 但本地樂觀新增的那筆是幽靈 → 立即刷新快取對齊雲端真相
+            setTimeout(() => { try { refreshContactsCache(); } catch (e) {} }, 0);
+            return { status: existing ? 'updated' : 'added', rowId: String(c.rowId), groupKey };
+          }
           throw error;
         }
         return { status: existing ? 'updated' : 'added', rowId: String(c.rowId), groupKey };
@@ -1626,7 +1631,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.11"; // v600.11 二期+:登入畫面新增本地救援匯出(電腦版・免登入,直讀本地快取,格式相容正式還原)
+const APP_VERSION = "SUPATESTtodo-v600.12"; // v600.12 修正:聯絡資料防連點靜默成功時自動刷新快取,清除本地樂觀新增的幽靈重複
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
