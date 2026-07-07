@@ -1228,6 +1228,7 @@
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">備份（電腦版）</div>
       <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
+      <button class="import-btn" style="margin-top:8px;background:#4527A0;" onclick="setGeminiKeyUI()">🔑 設定 Gemini API Key（AI 功能・自備）</button>
       <button class="import-btn" style="margin-top:8px;background:#7A1F1F;" onclick="restorePickFile()">⟲ 還原備份（從 JSON）</button>
       <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none;" onchange="_handleRestoreFile(event)">
       </div>
@@ -1485,6 +1486,113 @@ async function supaEnsureGroupKey(custName){
   return gid;
 }
 
+// --- AI 模組(v600.30 四期):Gemini 自備 key 前端直呼 ---
+async function _geminiKey(){
+  let k = localStorage.getItem('geminiApiKey') || '';
+  if (k) return k;
+  try {
+    const { data } = await supaInit().from('user_settings').select('gemini_api_key').maybeSingle();
+    k = (data && data.gemini_api_key) || '';
+    if (k) localStorage.setItem('geminiApiKey', k);
+  } catch(e){}
+  if (!k) throw new Error('尚未設定 Gemini API Key,請到「設定」輸入(每位使用者自備)');
+  return k;
+}
+async function supaSaveGeminiKey(k){
+  k = String(k || '').trim();
+  const { error } = await supaInit().from('user_settings').upsert({ gemini_api_key: k });
+  if (error) throw new Error(error.message);
+  if (k) localStorage.setItem('geminiApiKey', k); else localStorage.removeItem('geminiApiKey');
+  return true;
+}
+async function setGeminiKeyUI(){
+  const cur = localStorage.getItem('geminiApiKey') || '';
+  const hint = cur ? ('目前:' + cur.slice(0,6) + '…' + cur.slice(-4)) : '目前:未設定';
+  const inp = prompt('輸入你的 Gemini API Key(' + hint + ')\n到 https://aistudio.google.com/apikey 免費申請\n清空並確定=移除', '');
+  if (inp === null) return;
+  try { await supaSaveGeminiKey(inp); alert(inp.trim() ? 'Gemini Key 已儲存(僅存於你自己的帳號設定)' : '已移除 Gemini Key'); }
+  catch(e){ alert('儲存失敗:' + e.message); }
+}
+async function _geminiCall(sys, userText, signal, genCfg){
+  const key = await _geminiKey();
+  const today = getToday();
+  const cntKey = 'AI_CNT_' + today;
+  const cnt = Number(localStorage.getItem(cntKey) || '0');
+  if (cnt >= 200) throw new Error('今日 AI 次數已達上限');
+  const body = {
+    system_instruction: { parts: [{ text: sys }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: genCfg || { temperature: 0.2, responseMimeType: 'application/json' }
+  };
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error('Gemini 回應碼 ' + r.status + ':' + (await r.text()).slice(0, 120));
+  const json = await r.json();
+  const parts = (((json.candidates || [])[0] || {}).content || {}).parts || [];
+  let raw = (parts[0] || {}).text || '';
+  raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  localStorage.setItem(cntKey, String(cnt + 1));
+  return JSON.parse(raw);
+}
+async function supaAiParseTask(text, cats, today, signal){
+  try {
+    const sys = '你是一個維修待辦的解析助手。把使用者的話拆成一或多筆任務，只輸出 JSON 陣列，不要任何其他文字或說明。'
+      + '【最重要】每一個要做的獨立動作，都要拆成「獨立的一筆任務」。'
+      + '凡是用「順便」「然後」「還要」「再」「，」「、」「和」「及」分隔出來的不同動作，一律各自成一筆，不要把第二件事塞進 note。'
+      + '範例：輸入「明天正泰下午保養及印表機出貨」必須輸出兩筆——'
+      + '第一筆 {name:"保養",customer:"正泰",dueDate:明天的日期,time:"下午"}、'
+      + '第二筆 {name:"印表機出貨",customer:"正泰",dueDate:明天的日期,time:"下午"}。'
+      + 'note 只能放「同一筆任務」的補充(數量、聯絡人、注意事項)，絕對不要把另一個獨立動作放進 note。'
+      + '每筆物件格式為：{"name":簡短動作(不要含客戶名、日期、時段),"category":分類,"dueDate":"YYYY-MM-DD"或空字串,"time":時段或時間或空字串,"customer":客戶名或空字串,"note":補充或空字串}。'
+      + 'time 放句子提到的時段或時間，保留使用者說法(例如「上午」「下午」「晚上」「中午」「下午3點」「19:00」)，沒提到就空字串；time 不要放日期(日期一律放 dueDate)。'
+      + '分類(category)只能從這個清單裡挑，挑不到就放空字串："' + (cats || []).join('"、"') + '"。'
+      + '今天是 ' + today + '，請把「今天/明天/後天/下週一」等相對日期換算成 YYYY-MM-DD；句子沒提到日期就放空字串。'
+      + '同一句話拆出的多筆任務，若共用同一個客戶、日期或時段，每一筆都要各自帶上那個 customer、dueDate 與 time。'
+      + 'customer 只放客戶或公司名稱字串，不要含動作或其他字。';
+    let tasks = await _geminiCall(sys, String(text || '').trim(), signal);
+    if (!Array.isArray(tasks)) tasks = [tasks];
+    return { status: 'success', tasks };
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
+    return { status: 'error', message: (err && err.message) || String(err) };
+  }
+}
+async function supaAiRouteOrder(stops, signal){
+  try {
+    if (!stops || !stops.length) return { status: 'error', message: '沒有可排序的地點' };
+    const linesTxt = stops.map(s => s.i + '. ' + (s.customer || '') + '｜' + (s.task || '') + '｜' + (s.address || '')).join('\n');
+    const sys = '你是路線規劃助手。下面是今天要拜訪的地點清單，每行格式為「編號. 客戶｜任務｜地址」。'
+      + '請依台灣地理由北到南的順序安排造訪路線，整體方向是一路往南、不要南北來回跳。'
+      + '縣市由北到南的大致順序為：基隆、台北、新北、桃園、新竹、苗栗、台中、彰化、南投、雲林、嘉義、台南、高雄、屏東、宜蘭、花蓮、台東（外島最後）。'
+      + '步驟：(1) 先判斷每個地點屬於哪個縣市與鄉鎮市區；(2) 依上面的南北順序，由北往南把縣市排好；(3) 同一個縣市/區的地點要連續排在一起（同區相鄰），不要把同區的拆散到不同段落；(4) 沿這條南北軸線把清單裡的每一個地點都串進去，中間的地點不可略過或丟到最後。'
+      + '注意：你沒有真實道路距離資料，只能依地址中的地區字眼（縣市、鄉鎮市區、路名）判斷，做到「同縣市聚在一起、整體由北往南連續」即可，區內細節順序不必過度講究。'
+      + '只輸出 JSON，格式：{"order":[依造訪順序排好的編號陣列], "note":"一句話的分區說明"}。'
+      + 'order 必須包含清單裡的每一個編號、各出現一次，不可遺漏或重複。';
+    const obj = await _geminiCall(sys, linesTxt, signal,
+      { temperature: 0.2, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 1024 } });
+    return { status: 'success', order: (obj.order || []), note: (obj.note || '') };
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw err;
+    return { status: 'error', message: (err && err.message) || String(err) };
+  }
+}
+async function supaBatchAddTasks(tasksArr){
+  const sb = supaInit();
+  const rows = (tasksArr || []).map(t => ({
+    id: String(t.ID), title: String(t.task || ''), category: String(t.category || ''),
+    due_date: t.dueDate ? String(t.dueDate).slice(0, 10) : null,
+    priority: Number(t.priority) || 99, note: String(t.note || ''),
+    customer: String(t.customer || ''), customer_hint: String(t.customerHint || ''),
+    photos: [], deleted: false
+  }));
+  const { data, error } = await sb.from('tasks').upsert(rows, { onConflict: 'id' }).select('id');
+  if (error) return { status: 'error', message: error.message };
+  return { status: 'success', written: (data || []).map(r => String(r.id)), skipped: [] };
+}
+
 // --- 票務中心(v600.20 三期):Drive access token 自動刷新(Edge Function 代刷) ---
 const DRIVE_TOKEN_MAX_AGE_MIN = 50;
 async function ensureFreshToken(){
@@ -1731,7 +1839,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.20"; // v600.20 三期:照片改走 Drive 直傳+票務中心(Edge Function 代刷權杖);舊 GAS 照片讀取自動退回 GAS 通道(過渡期)
+const APP_VERSION = "SUPATESTtodo-v600.30"; // v600.30 四期:AI 改走 Gemini 直呼(自備 key,存 user_settings+本機快取);批次新增改 Supabase bulk upsert;設定新增 Key 管理
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -7148,13 +7256,8 @@ async function aiParse() {
   let timedOut = false;
   _aiTimer = setTimeout(() => { timedOut = true; try { _aiAbort.abort(); } catch(e){} }, 20000); // 逾時 20 秒自動停止
   try {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      signal: _aiAbort.signal,
-      body: JSON.stringify({ action: 'aiParseTask', text, cats: (allC||[]).map(c=>c.name), today: getToday() })
-    });
+    const data = await supaAiParseTask(text, (allC||[]).map(c=>c.name), getToday(), _aiAbort.signal);   // v600.30: Gemini 直呼
     clearTimeout(_aiTimer);
-    const data = await res.json();
     if (data.status !== 'success' || !Array.isArray(data.tasks) || !data.tasks.length) {
       _aiBusyFail('AI 解析沒成功' + (data && data.message ? '：'+data.message : '')); return;
     }
@@ -7348,9 +7451,8 @@ async function aiRouteRecompute(){
   _aiAbort = new AbortController(); let timedOut = false;
   var _aiTimeout = Math.min(45000, Math.max(18000, 12000 + sts.length * 900)); _aiTimer = setTimeout(()=>{ timedOut=true; try{_aiAbort.abort();}catch(e){} }, _aiTimeout);
   try {
-    const res = await fetch(GAS_URL, { method:'POST', signal:_aiAbort.signal, body: JSON.stringify({ action:'aiRouteOrder', stops: sts.map((st,i)=>({ i, task:'', customer:st.customer, address:st.address })) }) });
+    const data = await supaAiRouteOrder(sts.map((st,i)=>({ i, task:'', customer:st.customer, address:st.address })), _aiAbort.signal);   // v600.30: Gemini 直呼
     clearTimeout(_aiTimer);
-    const data = await res.json();
     if (data.status !== 'success' || !Array.isArray(data.order)){
       _aiBusyHide(); _routeMode = true; render();
       alert('AI 排序沒成功，先用預設順序顯示。\n（' + ((data&&data.message)?data.message:'稍後可從選單「AI 重新排路線」再試') + '）'); return;
@@ -8217,19 +8319,9 @@ async function confirmImport() {
     }
 
     try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 60000);
-      const res = await fetch(GAS_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'batchAddTasks',
-          token: sessionToken,
-          tasks: tasksBatch.map(t=>({ID:t.ID,task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime,customer:t.customer||'',customerHint:t.customerHint||''}))
-        }),
-        signal: ctrl.signal
-      });
-      clearTimeout(tid);
-      const json = await res.json();
+      const json = await supaBatchAddTasks(
+        tasksBatch.map(t=>({ID:t.ID,task:t.task,category:t.category,dueDate:t.dueDate,priority:t.priority,note:t.note,mTime:t.mTime,customer:t.customer||'',customerHint:t.customerHint||''}))
+      );   // v600.30: 批次寫入改走 Supabase bulk upsert
       if (json.status === 'success') {
         writtenIds = [...new Set([...writtenIds, ...(json.written||[])])];
         failedTasks = tasksToUpload.filter(t => !writtenIds.includes(String(t.ID)));
