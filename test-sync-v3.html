@@ -61,8 +61,34 @@
   <div id="logBox"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/idb-keyval@6/dist/umd/index.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ---------- 迷你 IndexedDB 幫手(取代 idb-keyval,零外部依賴) ---------- */
+let _kvDb = null;
+function kvOpen() {
+  if (_kvDb) return Promise.resolve(_kvDb);
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('sync3-kv', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('kv');
+    req.onsuccess = () => { _kvDb = req.result; res(_kvDb); };
+    req.onerror = () => rej(req.error);
+  });
+}
+async function kvGet(key) {
+  const d = await kvOpen();
+  return new Promise((res, rej) => {
+    const r = d.transaction('kv','readonly').objectStore('kv').get(key);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function kvSet(key, val) {
+  const d = await kvOpen();
+  return new Promise((res, rej) => {
+    const r = d.transaction('kv','readwrite').objectStore('kv').put(val, key);
+    r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+  });
+}
+</script>
 <script>
 /* ====== 測試版常數 ====== */
 const SUPABASE_URL = "https://vzrnkzokushqhixngrsi.supabase.co";
@@ -70,7 +96,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_iCAX3ygzF5s0gVMBy7eqmw_CNs78Cf_";
 /* ======================= */
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const { get: kvGet, set: kvSet } = idbKeyval;
 const $ = id => document.getElementById(id);
 const logLine = m => { const b = $("logBox");
   b.textContent = new Date().toLocaleTimeString('zh-TW',{hour12:false}) + " " + m + "\n" + b.textContent;
