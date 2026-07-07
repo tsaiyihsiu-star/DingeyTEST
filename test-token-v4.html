@@ -87,7 +87,9 @@ async function setTok(t){ await kvSet('tok', t); paintStatus(); }
 function ageMin(t){ return t?.issued_at ? (Date.now()-t.issued_at)/60000 : Infinity; }
 
 async function paintStatus(){
-  $("stMode").textContent = window.matchMedia('(display-mode: standalone)').matches
+  const standalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;   // iOS meta 標籤模式用蘋果私有屬性
+  $("stMode").textContent = standalone
     ? '主畫面(standalone) ✔ 這就是要實測的模式' : '瀏覽器分頁';
   const t = await getTok();
   const a = ageMin(t);
