@@ -1368,6 +1368,37 @@ function taskToRow(t, extra){ const base = {
 let supaTaskSync = localStorage.getItem('supaTaskSync') || null;
 let supaCustSync = localStorage.getItem('supaCustSync') || null;
 
+// --- 本地救援匯出(免登入;直讀 localStorage;格式與正式備份相容) ---
+function supaRescueExport(){
+  try {
+    const rd = k => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch(e){ return []; } };
+    const tasks = rd('tasks'), customers = rd('customers'), contacts = rd('contactsCache');
+    let categories = rd('cats');
+    const colors = (function(){ try { return JSON.parse(localStorage.getItem('catColors')) || {}; } catch(e){ return {}; } })();
+    categories = (categories || []).map(c => Object.assign({}, c, { color: c.color || colors[c.name] || '' }));
+    if (!tasks.length && !customers.length && !contacts.length) { alert('本機沒有快取資料可匯出。'); return; }
+    const payload = {
+      status: 'success',
+      exportedAt: new Date().toISOString(),
+      schema: 'v502.12',
+      source: 'local-rescue-v600',
+      note: '登入前本地救援匯出(此裝置快取,可能不含其他裝置的最新變更)',
+      tasks, customers, contacts, categories,
+      pendingTaskOps: rd('opLog'), pendingCusOps: rd('cusOpLog')   // 未推送變更一併帶走(還原流程會忽略,人工救援時最珍貴)
+    };
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const stamp = d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '宜修本地救援_' + stamp + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const pend = (payload.pendingTaskOps.filter(o=>o.status==='pending').length + payload.pendingCusOps.filter(o=>o.status==='pending').length);
+    alert('救援匯出完成!\n任務 ' + tasks.length + ' 筆、客戶 ' + customers.length + ' 筆、聯絡資料 ' + contacts.length + ' 筆、分類 ' + categories.length + ' 筆' + (pend ? ('\n⚠ 含 ' + pend + ' 筆未推送變更(建議登入成功後確認同步)') : ''));
+  } catch (e) { alert('救援匯出失敗: ' + (e.message || e)); }
+}
+
 // --- 登入閘(取代 A2 密碼) ---
 function supaShowLogin(){
   var _ls = document.getElementById('loginScreen');
@@ -1377,9 +1408,12 @@ function supaShowLogin(){
   const d = document.createElement('div');
   d.id = 'supaLoginOverlay';
   d.style.cssText = 'position:fixed;inset:0;background:#f5f5f5;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;';
+  const _desk = !window.matchMedia('(hover:none) and (pointer:coarse)').matches;
   d.innerHTML = '<div style="font-size:1.3em;font-weight:700">宜修待辦</div>'
     + '<button onclick="supaSignIn()" style="padding:14px 28px;border:none;border-radius:12px;background:#2e7d32;color:#fff;font-size:1.1em">使用 Google 登入</button>'
-    + '<div style="color:#888;font-size:.85em">v600 Supabase 世代</div>';
+    + '<div style="color:#888;font-size:.85em">v600 Supabase 世代</div>'
+    + (_desk ? '<button onclick="supaRescueExport()" style="margin-top:20px;padding:8px 16px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#555;font-size:.85em;cursor:pointer">📦 本地備份匯出(電腦版・免登入)</button>'
+             + '<div style="color:#aaa;font-size:.72em;max-width:300px;text-align:center">登入異常時的救援出口:直接匯出此裝置的本地快取資料(含未推送變更),格式與正式備份相容可還原</div>' : '');
   document.body.appendChild(d);
 }
 async function supaSignIn(){
@@ -1398,8 +1432,201 @@ function supaSaveDriveTok(session){
 }
 /* ===== v600 資料層結束 ===== */
 
+/* ===== v600.10 二期路由器:分類/聯絡資料/外部連結/客戶管理 改走 Supabase ===== */
+const SUPA_ROUTED = new Set(['addCategory','deleteCategory','renameCategory','reorderCategories',
+  'updateCategoryColor','renameCustomer','saveContact','deleteContact','moveContact',
+  'setCustomerCode','setCustomerGroup','leaveCustomerGroup',
+  'getExternalLinks','saveExternalLink','deleteExternalLink','reorderExternalLinks',
+  'importContacts','getContacts','getCustomers']);
 
-const APP_VERSION = "SUPATESTtodo-v600.00"; // v600.00 Supabase 世代第一期:Google 登入+任務/客戶同步改走 Supabase(分類/照片/AI 暫留 GAS)
+// --- 雲端讀取(回傳 GAS 相容形狀,對帳/快取共用) ---
+async function supaFetchAllTasks(){
+  const { data, error } = await supaInit().from('tasks').select('*')
+    .eq('deleted', false).limit(5000);
+  if (error) throw new Error(error.message);
+  return (data || []).map(rowToTask);
+}
+async function supaFetchAllCustomers(){
+  const { data, error } = await supaInit().from('customers').select('*')
+    .eq('deleted', false).limit(5000);
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => ({
+    name: r.name, firstSeen: Date.parse(r.created_at) || 0, lastSeen: Date.parse(r.updated_at) || 0,
+    taskCount: 0, updatedAt: Date.parse(r.updated_at) || 0, isStopWord: r.is_stop_word === true,
+    custCode: r.cust_code || '', groupId: r.group_id || '', role: r.role || '', masterKey: r.master_key || '' }));
+}
+async function supaFetchAllContacts(){
+  const { data, error } = await supaInit().from('customer_contacts').select('*')
+    .eq('deleted', false).order('sort_order', { ascending: true }).limit(5000);
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => ({
+    groupKey: r.group_key || '', type: r.type || 'note', label: r.label || '', content: r.content || '',
+    sortOrder: Number(r.sort_order) || 0, rowId: String(r.id), updatedAt: Date.parse(r.updated_at) || 0,
+    origin: r.origin || '', navFix: r.nav_fix || '' }));
+}
+
+// --- g-id 票務:綁定鍵解析(sub→masterKey;其餘自己的 g-id,沒有就即時補發) ---
+async function supaEnsureGroupKey(custName){
+  const sb = supaInit();
+  let c = (allCust || []).find(x => x.name === custName);
+  if (!c) {
+    const { data } = await sb.from('customers').select('*').eq('name', custName).eq('deleted', false).maybeSingle();
+    if (data) c = { name: data.name, groupId: data.group_id || '', role: data.role || '', masterKey: data.master_key || '' };
+  }
+  if (!c) return null;
+  if (c.role === 'sub' && c.masterKey) return c.masterKey;
+  if (c.groupId) return c.groupId;
+  const gid = 'g' + Date.now() + Math.random().toString(36).slice(2, 8);
+  const { error } = await sb.from('customers').upsert({ name: custName, group_id: gid }, { onConflict: 'owner_id,name' });
+  if (error) throw error;
+  const lc = (allCust || []).find(x => x.name === custName);
+  if (lc) { lc.groupId = gid; saveLocal(); }
+  return gid;
+}
+
+// --- 路由本體:GAS 相容回應形狀 ---
+async function supaRoute(action, extra){
+  const sb = supaInit();
+  extra = extra || {};
+  try {
+    switch (action) {
+      // ── 分類 ──
+      case 'addCategory': {
+        const { error } = await sb.from('categories').upsert(
+          { name: String(extra.name), sort_order: Number(extra.sortOrder) || 0, deleted: false },
+          { onConflict: 'owner_id,name' });
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      case 'deleteCategory': {
+        const { error } = await sb.from('categories').update({ deleted: true }).eq('name', String(extra.name));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      case 'renameCategory': {
+        const { error } = await sb.from('categories').update({ name: String(extra.name) }).eq('name', String(extra.old));
+        if (error) { if (error.code === '23505') return { status: 'error', message: '分類名稱已存在' }; throw error; }
+        return { status: 'success' };
+      }
+      case 'reorderCategories': {
+        const order = extra.order || [];
+        for (let i = 0; i < order.length; i++) {
+          const { error } = await sb.from('categories').update({ sort_order: i }).eq('name', String(order[i]));
+          if (error) throw error;
+        }
+        return { status: 'success' };
+      }
+      case 'updateCategoryColor': {
+        const { error } = await sb.from('categories').update({ color: String(extra.color || '') }).eq('name', String(extra.name));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      // ── 客戶 ──
+      case 'renameCustomer': {
+        const oldN = String(extra.oldName || ''), newN = String(extra.newName || '');
+        if (!oldN || !newN) return { status: 'error', message: 'missing name' };
+        let r = await sb.from('customers').update({ name: newN }).eq('name', oldN);
+        if (r.error) { if (r.error.code === '23505') return { status: 'error', message: '客戶名稱已存在' }; throw r.error; }
+        r = await sb.from('tasks').update({ customer: newN }).eq('customer', oldN);
+        if (r.error) throw r.error;
+        return { status: 'success' };
+      }
+      case 'setCustomerCode': {
+        const { error } = await sb.from('customers').update({ cust_code: String(extra.code || '') }).eq('name', String(extra.name));
+        if (error) { if (error.code === '23505') return { status: 'error', message: '編號已被其他客戶使用' }; throw error; }
+        return { status: 'success' };
+      }
+      case 'setCustomerGroup': {
+        const name = String(extra.name || ''), target = String(extra.targetName || '');
+        const gk = await supaEnsureGroupKey(target);
+        if (!gk) return { status: 'error', message: '目標客戶不存在' };
+        let r = await sb.from('customers').update({ role: 'master', group_id: gk }).eq('name', target);
+        if (r.error) throw r.error;
+        r = await sb.from('customers').update({ role: 'sub', master_key: gk }).eq('name', name);
+        if (r.error) throw r.error;
+        return { status: 'success', groupId: gk };
+      }
+      case 'leaveCustomerGroup': {
+        const { error } = await sb.from('customers').update({ role: '', master_key: '' }).eq('name', String(extra.name));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      // ── 聯絡資料 ──
+      case 'saveContact': {
+        const c = extra.contact;
+        if (!c || !c.rowId) return { status: 'error', message: 'invalid contact' };
+        const groupKey = c.custName ? await supaEnsureGroupKey(String(c.custName)) : String(c.groupKey || '');
+        if (!groupKey) return { status: 'error', message: 'invalid contact (no groupKey)' };
+        const { data: existing } = await sb.from('customer_contacts').select('id').eq('id', String(c.rowId)).maybeSingle();
+        const row = { id: String(c.rowId), group_key: groupKey, type: String(c.type || 'note'),
+          label: String(c.label || ''), content: String(c.content || ''),
+          sort_order: Number(c.sortOrder) || 0, origin: String(c.origin || ''),
+          nav_fix: String(c.navFix || ''), deleted: false };
+        const { error } = await sb.from('customer_contacts').upsert(row, { onConflict: 'id' });
+        if (error) {
+          if (error.code === '23505') return { status: existing ? 'updated' : 'added', rowId: String(c.rowId), groupKey };  // 唯一衝突靜默成功(防連點雙寫)
+          throw error;
+        }
+        return { status: existing ? 'updated' : 'added', rowId: String(c.rowId), groupKey };
+      }
+      case 'deleteContact': {
+        const { error } = await sb.from('customer_contacts').update({ deleted: true }).eq('id', String(extra.rowId));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      case 'moveContact': {
+        const gk = await supaEnsureGroupKey(String(extra.targetName || ''));
+        if (!gk) return { status: 'error', message: '目標客戶不存在' };
+        const patch = { group_key: gk };
+        if (extra.sortOrder != null) patch.sort_order = Number(extra.sortOrder) || 0;
+        const { error } = await sb.from('customer_contacts').update(patch).eq('id', String(extra.rowId));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      // ── 外部連結 ──
+      case 'getExternalLinks': {
+        const { data, error } = await sb.from('external_links').select('*')
+          .eq('deleted', false).order('sort_order', { ascending: true });
+        if (error) throw error;
+        return (data || []).map(r => ({ id: String(r.id), name: r.name || '', url: r.url || '', sortOrder: Number(r.sort_order) || 0 }));
+      }
+      case 'saveExternalLink': {
+        const l = extra.link || {};
+        if (!l.url) return { status: 'error', message: 'missing url' };
+        const id = String(l.id || crypto.randomUUID());
+        const row = { id, name: String(l.name || ''), url: String(l.url), sort_order: Number(l.sortOrder) || 0, deleted: false };
+        const { error } = await sb.from('external_links').upsert(row, { onConflict: 'id' });
+        if (error) throw error;
+        return { status: 'success', link: { id, name: row.name, url: row.url } };
+      }
+      case 'deleteExternalLink': {
+        const { error } = await sb.from('external_links').update({ deleted: true }).eq('id', String(extra.id));
+        if (error) throw error;
+        return { status: 'success' };
+      }
+      case 'reorderExternalLinks': {
+        const order = extra.order || [];
+        for (let i = 0; i < order.length; i++) {
+          const { error } = await sb.from('external_links').update({ sort_order: i }).eq('id', String(order[i]));
+          if (error) throw error;
+        }
+        return { status: 'success' };
+      }
+      // ── 讀取(供對帳/快取共用) ──
+      case 'getContacts': return await supaFetchAllContacts();
+      case 'getCustomers': return await supaFetchAllCustomers();
+      // ── 尚未接手 ──
+      case 'importContacts': return { status: 'error', message: '匯入功能將於二期後段接手,暫不可用' };
+      default: return { status: 'error', message: '未知路由: ' + action };
+    }
+  } catch (e) {
+    return { status: 'error', message: (e && e.message) || String(e) };
+  }
+}
+/* ===== v600.10 路由器結束 ===== */
+
+
+const APP_VERSION = "SUPATESTtodo-v600.11"; // v600.11 二期+:登入畫面新增本地救援匯出(電腦版・免登入,直讀本地快取,格式相容正式還原)
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -1923,7 +2150,12 @@ async function pushOpsToCloud(fetchFn) {
       if ('Customer' in p) base.customer = String(p.Customer);
       if ('CustomerHint' in p) base.customer_hint = String(p.CustomerHint);
       if ('Photos' in p) base.photos = _photosArr(p.Photos);
-      ({ error } = await sb.from('tasks').upsert(base, { onConflict: 'id' }));
+      const { data: srow, error: uerr } = await sb.from('tasks').upsert(base, { onConflict: 'id' }).select().single();
+      error = uerr;
+      if (!error && srow) {                                       // v600.10: 伺服器版本回寫,mTime 即刻對齊
+        const li = allT.findIndex(t => String(t.ID) === String(srow.id));
+        if (li >= 0) allT[li] = rowToTask(srow);
+      }
     }
     if (error) {
       console.log('[pushOps] error: ' + error.message);
@@ -1934,6 +2166,7 @@ async function pushOpsToCloud(fetchFn) {
   }
   opLog = opLog.filter(o => !acked.includes(o.opId));
   saveOpLog();
+  saveLocal();   // v600.10: 回寫後保存
   return { acked, rejected: [] };
 }
 
@@ -3449,9 +3682,15 @@ async function flushQueue() {
     for (const item of catQueue) {
       if (unauthorizedDetected) break;
       try {
-        const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
+        let json;
+        if (SUPA_ROUTED.has(item.action)) {                      // v600.10 二期路由
+          json = await supaRoute(item.action, item.payload);
+          if (json && json.status === 'error') throw new Error(json.message || '雲端錯誤');
+        } else {
+          const res = await batchFetch(JSON.stringify({action: item.action, token: sessionToken, ...item.payload}));
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          json = await res.json();
+        }
         if (json.status === 'error' && json.message === 'unauthorized') {
           unauthorizedDetected = true;
           pushLog('登入已過期，請重新登入', 'error');
@@ -3543,145 +3782,9 @@ async function flushQueue() {
   }
   return true;
 }
-async function verifyFlushedOps(cloudTasks, cloudCats) {
-  if (!_lastFlushedOps.length) return;
-  const ops = [..._lastFlushedOps];
-  _lastFlushedOps = [];
-
-  const sessionToken = getSession();
-  if (!sessionToken) { pushLog('驗證跳過：未登入', 'warn'); return; }
-
-  // 等待 1 秒，確保 GAS Sheets 寫入完成後再驗證
-  await new Promise(r => setTimeout(r, 1000));
-
-  // 整理需要驗證的任務 IDs 和分類操作
-  const taskChecks = {}; // id → op
-  const catChecks = [];
-
-  ops.forEach(op => {
-    if (['addTask','updateTask','toggleTask','setTaskStatus'].includes(op.action)) {
-      const id = op.payload.id || op.payload.data?.ID;
-      if (id) taskChecks[String(id)] = op;
-    } else if (op.action === 'deleteTask') {
-      const id = op.payload.id;
-      if (id) taskChecks[String(id)] = op;
-    } else if (op.action === 'addCategory') {
-      catChecks.push({type:'exists', name:op.payload.name, op});
-    } else if (op.action === 'deleteCategory') {
-      catChecks.push({type:'notExists', name:op.payload.name, op});
-    } else if (op.action === 'renameCategory') {
-      catChecks.push({type:'renamed', oldName:op.payload.old, newName:op.payload.name, op});
-    } else if (op.action === 'updateCategoryColor') {
-      catChecks.push({type:'color', name:op.payload.name, color:op.payload.color||'', op});
-    }
-  });
-
-  const retryOps = [];
-  const verifyFetch = (body, ms=25000) => {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), ms);
-    return fetch(GAS_URL, {method:'POST', body, signal: ctrl.signal}).finally(() => clearTimeout(tid));
-  };
-
-  // 驗證任務
-  if (Object.keys(taskChecks).length > 0) {
-    try {
-      const res = await verifyFetch(JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks), token: sessionToken}));
-      const json = await res.json();
-      if (json.status === 'success') {
-        const results = json.results || {};
-        Object.entries(taskChecks).forEach(([id, op]) => {
-          const existsInCloud = results[id] === true;
-          const shouldExist = op.action !== 'deleteTask';
-          if (existsInCloud !== shouldExist) {
-            // 驗證失敗，檢查重試次數
-            const key = `${op.action}_${id}`;
-            _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
-            if (_verifyRetryCount[key] <= 3) {
-              retryOps.push(op);
-              pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
-            } else {
-              pushLog(`⚠️ ${op.label} 無法同步，請手動檢查`, 'error');
-              // 即使放棄，也清除計數，避免下次手動同步永遠無法重試
-              delete _verifyRetryCount[key];
-              if (_importTotal > 0) importProgressError('部分資料無法確認寫入，請手動同步');
-            }
-          } else {
-            // 驗證成功，清除重試計數
-            delete _verifyRetryCount[`${op.action}_${id}`];
-          }
-        });
-      }
-    } catch(e) {
-      pushLog(`驗證任務失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
-      // ★ timeout 不再視為通過：把所有 taskChecks 放回 retry（受 _verifyRetryCount 限制）
-      Object.entries(taskChecks).forEach(([id, op]) => {
-        const key = `${op.action}_${id}`;
-        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
-        if (_verifyRetryCount[key] <= 3) {
-          retryOps.push(op);
-        } else {
-          delete _verifyRetryCount[key];
-        }
-      });
-      if (_importTotal > 0) importProgressError('驗證請求超時，將自動重試');
-    }
-  }
-
-  // 驗證分類
-  if (catChecks.length > 0) {
-    try {
-      const res = await verifyFetch(JSON.stringify({action:'verifyCategories', checks: catChecks.map(c => ({type:c.type, name:c.name, color:c.color, oldName:c.oldName, newName:c.newName})), token: sessionToken}));
-      const json = await res.json();
-      if (json.status === 'success') {
-        (json.results || []).forEach((r, i) => {
-          const {op} = catChecks[i];
-          if (!r.ok) {
-            const key = `${op.action}_${op.payload.name}`;
-            _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
-            if (_verifyRetryCount[key] <= 3) {
-              retryOps.push(op);
-              pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
-            } else {
-              pushLog(`⚠️ ${op.label} 無法同步，請手動檢查`, 'error');
-              delete _verifyRetryCount[key];  // 清除計數，允許未來再嘗試
-              if (_importTotal > 0) importProgressError('部分資料無法確認寫入，請手動同步');
-            }
-          } else {
-            delete _verifyRetryCount[`${op.action}_${op.payload.name}`];
-          }
-        });
-      }
-    } catch(e) {
-      pushLog(`驗證分類失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
-      // timeout 也計入重試
-      catChecks.forEach(({op}) => {
-        const key = `${op.action}_${op.payload.name}`;
-        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
-        if (_verifyRetryCount[key] <= 3) {
-          retryOps.push(op);
-        } else {
-          delete _verifyRetryCount[key];
-        }
-      });
-    }
-  }
-
-  // 有驗證失敗的操作，放回佇列重試
-  if (retryOps.length > 0) {
-    pendingQueue = [...retryOps, ...pendingQueue];
-    saveLocal(); updateBanner(); updateSyncMeta();
-    pushLog(`${retryOps.length} 筆驗證失敗，30 秒後自動重試`, 'warn');
-    if (_importTotal > 0) importProgressVerifyDone(retryOps.length);
-    setTimeout(() => {
-      const hasAnyPending = pendingQueue.length
-        || opLog.some(o => o.status === 'pending')
-        || cusOpLog.some(o => o.status === 'pending');
-      if (hasAnyPending && isOnline()) schedulePush(true);
-    }, 30000);
-  } else {
-    if (_importTotal > 0) importProgressVerifyDone(0);
-  }
+async function verifyFlushedOps(tasks, cats) {
+  // v600.10 已退役:舊 GAS 推送後驗證。Supabase upsert 即權威寫入,無需回讀驗證。
+  return { status: 'success', results: {} };
 }
 
 async function pullFromCloud(reason, attempt = 1) {
@@ -3747,6 +3850,17 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
     supaCustSync = crows.length ? crows[crows.length - 1].updated_at : supaCustSync;
     if (supaCustSync) localStorage.setItem('supaCustSync', supaCustSync);
 
+    // v600.10: 分類全量(二期接管;跨裝置分類變更由全量傳播,編輯端本地即時)
+    try {
+      const { data: cats, error: caterr } = await sb.from('categories').select('*')
+        .eq('deleted', false).order('sort_order', { ascending: true });
+      if (!caterr && Array.isArray(cats)) {
+        allC = cats.map(r => ({ name: r.name, color: r.color || '', rowId: r.id, sortOrder: Number(r.sort_order) || 0 }));
+        cats.forEach(r => { if (r.color) catColors[r.name] = r.color; else delete catColors[r.name]; });
+        saveCatColors();
+      }
+    } catch (eCat) { console.log('[fullSync] 分類拉取失敗: ' + eCat.message); }
+
     // 派生 taskCount(本地即算,決策4)
     const cnt = {};
     allT.forEach(t => { const n = String(t.Customer || ''); if (n) cnt[n] = (cnt[n] || 0) + 1; });
@@ -3775,117 +3889,9 @@ async function pullFromCloudFull(reason, attempt, fetchWithTimeout) {
 // 增量拉取：只更新變動的部分（v500 新增）
 // v500.27: 加 hasCusUpdate、拉客戶名單
 async function pullFromCloudIncremental(reason, hasCatUpdate, hasCusUpdate, fetchWithTimeout, sessionToken) {
-  try {
-    const calls = [
-      fetchWithTimeout(`${GAS_URL}?action=getTasks&token=${sessionToken}&since=${lastSyncTime}`).then(r => r.json())
-    ];
-    if (hasCatUpdate) {
-      calls.push(fetchWithTimeout(`${GAS_URL}?action=getCategories&token=${sessionToken}`).then(r => r.json()));
-    }
-    // v500.27
-    if (hasCusUpdate) {
-      calls.push(fetchWithTimeout(`${GAS_URL}?action=getCustomers&token=${sessionToken}`).then(r => r.json()).catch(() => null));
-      // v500.32fix: 客戶有變動就連帶抓聯絡資料（聯絡資料異動會 bump 客戶 UpdatedAt → 這裡才收得到、跨裝置才同步）
-      calls.push(fetchWithTimeout(`${GAS_URL}?action=getContacts&token=${sessionToken}`).then(r => r.json()).catch(() => null));
-    }
-
-    const results = await Promise.all(calls);
-    const resT = results[0];
-    let idx = 1;
-    const resC = hasCatUpdate ? results[idx++] : null;
-    const resCust = hasCusUpdate ? results[idx++] : null;
-    const resContacts = hasCusUpdate ? results[idx++] : null;
-
-    if (!Array.isArray(resT)) {
-      if (resT && resT.status === 'error' && resT.message === 'unauthorized') {
-        pushLog('登入已過期，請重新登入', 'error');
-        scheduleLogout();
-        return false;
-      }
-      pushLog('增量拉取失敗：Tasks 資料異常', 'error');
-      return false;
-    }
-
-    // 增量 merge 任務（mTime 較新者勝 + filter）
-    let mergedCount = 0;
-    resT.forEach(newT => {
-      const normalized = {
-        ...newT,
-        Task:     String(newT.Task     || ''),
-        Category: String(newT.Category || ''),
-        Note:     String(newT.Note     || ''),
-        Status:   String(newT.Status   || 'Pending'),
-        Priority: Number(newT.Priority) || 99,
-        ID:       String(newT.ID       || ''),
-      };
-
-      // filter：被擋下的不加入 allT
-      if (!shouldKeep(normalized)) return;
-
-      const idx = allT.findIndex(t => String(t.ID) === String(normalized.ID));
-      if (idx > -1) {
-        // 已存在：只有雲端更新時才覆蓋
-        if (Number(normalized.mTime) > Number(allT[idx].mTime || 0)) {
-          allT[idx] = normalized;
-          mergedCount++;
-        }
-      } else {
-        // 不存在：新增
-        allT.push(normalized);
-        mergedCount++;
-      }
-    });
-
-    // 處理分類（如果有變動）
-    if (resC && Array.isArray(resC)) {
-      const filtered = resC.filter(c => c && (typeof c === 'string' ? c !== "Category Name" : c.name !== "Category Name"));
-      const hasSortOrder = filtered.some(c => typeof c === 'object' && c.sortOrder !== undefined);
-      const toObj = c => typeof c === 'string' ? {name:c, rowId:null, color:'', sortOrder:0} : {name:c.name, rowId:c.RowID||c.rowId||null, color:c.color||c.Color||'', sortOrder:c.sortOrder||c.SortOrder||0};
-      if (hasSortOrder) {
-        filtered.sort((a, b) => (a.sortOrder||a.SortOrder||0) - (b.sortOrder||b.SortOrder||0));
-        allC = filtered.map(toObj);
-        catOrder = allC.map(c => c.name);
-      } else {
-        allC = filtered.map(toObj);
-        applyCatOrder();
-      }
-      allC.forEach(c => {
-        if (c.color) catColors[c.name] = c.color;
-        else delete catColors[c.name];
-      });
-      saveCatColors();
-    }
-
-    // v500.27: 處理客戶名單（若有變動）
-    if (resCust && Array.isArray(resCust)) {
-      allCust = _mergeCloudCustomers(resCust);   // v500.32fix: 保留本機 pending 新增、避免被吞
-    }
-    // v500.32fix: 處理聯絡資料（若有變動）
-    if (resContacts && Array.isArray(resContacts)) {
-      allContacts = resContacts;
-      localStorage.setItem('contactsCache', JSON.stringify(allContacts));
-    }
-
-    saveLocal();
-    pushLog(`增量同步：${mergedCount} 筆變動`, 'success');
-    lastSyncTime = Date.now();
-    localStorage.setItem('lastSyncTime', String(lastSyncTime));
-    // ★ 注意：增量同步不更新 lastFullSync（這由全量路徑負責）
-    // 但成功完成增量同步表示資料是新的 → 移除健康提醒
-    dismissSyncReminder();
-    _pendingVerify = false;
-    _prePullLocalTasks = [];
-
-    if (_lastFlushedOps.length > 0) {
-      await verifyFlushedOps(allT, allC);
-    }
-    renderAll();
-    updateSyncMeta();
-    return true;
-  } catch(e) {
-    pushLog(`增量拉取失敗，下次會 fallback 全量: ${e.message||'錯誤'}`, 'warn');
-    return false;
-  }
+  // v600.10 已退役:舊 GAS 增量路徑,由新編排器 pullFromCloud(updated_at 增量)取代。保留殘根防誤呼。
+  console.log('[deprecated] pullFromCloudIncremental 已退役,改走 pullFromCloud');
+  return pullFromCloud(reason || 'legacy');
 }
 let _lastFlushedOps = [];
 let _verifyRetryCount = {};
@@ -3981,76 +3987,9 @@ async function ipManualRetry() {
 }
 
 async function lightVerify() {
-  if (!_lastFlushedOps.length) return;
-  const ops = [..._lastFlushedOps];
+  // v600.10 已退役:舊 GAS 寫入後輕量驗證(等1秒回讀確認)。Supabase upsert 同步回應即權威確認,無需回讀。
   _lastFlushedOps = [];
-
-  const sessionToken = getSession();
-  if (!sessionToken) return;
-
-  // 等 1 秒確保 GAS 寫入完成
-  await new Promise(r => setTimeout(r, 1000));
-
-  // 只驗證任務類操作
-  const taskChecks = {};
-  ops.forEach(op => {
-    if (['addTask','updateTask','toggleTask','setTaskStatus'].includes(op.action)) {
-      const id = op.payload.id || op.payload.data?.ID;
-      if (id) taskChecks[String(id)] = op;
-    } else if (op.action === 'deleteTask') {
-      const id = op.payload.id;
-      if (id) taskChecks[String(id)] = op;
-    }
-  });
-
-  if (Object.keys(taskChecks).length === 0) return;
-
-  try {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 35000);
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({action:'verifyTasks', ids: Object.keys(taskChecks), token: sessionToken}),
-      signal: ctrl.signal
-    });
-    clearTimeout(tid);
-    const json = await res.json();
-    if (json.status !== 'success') return;
-
-    const results = json.results || {};
-    const retryOps = [];
-    Object.entries(taskChecks).forEach(([id, op]) => {
-      const existsInCloud = results[id] === true;
-      const shouldExist = op.action !== 'deleteTask';
-      if (existsInCloud !== shouldExist) {
-        const key = `${op.action}_${id}`;
-        _verifyRetryCount[key] = (_verifyRetryCount[key] || 0) + 1;
-        if (_verifyRetryCount[key] <= 3) {
-          retryOps.push(op);
-          pushLog(`驗證失敗：${op.label}（第 ${_verifyRetryCount[key]} 次）`, 'warn');
-        } else {
-          pushLog(`⚠️ ${op.label} 無法同步，請手動立即同步`, 'error');
-          delete _verifyRetryCount[key];  // 清除計數，允許未來再嘗試
-        }
-      } else {
-        delete _verifyRetryCount[`${op.action}_${id}`];
-      }
-    });
-
-    if (retryOps.length > 0) {
-      pendingQueue = [...retryOps, ...pendingQueue];
-      saveLocal(); updateBanner();
-      pushLog(`${retryOps.length} 筆驗證失敗，30 秒後自動重試`, 'warn');
-      setTimeout(() => {
-        if (pendingQueue.length && isOnline()) schedulePush(true);
-      }, 30000);
-    } else {
-      if (_importTotal > 0) importProgressVerifyDone(0);
-    }
-  } catch(e) {
-    pushLog(`輕量驗證失敗：${e.name === 'AbortError' ? '請求超時' : e.message}`, 'warn');
-    if (_importTotal > 0) importProgressVerifyDone(0);
-  }
+  return;
 }
 
 async function fullSync(reason) {
@@ -4134,6 +4073,7 @@ async function pushOp(action, payload, label) {
 
 // v500.31: 直接呼叫後端 action（不走 op log，給群組/聯絡資料等即時操作用）
 async function callGasAction(action, extra, timeoutMs) {
+  if (SUPA_ROUTED.has(action)) return supaRoute(action, extra);   // v600.10 二期路由:已搬遷 action 直走 Supabase
   const token = getSession();
   const body = JSON.stringify(Object.assign({ action, token }, extra || {}));
   const ctrl = new AbortController();
@@ -4199,9 +4139,8 @@ async function openReconcile() {
 
     statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">⏳</div><div>拉取雲端任務中...</div>';
 
-    // 2. 拉雲端全量
-    const res = await fetch(`${GAS_URL}?action=getTasks&token=${sessionToken}`);
-    const cloudTasks = await res.json();
+    // 2. 拉雲端全量(v600.10: Supabase)
+    const cloudTasks = await supaFetchAllTasks();
     
     if (!Array.isArray(cloudTasks)) {
       statusEl.innerHTML = '<div style="font-size:32px;margin-bottom:12px;">❌</div><div>拉取雲端失敗</div>';
@@ -4267,8 +4206,8 @@ async function openReconcile() {
     // v501.18: 同時對帳 客戶清單 與 聯絡資料
     const _fwt = (url, ms=20000) => { const cc=new AbortController(); const tt=setTimeout(()=>cc.abort(),ms); return fetch(url,{signal:cc.signal}).finally(()=>clearTimeout(tt)); };
     let cloudCust=null, cloudContacts=null;
-    try { const j = await _fwt(`${GAS_URL}?action=getCustomers&token=${sessionToken}`).then(r=>r.json()); cloudCust = Array.isArray(j)?j:[]; } catch(e){ cloudCust=null; }
-    try { const j = await _fwt(`${GAS_URL}?action=getContacts&token=${sessionToken}`).then(r=>r.json()); cloudContacts = Array.isArray(j)?j:[]; } catch(e){ cloudContacts=null; }
+    try { const j = await supaFetchAllCustomers(); cloudCust = Array.isArray(j)?j:[]; } catch(e){ cloudCust=null; }
+    try { const j = await supaFetchAllContacts(); cloudContacts = Array.isArray(j)?j:[]; } catch(e){ cloudContacts=null; }
     let custLocalOnly=[], custCloudOnly=[], custDiff=[];
     if (cloudCust!==null){
       const lm=new Map((allCust||[]).map(c=>[String(c.name),c])), cm=new Map(cloudCust.map(c=>[String(c.name),c]));
@@ -5796,16 +5735,7 @@ async function _ensureCustomerSynced(name) {
 async function refreshContactsCache() {
   try {
     if (!isOnline || !isOnline()) return;
-    const token = getSession();
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), 15000);
-    let data;
-    try {
-      const res = await fetch(`${GAS_URL}?action=getContacts&token=${token}`, { signal: ctrl.signal });
-      data = await res.json();
-    } finally {
-      clearTimeout(tid);
-    }
+    const data = await supaFetchAllContacts();   // v600.10: 改讀 Supabase
     if (Array.isArray(data)) {
       allContacts = data;
       localStorage.setItem('contactsCache', JSON.stringify(allContacts));
@@ -5814,15 +5744,7 @@ async function refreshContactsCache() {
     // v500.31: 順便重抓 customers，確保 groupId（分組）同步到本機
     // （分組走直接 API、不產生 op log，增量同步抓不到，需在此無條件刷新）
     try {
-      const ctrl2 = new AbortController();
-      const tid2 = setTimeout(() => ctrl2.abort(), 15000);
-      let cust;
-      try {
-        const res2 = await fetch(`${GAS_URL}?action=getCustomers&token=${token}`, { signal: ctrl2.signal });
-        cust = await res2.json();
-      } finally {
-        clearTimeout(tid2);
-      }
+      const cust = await supaFetchAllCustomers();   // v600.10: 改讀 Supabase
       if (Array.isArray(cust)) {
         // v500.31fix: 保留「本機剛新增、cusOpLog 還沒推上後端」的客戶，
         // 否則手動新增客戶後馬上存聯絡資料，這裡重抓會用尚未含新客戶的後端清單覆蓋、把新客戶吞掉
