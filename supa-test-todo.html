@@ -1499,12 +1499,23 @@ async function supaExportLocal(note, silent){
       if ((count || 0) === 1 && !confirm('提醒:這是今天第 2 次匯出(單日上限 3 次)。\n確定繼續?')) return { status: 'error', message: '已取消' };
     }
   } catch (e) { console.log('[export] 限額查詢失敗,放行: ' + e.message); }
-  // 指紋對帳(count 級,幾十 bytes):本地 vs 雲端筆數不符時提醒先同步
+  // v600.41: 手動匯出前先增量同步(拉齊其他裝置的變更;無變更僅數十 bytes)
+  // 安全網匯出(silent)刻意跳過:語意=還原前「這台機器現況」快照
+  if (!silent) {
+    try { await pullFromCloud('export_precheck'); } catch (e) { console.log('[export] 預同步失敗,續行: ' + e.message); }
+  }
+  // 指紋對帳(count + max updated_at 雙指標,定案設計):同步後仍不符 → 提醒
   try {
-    const { count: cloudN } = await sb.from('tasks').select('id', { count: 'exact', head: true }).eq('deleted', false);
-    if (cloudN != null && cloudN !== allT.length && !silent) {
-      if (!confirm('注意:本機任務 ' + allT.length + ' 筆、雲端 ' + cloudN + ' 筆不一致。\n建議先「立即同步」再匯出。仍要繼續嗎?')) {
-        return { status: 'error', message: '已取消(建議先同步)' };
+    const { data: fp, count: cloudN } = await sb.from('tasks').select('updated_at', { count: 'exact' })
+      .eq('deleted', false).order('updated_at', { ascending: false }).limit(1);
+    const cloudMax = (fp && fp[0]) ? Date.parse(fp[0].updated_at) : 0;
+    const localMax = allT.reduce((m, t) => Math.max(m, Number(t.mTime) || 0), 0);
+    const countMismatch = (cloudN != null && cloudN !== allT.length);
+    const timeMismatch = cloudMax > localMax;   // 雲端有本機沒看過的新變更
+    if ((countMismatch || timeMismatch) && !silent) {
+      const why = countMismatch ? ('本機 ' + allT.length + ' 筆、雲端 ' + cloudN + ' 筆') : '雲端有較新的變更未拉齊';
+      if (!confirm('注意:同步後仍偵測到不一致(' + why + ')。\n建議先手動「立即同步」排查。仍要繼續匯出嗎?')) {
+        return { status: 'error', message: '已取消(建議先同步排查)' };
       }
     }
   } catch (e) {}
@@ -1956,7 +1967,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.40"; // v600.40 五期:匯出本地為源(3次/日限額+export_logs記帳+指紋對帳)+匯出含外部連結;還原改清空雲端寫回+紀元+1;同步前紀元檢測(跨裝置還原傳播);Key 鈕移至音效下
+const APP_VERSION = "SUPATESTtodo-v600.41"; // v600.41 五期修正:手動匯出前先增量同步拉齊;指紋升級 count+max updated_at 雙指標(定案設計);安全網匯出維持現況快照語意
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
