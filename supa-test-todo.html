@@ -1437,7 +1437,8 @@ const SUPA_ROUTED = new Set(['addCategory','deleteCategory','renameCategory','re
   'updateCategoryColor','renameCustomer','saveContact','deleteContact','moveContact',
   'setCustomerCode','setCustomerGroup','leaveCustomerGroup',
   'getExternalLinks','saveExternalLink','deleteExternalLink','reorderExternalLinks',
-  'importContacts','getContacts','getCustomers']);
+  'importContacts','getContacts','getCustomers',
+  'uploadTaskPhoto','getPhoto','deletePhoto']);
 
 // --- 雲端讀取(回傳 GAS 相容形狀,對帳/快取共用) ---
 async function supaFetchAllTasks(){
@@ -1482,6 +1483,60 @@ async function supaEnsureGroupKey(custName){
   const lc = (allCust || []).find(x => x.name === custName);
   if (lc) { lc.groupId = gid; saveLocal(); }
   return gid;
+}
+
+// --- 票務中心(v600.20 三期):Drive access token 自動刷新(Edge Function 代刷) ---
+const DRIVE_TOKEN_MAX_AGE_MIN = 50;
+async function ensureFreshToken(){
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem('supaDriveTok') || 'null'); } catch(e){}
+  const ageMin = (t && t.issued_at) ? (Date.now() - t.issued_at) / 60000 : Infinity;
+  if (t && t.access_token && ageMin < DRIVE_TOKEN_MAX_AGE_MIN) return t.access_token;
+  if (!t || !t.refresh_token) throw new Error('照片權杖缺失,請登出後重新登入一次');
+  const { data, error } = await supaInit().functions.invoke('refresh-drive-token',
+    { body: { refresh_token: t.refresh_token } });
+  if (error) throw new Error('權杖刷新失敗: ' + error.message + '(若持續失敗請重新登入)');
+  t = { ...t, access_token: data.access_token, issued_at: Date.now() };
+  localStorage.setItem('supaDriveTok', JSON.stringify(t));
+  console.log('[票務中心] 已換新 Drive 權杖(效期 ' + Math.round((data.expires_in || 3600) / 60) + ' 分)');
+  return t.access_token;
+}
+// 專屬資料夾(drive.file 範疇內自建自管;folderId 記在本機)
+async function _supaDriveFolder(token){
+  let fid = localStorage.getItem('supaDriveFolderId');
+  if (fid) return fid;
+  const r = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: '宜修待辦照片', mimeType: 'application/vnd.google-apps.folder' })
+  });
+  if (!r.ok) return null;   // 建資料夾失敗就傳到根目錄,不阻擋上傳
+  const d = await r.json();
+  if (d.id) { localStorage.setItem('supaDriveFolderId', d.id); return d.id; }
+  return null;
+}
+function _b64toBlob(b64, mime){
+  const bin = atob(b64); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime || 'image/jpeg' });
+}
+function _blobToB64(blob){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+// GAS 退路(過渡期:讀/刪 GAS 時代舊照片;30天清理政策下自然凋零後可拆)
+async function _gasPhotoFallback(action, extra){
+  const body = JSON.stringify(Object.assign({ action, token: getSession() }, extra || {}));
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(GAS_URL, { method: 'POST', body, signal: ctrl.signal });
+    return await res.json();
+  } finally { clearTimeout(tid); }
 }
 
 // --- 路由本體:GAS 相容回應形狀 ---
@@ -1620,6 +1675,51 @@ async function supaRoute(action, extra){
       // ── 讀取(供對帳/快取共用) ──
       case 'getContacts': return await supaFetchAllContacts();
       case 'getCustomers': return await supaFetchAllCustomers();
+      // ── 照片(v600.20 三期:Drive 直傳+票務中心) ──
+      case 'uploadTaskPhoto': {
+        const token = await ensureFreshToken();
+        const folderId = await _supaDriveFolder(token);
+        const meta = { name: '宜修_' + String(extra.taskId || 'task') + '_' + Date.now() + '.jpg',
+                       mimeType: extra.mimeType || 'image/jpeg' };
+        if (folderId) meta.parents = [folderId];
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+        form.append('file', _b64toBlob(extra.dataBase64, extra.mimeType));
+        const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+          { method: 'POST', headers: { 'Authorization': 'Bearer ' + token }, body: form });
+        if (!r.ok) throw new Error('Drive 上傳失敗 HTTP ' + r.status);
+        const d = await r.json();
+        if (!d.id) throw new Error('Drive 未回傳 fileId');
+        return { status: 'ok', fileId: d.id };
+      }
+      case 'getPhoto': {
+        const fid = String(extra.fileId || '');
+        try {
+          const token = await ensureFreshToken();
+          const r = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fid) + '?alt=media',
+            { headers: { 'Authorization': 'Bearer ' + token } });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const blob = await r.blob();
+          return { status: 'ok', dataBase64: await _blobToB64(blob), mimeType: blob.type || 'image/jpeg' };
+        } catch (eDrive) {
+          // 舊 GAS 時代照片:新權杖(drive.file)讀不到 → 退回 GAS 通道(過渡期)
+          console.log('[getPhoto] Drive 直讀失敗,退回 GAS: ' + eDrive.message);
+          return await _gasPhotoFallback('getPhoto', { fileId: fid });
+        }
+      }
+      case 'deletePhoto': {
+        const fid = String(extra.fileId || '');
+        try {
+          const token = await ensureFreshToken();
+          const r = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fid),
+            { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+          if (r.ok || r.status === 204) return { status: 'success' };
+          throw new Error('HTTP ' + r.status);
+        } catch (eDrive) {
+          try { return await _gasPhotoFallback('deletePhoto', { fileId: fid }); }
+          catch (e2) { return { status: 'error', message: e2.message }; }
+        }
+      }
       // ── 尚未接手 ──
       case 'importContacts': return { status: 'error', message: '匯入功能將於二期後段接手,暫不可用' };
       default: return { status: 'error', message: '未知路由: ' + action };
@@ -1631,7 +1731,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.12"; // v600.12 修正:聯絡資料防連點靜默成功時自動刷新快取,清除本地樂觀新增的幽靈重複
+const APP_VERSION = "SUPATESTtodo-v600.20"; // v600.20 三期:照片改走 Drive 直傳+票務中心(Edge Function 代刷權杖);舊 GAS 照片讀取自動退回 GAS 通道(過渡期)
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
