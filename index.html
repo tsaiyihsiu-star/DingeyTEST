@@ -2129,7 +2129,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.51"; // v600.51 修正:登入畫面救援匯出開放全裝置(原限電腦版;外勤手機的本地資料含未推送變更,反而最需要救援出口)
+const APP_VERSION = "SUPATESTtodo-v600.52"; // v600.52 環境守衛:偵測測試版/正式版切換(共用 origin 的 localStorage),自動重置本地防跨庫污染
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -9012,6 +9012,18 @@ window.onload = async () => {
   else supaShowLogin();
 };
 function startApp600(){
+  // v600.52 環境守衛:兩版共用 GitHub Pages origin(共用 localStorage),
+  // 切換版本時重置本地資料,防止 A 版佇列推進 B 版資料庫
+  const SUPA_EDITION = 'test';
+  const prevEd = localStorage.getItem('supaEdition');
+  if (prevEd !== SUPA_EDITION) {
+    ['tasks','cats','customers','catColors','catOrder','contactsCache','extLinksCache',
+     'opLog','cusOpLog','pendingQueue','opSeqCounter','lastSyncOpSeq','lastSyncCusOpSeq',
+     'lastSyncTime','lastFullSync','supaTaskSync','supaCustSync','supaDataGen',
+     'geminiApiKey','lastRuleCleanup'].forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('supaEdition', SUPA_EDITION);
+    if (prevEd) console.log('[edition] 環境切換 ' + prevEd + '→' + SUPA_EDITION + ',本地已重置(雲端全量重拉)');
+  }
   // 相容層:讓殘留 GAS 呼叫(分類/照片/AI,二期後接手)的 getSession 不回 null
   const exp = Date.now() + (30 * 24 * 60 * 60 * 1000);
   localStorage.setItem('authToken', JSON.stringify({ token: 'no-auth-needed', exp }));
