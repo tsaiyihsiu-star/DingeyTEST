@@ -1213,6 +1213,7 @@
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:2px 2px 6px;">顯示</div>
       <div class="cat-row"><span class="cat-name">字級</span><div class="cat-acts"><button class="cat-add-btn" onclick="toggleDensity()" style="padding:8px 16px;"><span id="densityBtn">標準</span></button></div></div>
       <div class="cat-row"><span class="cat-name">按鍵音效</span><div class="cat-acts"><button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效" style="width:48px;height:40px;">🔇</button></div></div>
+<div class="cat-row"><span class="cat-name">Gemini API Key</span><div class="cat-acts"><button class="cat-add-btn" onclick="setGeminiKeyUI()" style="background:#4527A0;">🔑 設定（AI 功能・自備）</button></div></div>
       <div id="importSection">
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">匯入（電腦版）</div>
       <button class="import-btn" onclick="document.getElementById('importFileInput').click()">
@@ -1228,7 +1229,6 @@
       <button class="import-guide-btn" onclick="showImportGuide('contact')">📋 匯入前要準備哪些欄位？</button>
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">備份（電腦版）</div>
       <button class="import-btn" style="margin-top:8px;background:#1B5E20;" onclick="exportBackup(this)">⬇ 匯出備份（JSON + Excel）</button>
-      <button class="import-btn" style="margin-top:8px;background:#4527A0;" onclick="setGeminiKeyUI()">🔑 設定 Gemini API Key（AI 功能・自備）</button>
       <button class="import-btn" style="margin-top:8px;background:#7A1F1F;" onclick="restorePickFile()">⟲ 還原備份（從 JSON）</button>
       <input type="file" id="restoreFileInput" accept=".json,application/json" style="display:none;" onchange="_handleRestoreFile(event)">
       </div>
@@ -1484,6 +1484,123 @@ async function supaEnsureGroupKey(custName){
   const lc = (allCust || []).find(x => x.name === custName);
   if (lc) { lc.groupId = gid; saveLocal(); }
   return gid;
+}
+
+// --- 備份還原模組(v600.40 五期):本地為源匯出+限額記帳+雲端還原+紀元機制 ---
+async function supaExportLocal(note, silent){
+  const sb = supaInit();
+  // 限額:單日3次(手動),第2次告警;安全網匯出(silent)記帳但不擋
+  try {
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const { count } = await sb.from('export_logs').select('id', { count: 'exact', head: true })
+      .gte('exported_at', dayStart.toISOString());
+    if (!silent) {
+      if ((count || 0) >= 3) return { status: 'error', message: '今日匯出已達 3 次上限,明天再試(避免流量濫用)' };
+      if ((count || 0) === 1 && !confirm('提醒:這是今天第 2 次匯出(單日上限 3 次)。\n確定繼續?')) return { status: 'error', message: '已取消' };
+    }
+  } catch (e) { console.log('[export] 限額查詢失敗,放行: ' + e.message); }
+  // 指紋對帳(count 級,幾十 bytes):本地 vs 雲端筆數不符時提醒先同步
+  try {
+    const { count: cloudN } = await sb.from('tasks').select('id', { count: 'exact', head: true }).eq('deleted', false);
+    if (cloudN != null && cloudN !== allT.length && !silent) {
+      if (!confirm('注意:本機任務 ' + allT.length + ' 筆、雲端 ' + cloudN + ' 筆不一致。\n建議先「立即同步」再匯出。仍要繼續嗎?')) {
+        return { status: 'error', message: '已取消(建議先同步)' };
+      }
+    }
+  } catch (e) {}
+  const res = {
+    status: 'success',
+    exportedAt: new Date().toISOString(),
+    schema: 'v502.12',
+    source: 'local-v600',
+    tasks: allT, customers: allCust, contacts: allContacts, categories: allC,
+    externalLinks: (typeof extLinks !== 'undefined' && Array.isArray(extLinks)) ? extLinks : []
+  };
+  // 記帳(零阻塞)
+  sb.from('export_logs').insert({
+    note: String(note || '') + (silent ? '(自動)' : ''),
+    row_counts: { tasks: allT.length, customers: allCust.length, contacts: allContacts.length, categories: allC.length }
+  }).then(() => {}, () => {});
+  return res;
+}
+
+async function supaRestoreAll(payload){
+  const sb = supaInit();
+  const tables = payload.tables || [];
+  const data = payload.data || {};
+  const report = {};
+  const CHUNK = 400;
+  async function wipeAndInsert(table, rows){
+    let r = await sb.from(table).delete().neq('id', '');
+    if (r.error) throw new Error('清空 ' + table + ' 失敗: ' + r.error.message);
+    for (let i = 0; i < rows.length; i += CHUNK){
+      r = await sb.from(table).insert(rows.slice(i, i + CHUNK));
+      if (r.error) throw new Error('寫回 ' + table + ' 失敗: ' + r.error.message);
+    }
+    return rows.length;
+  }
+  if (tables.includes('tasks')){
+    report.tasks = await wipeAndInsert('tasks', (data.tasks || []).map(t => ({
+      id: String(t.ID), title: String(t.Task || ''), category: String(t.Category || ''),
+      due_date: t.DueDate ? String(t.DueDate).slice(0, 10) : null, status: String(t.Status || 'Pending'),
+      priority: Number(t.Priority) || 99, note: String(t.Note || ''), customer: String(t.Customer || ''),
+      customer_hint: String(t.CustomerHint || ''), photos: _photosArr(t.Photos), deleted: false })));
+  }
+  if (tables.includes('customers')){
+    report.customers = await wipeAndInsert('customers', (data.customers || []).map(c => ({
+      name: String(c.name), cust_code: String(c.custCode || ''), group_id: String(c.groupId || ''),
+      role: String(c.role || ''), master_key: String(c.masterKey || ''),
+      is_stop_word: c.isStopWord === true, deleted: false })));
+  }
+  if (tables.includes('contacts')){
+    report.contacts = await wipeAndInsert('customer_contacts', (data.contacts || []).map(c => ({
+      id: String(c.rowId || crypto.randomUUID()), group_key: String(c.groupKey || ''),
+      type: String(c.type || 'note'), label: String(c.label || ''), content: String(c.content || ''),
+      sort_order: Number(c.sortOrder) || 0, origin: String(c.origin || ''),
+      nav_fix: String(c.navFix || ''), deleted: false })));
+  }
+  if (tables.includes('categories')){
+    report.categories = await wipeAndInsert('categories', (data.categories || []).map((c, i) => ({
+      name: String(c.name), color: String(c.color || '#007AFF'),
+      sort_order: (c.sortOrder != null ? Number(c.sortOrder) : i), deleted: false })));
+  }
+  // 紀元 +1:其他裝置偵測到後自動放棄本地、全量重拉
+  let gen = 1;
+  try {
+    const { data: us } = await sb.from('user_settings').select('data_generation').maybeSingle();
+    gen = ((us && us.data_generation) || 1) + 1;
+  } catch (e) {}
+  const { error: gerr } = await sb.from('user_settings').upsert({ data_generation: gen });
+  if (gerr) console.log('[restore] 紀元更新失敗: ' + gerr.message);
+  localStorage.setItem('supaDataGen', String(gen));   // 本機同步紀元(重載後不會誤判自己)
+  sb.from('sync_logs').insert({ reason: 'restore', meta: { report, generation: gen } }).then(() => {}, () => {});
+  return { status: 'success', report };
+}
+
+// 紀元檢測:每次同步前核對;不符 → 放棄本地全量重拉(還原事件的跨裝置傳播)
+async function supaCheckGeneration(){
+  try {
+    const sb = supaInit();
+    const { data } = await sb.from('user_settings').select('data_generation').maybeSingle();
+    let gen = data ? data.data_generation : null;
+    if (gen == null){
+      await sb.from('user_settings').upsert({ data_generation: 1 });
+      gen = 1;
+    }
+    const localGen = localStorage.getItem('supaDataGen');
+    if (localGen === null){ localStorage.setItem('supaDataGen', String(gen)); return true; }
+    if (String(gen) !== String(localGen)){
+      pushLog('偵測到雲端資料還原(紀元 ' + localGen + '→' + gen + '),放棄本地並全量重拉', 'warn');
+      opLog = []; cusOpLog = []; saveOpLog(); saveCusOpLog();          // 紀元事件:佇列廢棄
+      supaTaskSync = null; supaCustSync = null;
+      localStorage.removeItem('supaTaskSync'); localStorage.removeItem('supaCustSync');
+      localStorage.setItem('supaDataGen', String(gen));
+      sb.from('sync_logs').insert({ reason: 'generation_change', meta: { from: localGen, to: gen } }).then(() => {}, () => {});
+      await pullFromCloudFull('generation_change', 1);
+      return false;   // 已處理,呼叫端跳過本輪增量
+    }
+    return true;
+  } catch (e) { return true; }
 }
 
 // --- AI 模組(v600.30 四期):Gemini 自備 key 前端直呼 ---
@@ -1839,7 +1956,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.30"; // v600.30 四期:AI 改走 Gemini 直呼(自備 key,存 user_settings+本機快取);批次新增改 Supabase bulk upsert;設定新增 Key 管理
+const APP_VERSION = "SUPATESTtodo-v600.40"; // v600.40 五期:匯出本地為源(3次/日限額+export_logs記帳+指紋對帳)+匯出含外部連結;還原改清空雲端寫回+紀元+1;同步前紀元檢測(跨裝置還原傳播);Key 鈕移至音效下
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -4005,6 +4122,7 @@ async function pullFromCloud(reason, attempt = 1) {
   // 舊 checkSync/hasDelete 全量分支移除:軟刪除時代,刪除走普通增量(2026-07 定案)
   try {
     if (!(await supaHasSession())) { pushLog('未登入,跳過同步', 'warn'); return false; }
+    if (!(await supaCheckGeneration())) { dismissSyncReminder(); updateSyncMeta(); return true; }   // v600.40: 紀元不符已轉全量
     if (needsWeeklyFullSync()) {
       pushLog('本週首次同步,執行全量', 'info');
       return await pullFromCloudFull(reason, attempt);
@@ -8510,7 +8628,7 @@ async function exportBackup(btn, silent, presetNote){
       if(inp===null){ if(btn){ btn.disabled=false; btn.style.opacity=''; btn.textContent='⬇ 匯出備份（JSON + Excel）'; } return; }
       note = inp.trim();
     }
-    const res = await callGasAction('exportAllData', {});
+    const res = await supaExportLocal(note, silent);   // v600.40: 本地為源匯出(零 egress)+限額記帳
     if(!res || res.status!=='success') throw new Error((res&&res.message)||'匯出失敗');
     if(note) res.note = note;
     const stamp=_backupStamp();
@@ -8590,7 +8708,7 @@ async function _restoreExecute(){
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200001;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;font-family:inherit;';
     ov.textContent='還原中…請勿關閉視窗'; document.body.appendChild(ov);
     const payload = { tables, data: { tasks:d.tasks||[], customers:d.customers||[], contacts:d.contacts||[], categories:d.categories||[] } };
-    const res = await callGasAction('restoreAllData', payload);
+    const res = await supaRestoreAll(payload);   // v600.40: 清空雲端+備份寫回+紀元+1
     document.getElementById('restoreBusy')?.remove();
     if(!res || res.status!=='success') throw new Error((res&&res.message)||'還原失敗');
     const rep = res.report||{};
@@ -8603,6 +8721,7 @@ function _restoreClearLocalAndReload(){
     ['tasks','customers','cats','catColors','catOrder','contactsCache','opLog','cusOpLog','pendingQueue','opSeqCounter'].forEach(k=>localStorage.removeItem(k));
     localStorage.setItem('lastSyncTime','0'); localStorage.setItem('lastFullSync','0');
     localStorage.setItem('lastSyncOpSeq','0'); localStorage.setItem('lastSyncCusOpSeq','0');
+    localStorage.removeItem('supaTaskSync'); localStorage.removeItem('supaCustSync');   // v600.40: 清水位線(supaDataGen 保留,還原端已對齊新紀元)
     try{ indexedDB.deleteDatabase('yixiu_photos'); }catch(e){}
   }catch(e){}
   setTimeout(()=>location.reload(), 300);
