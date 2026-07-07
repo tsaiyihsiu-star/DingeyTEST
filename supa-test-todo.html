@@ -1957,8 +1957,114 @@ async function supaRoute(action, extra){
           catch (e2) { return { status: 'error', message: e2.message }; }
         }
       }
-      // ── 尚未接手 ──
-      case 'importContacts': return { status: 'error', message: '匯入功能將於二期後段接手,暫不可用' };
+      // ── 客戶/聯絡資料匯入(v600.43:GAS importContacts 完整移植,#1~#6 分支) ──
+      case 'importContacts': {
+        const items = extra.items || [];
+        if (!items.length) return { status: 'error', message: 'no items' };
+        const [customers, contacts] = await Promise.all([supaFetchAllCustomers(), supaFetchAllContacts()]);
+        const byName = {}, masterByGid = {}, codeOwner = {};
+        customers.forEach(c => {
+          const info = { name: c.name, groupId: c.groupId || '', custCode: c.custCode || '',
+                         role: c.role || '', masterKey: c.masterKey || '', isStopWord: c.isStopWord === true };
+          byName[c.name] = info;
+          if (info.role === 'master' && info.groupId) masterByGid[info.groupId] = info;
+          if (info.custCode && !(info.custCode in codeOwner)) codeOwner[info.custCode] = c.name;
+        });
+        const hasSubs = gid => customers.some(c => (c.masterKey || '') === gid && (c.role || '') === 'sub');
+        const existSet = {}, groupCount = {};
+        contacts.forEach(c => {
+          existSet[c.groupKey + '|' + c.type + '|' + c.content] = true;
+          groupCount[c.groupKey] = (groupCount[c.groupKey] || 0) + 1;
+        });
+        const genGid = () => 'g' + Date.now() + Math.floor(Math.random() * 100000);
+        const updCust = async (name, patch) => { const { error } = await sb.from('customers').update(patch).eq('name', name); if (error) throw error; };
+        const insCust = async (row) => { const { error } = await sb.from('customers').insert(row); if (error) throw error; };
+        const ensureGidI = async (info) => { if (info.groupId) return info.groupId; const gid = genGid(); await updCust(info.name, { group_id: gid }); info.groupId = gid; return gid; };
+        const bindKeyOf = async (info) => (info.role === 'sub' && info.masterKey) ? info.masterKey : ensureGidI(info);
+        let added = 0, skipped = 0, newIndep = 0, newSub = 0, recoded = 0, unstopped = 0, conflicts = 0;
+        const newRows = [];
+        for (const it of items) {
+          const custName = String(it.custName || '').trim();
+          if (!custName) continue;
+          const code = String((it.code != null ? it.code : it.groupId) || '').trim();
+          let target = null;
+          const codeHitName = (code && codeOwner[code]) ? codeOwner[code] : null;
+          if (codeHitName) {
+            const matched = byName[codeHitName];
+            if (codeHitName === custName) {
+              target = matched;
+              if (matched.isStopWord) { await updCust(matched.name, { is_stop_word: false }); matched.isStopWord = false; unstopped++; }
+            } else {
+              let master;
+              if (matched.role === 'sub' && matched.masterKey && masterByGid[matched.masterKey]) master = masterByGid[matched.masterKey];
+              else if (matched.role === 'master') master = matched;
+              else {
+                await ensureGidI(matched);
+                await updCust(matched.name, { role: 'master' });
+                matched.role = 'master'; masterByGid[matched.groupId] = matched; master = matched;
+              }
+              const masterGid = await ensureGidI(master);
+              if (byName[custName]) {
+                const ex = byName[custName];
+                if (ex.role === 'master' && hasSubs(ex.groupId)) { conflicts++; target = ex; }
+                else {
+                  if (!(ex.role === 'sub' && ex.masterKey === masterGid)) {
+                    await ensureGidI(ex);
+                    await updCust(ex.name, { role: 'sub', master_key: masterGid });
+                    ex.role = 'sub'; ex.masterKey = masterGid;
+                  }
+                  target = ex;
+                }
+              } else {
+                const gid = genGid();
+                await insCust({ name: custName, group_id: gid, cust_code: '', role: 'sub', master_key: masterGid, is_stop_word: false, deleted: false });
+                const info = { name: custName, groupId: gid, custCode: '', role: 'sub', masterKey: masterGid, isStopWord: false };
+                byName[custName] = info; customers.push({ name: custName, masterKey: masterGid, role: 'sub' });
+                target = info; newSub++;
+              }
+            }
+          } else {
+            if (byName[custName]) {
+              target = byName[custName];
+              if (target.isStopWord) { await updCust(target.name, { is_stop_word: false }); target.isStopWord = false; unstopped++; }
+              if (code && target.custCode !== code) {
+                await updCust(target.name, { cust_code: code });
+                if (target.custCode) delete codeOwner[target.custCode];
+                target.custCode = code; codeOwner[code] = custName; recoded++;
+              }
+            } else {
+              const gid = genGid();
+              await insCust({ name: custName, group_id: gid, cust_code: code, role: '', master_key: '', is_stop_word: false, deleted: false });
+              const info = { name: custName, groupId: gid, custCode: code, role: '', masterKey: '', isStopWord: false };
+              byName[custName] = info; if (code) codeOwner[code] = custName;
+              target = info; newIndep++;
+            }
+          }
+          const type = String(it.type || 'note');
+          const content = String(it.content || '').trim();
+          if (!content) continue;
+          const gk = await bindKeyOf(target);
+          const dupKey = gk + '|' + type + '|' + content;
+          if (existSet[dupKey]) { skipped++; continue; }
+          existSet[dupKey] = true;
+          if (!(gk in groupCount)) groupCount[gk] = 0;
+          newRows.push({ id: crypto.randomUUID(), group_key: gk, type, label: String(it.label || ''), content,
+                         sort_order: groupCount[gk]++, origin: custName, nav_fix: '', deleted: false });
+          added++;
+        }
+        if (newRows.length) {
+          const { error } = await sb.from('customer_contacts').insert(newRows);
+          if (error) {
+            if (error.code === '23505') {
+              for (const row of newRows) {
+                const r = await sb.from('customer_contacts').insert(row);
+                if (r.error) { if (r.error.code === '23505') { added--; skipped++; } else throw r.error; }
+              }
+            } else throw error;
+          }
+        }
+        return { status: 'success', added, skipped, newIndep, newSub, recoded, unstopped, conflicts };
+      }
       default: return { status: 'error', message: '未知路由: ' + action };
     }
   } catch (e) {
@@ -1968,7 +2074,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.42"; // v600.42 修復:saveCusOpLog 幽靈函式(實為 saveOpLog 統一持久化)x3;紀元分支狀態更新先行防半套(真機截圖破案)
+const APP_VERSION = "SUPATESTtodo-v600.43"; // v600.43 匯入客戶接手:GAS importContacts 邏輯完整移植(編號優先/名稱備援/主從歸屬/換編號/解除停用/重跑保護);對應欄補公司編號別名+編號欄必對應(值可空)
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -6447,7 +6553,7 @@ async function handleContactImport(event) {
     // 欄位自動對應
     const selects = {
       ciName:    ['公司簡稱','客戶','客戶名','名稱','公司'],
-      ciCode:    ['客戶編號','編號','代號','code'],
+      ciCode:    ['客戶編號','公司編號','編號','代號','code'],
       ciAddress: ['公司地址','地址','address'],
       ciMobile:  ['行動電話','手機','行動'],
       ciPhone:   ['電話1','電話','市話','phone','tel'],
@@ -6507,6 +6613,8 @@ function buildContactImportItems() {
 async function confirmContactImport() {
   const iName = parseInt(document.getElementById('ciName').value);
   if (iName < 0) { alert('請選擇「公司簡稱（客戶名）」對應的欄位'); return; }
+  const _iCodeChk = parseInt(document.getElementById('ciCode').value);
+  if (_iCodeChk < 0) { alert('請選擇「客戶編號」對應的欄位（欄位值可以留空，但欄位本身必須對應——編號是比對的第一優先鍵）'); return; }
   const items = buildContactImportItems();
   if (!items.length) { alert('沒有可匯入的資料'); return; }
   if (!confirm(`即將匯入 ${items.length} 筆聯絡項（已存在的會自動跳過）。確定匯入？`)) return;
