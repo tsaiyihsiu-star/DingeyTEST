@@ -20,7 +20,10 @@ end $$;
 -- ============================================================
 -- 1. tasks 任務(原 Tasks 工作表)
 -- ============================================================
-drop table if exists tasks cascade;  -- v1 驗證表重建
+-- ⚠ 全量重建腳本:執行即清空以下 8 張表的所有資料
+-- 開發期(無正式資料)可直接跑;未來有正式資料後,結構變更改走增量 migration
+drop table if exists tasks, customers, customer_contacts, categories,
+  external_links, user_settings, export_logs, sync_logs cascade;
 create table tasks (
   id            text primary key,                       -- 新資料放 uuid 字串;舊 T- 格式相容
   owner_id      uuid not null default auth.uid(),
