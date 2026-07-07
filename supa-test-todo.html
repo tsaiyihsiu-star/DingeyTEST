@@ -1370,6 +1370,9 @@ let supaCustSync = localStorage.getItem('supaCustSync') || null;
 
 // --- 登入閘(取代 A2 密碼) ---
 function supaShowLogin(){
+  var _ls = document.getElementById('loginScreen');
+  if (_ls) _ls.classList.add('hidden');            // 藏掉舊密碼登入畫面(v600 已由 Google 登入取代)
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   if(document.getElementById('supaLoginOverlay')) return;
   const d = document.createElement('div');
   d.id = 'supaLoginOverlay';
