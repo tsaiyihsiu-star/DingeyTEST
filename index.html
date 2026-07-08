@@ -1198,11 +1198,13 @@
       <!-- v600.64: 員工名冊管理(僅 admin 顯示) -->
       <div id="adminEmpSection" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-          <span class="cat-name" style="font-weight:700;">👥 員工名冊管理</span>
+          <span class="cat-name" style="font-weight:700;cursor:pointer;user-select:none;" onclick="toggleEmpList()"><span id="empListCaret">▶</span> 👥 員工名冊管理</span>
           <button class="cat-add-btn" onclick="renderEmployeeList()" style="background:#3A3A3C;">↻ 重新整理</button>
         </div>
-        <div id="empListMsg" style="font-size:12px;color:var(--gray);margin-bottom:6px;"></div>
-        <div id="empList" style="font-size:13px;"></div>
+        <div id="empListMsg" style="font-size:12px;color:var(--gray);margin-bottom:6px;cursor:pointer;" onclick="toggleEmpList()"></div>
+        <div id="empListWrap" style="display:none;max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:0 8px;">
+          <div id="empList" style="font-size:13px;"></div>
+        </div>
         <!-- v600.65: 名冊匯入(貼上表格) -->
         <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:10px;">
           <div style="font-size:13px;font-weight:600;margin-bottom:4px;">➕ 批次匯入名冊</div>
@@ -2135,7 +2137,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.65"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.66"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -9100,6 +9102,14 @@ async function supaCheckAdmin(){
     _isAdmin = !!data;
     return _isAdmin;
   } catch (e) { _isAdmin = false; return false; }
+}
+function toggleEmpList(){
+  const wrap = document.getElementById('empListWrap');
+  const caret = document.getElementById('empListCaret');
+  if (!wrap) return;
+  const open = wrap.style.display !== 'none';
+  wrap.style.display = open ? 'none' : 'block';
+  if (caret) caret.textContent = open ? '▶' : '▼';
 }
 async function renderEmployeeList(){
   const box = document.getElementById('empList');
