@@ -2118,7 +2118,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.62"; // v600.62 版號對齊正式版(PWA 更新機制);測試版跑 file:// 無 SW,此功能不適用,僅同步版號
+const APP_VERSION = "SUPATESTtodo-v600.63"; // v600.63 員工名冊驗證雛形(僅測試版試作):登入後過驗證閘,未綁定跳統編+工號比對→綁定放行;需配 employees 表 SQL;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -9001,13 +9001,71 @@ window.onload = async () => {
     if (session) {
       supaSaveDriveTok(session);
       const ov = document.getElementById('supaLoginOverlay');
-      if (ov) { ov.remove(); startApp600(); }
+      if (ov) ov.remove();
+      supaVerifyEmployee().then(ok => { if (ok) startApp600(); });   // v600.63: 先過員工驗證閘
     }
   });
   const { data: { session } } = await _supa.auth.getSession();
-  if (session) { supaSaveDriveTok(session); startApp600(); }
+  if (session) { supaSaveDriveTok(session); supaVerifyEmployee().then(ok => { if (ok) startApp600(); }); }   // v600.63: 先過員工驗證閘
   else supaShowLogin();
 };
+// ===== 員工名冊註冊驗證(雛形 v600.63):公司用登入閘 =====
+async function supaVerifyEmployee(){
+  try {
+    const sb = supaInit();
+    const uid = (await sb.auth.getUser()).data.user?.id;
+    if (!uid) return false;
+    const { data: bound } = await sb.from('employees').select('id,status').eq('bound_uid', uid).maybeSingle();
+    if (bound && bound.status === 'bound') return true;
+    _showEmployeeVerify();
+    return false;
+  } catch (e) {
+    console.log('[verify] 驗證閘查詢失敗: ' + e.message);
+    _showEmployeeVerify();
+    return false;
+  }
+}
+function _showEmployeeVerify(){
+  if (document.getElementById('empVerifyOverlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'empVerifyOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#1c1c1e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;';
+  ov.innerHTML =
+    '<div style="font-size:1.3em;font-weight:700;color:#fff;">員工身分驗證</div>'
+    + '<div style="color:#aaa;font-size:.9em;max-width:320px;text-align:center;line-height:1.5;">首次使用需驗證員工身分。請輸入公司統一編號與員工工號(需與公司登錄的資料一致)。</div>'
+    + '<input id="_evTaxId" placeholder="公司統一編號" style="padding:12px 16px;border-radius:10px;border:1px solid #444;background:#2c2c2e;color:#fff;font-size:1em;width:260px;">'
+    + '<input id="_evEmpNo" placeholder="員工工號" style="padding:12px 16px;border-radius:10px;border:1px solid #444;background:#2c2c2e;color:#fff;font-size:1em;width:260px;">'
+    + '<button id="_evSubmit" style="padding:12px 32px;border:none;border-radius:10px;background:#2e7d32;color:#fff;font-size:1.05em;cursor:pointer;">驗證並啟用</button>'
+    + '<div id="_evMsg" style="color:#FF9500;font-size:.85em;min-height:20px;text-align:center;max-width:300px;"></div>'
+    + '<button id="_evLogout" style="margin-top:8px;padding:8px 16px;border:1px solid #666;border-radius:8px;background:transparent;color:#888;font-size:.8em;cursor:pointer;">登出</button>';
+  document.body.appendChild(ov);
+  document.getElementById('_evSubmit').onclick = _submitEmployeeVerify;
+  document.getElementById('_evLogout').onclick = async () => { try { await supaInit().auth.signOut(); } catch(e){} location.reload(); };
+}
+async function _submitEmployeeVerify(){
+  const msg = document.getElementById('_evMsg');
+  const taxId = document.getElementById('_evTaxId').value.trim();
+  const empNo = document.getElementById('_evEmpNo').value.trim();
+  if (!taxId || !empNo) { msg.textContent = '請輸入統編與工號'; return; }
+  const btn = document.getElementById('_evSubmit');
+  btn.disabled = true; msg.style.color = '#aaa'; msg.textContent = '驗證中…';
+  try {
+    const sb = supaInit();
+    const uid = (await sb.auth.getUser()).data.user?.id;
+    const { data: emp } = await sb.from('employees')
+      .select('id,bound_uid,status').eq('tax_id', taxId).eq('emp_no', empNo).maybeSingle();
+    if (!emp) { msg.style.color = '#FF453A'; msg.textContent = '查無此員工資料,請確認統編與工號'; btn.disabled = false; return; }
+    if (emp.bound_uid && emp.bound_uid !== uid) { msg.style.color = '#FF453A'; msg.textContent = '此工號已被其他帳號綁定,請聯絡管理員'; btn.disabled = false; return; }
+    const { error } = await sb.from('employees')
+      .update({ bound_uid: uid, status: 'bound' }).eq('id', emp.id).is('bound_uid', null);
+    if (error) { msg.style.color = '#FF453A'; msg.textContent = '綁定失敗:' + error.message; btn.disabled = false; return; }
+    msg.style.color = '#34C759'; msg.textContent = '驗證成功,啟用中…';
+    const ov = document.getElementById('empVerifyOverlay'); if (ov) ov.remove();
+    startApp600();
+  } catch (e) {
+    msg.style.color = '#FF453A'; msg.textContent = '發生錯誤:' + e.message; btn.disabled = false;
+  }
+}
 function startApp600(){
   // v600.52 環境守衛:兩版共用 GitHub Pages origin(共用 localStorage),
   // 切換版本時重置本地資料,防止 A 版佇列推進 B 版資料庫
