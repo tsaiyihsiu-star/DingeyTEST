@@ -2118,7 +2118,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.59"; // v600.59 修正重置 bug:改明確列舉 App 資料 key 清除(原全清+白名單會把 Supabase session sb-* 一起清→登出+卡載入中);不再 sessionStorage.clear()
+const APP_VERSION = "SUPATESTtodo-v600.60"; // v600.60 修正卡載入中:startApp600 對已移除的 #loginScreen 呼叫 .classList 拋錯致 init() 未執行(v600.55 刪 HTML 遺留);改 optional chaining 防呆
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -2234,7 +2234,7 @@ async function doLogin() {
     const exp = Math.min(data.exp, Date.now() + ttl);
     localStorage.setItem('authToken', JSON.stringify({ token: data.token, exp }));
     playSound('add');
-    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('loginScreen')?.classList.add('hidden');   // v600.60: 防呆(v600.55 已移除該元素)
     errEl.textContent = '';
     init();
   } catch(e) {
@@ -9025,7 +9025,7 @@ function startApp600(){
   const exp = Date.now() + (30 * 24 * 60 * 60 * 1000);
   localStorage.setItem('authToken', JSON.stringify({ token: 'no-auth-needed', exp }));
   localStorage.removeItem('pendingQueue');
-  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('loginScreen')?.classList.add('hidden');   // v600.60: 防呆(v600.55 已移除該元素)
   init();
 }
 
