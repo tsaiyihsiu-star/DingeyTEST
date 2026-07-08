@@ -742,29 +742,7 @@
 
 <!-- 登入畫面 -->
 
-<div id="loginScreen">
-  <div class="login-logo">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="64" height="64">
-      <rect x="5" y="3" width="14" height="18" rx="2"/>
-      <path d="M9 3v2h6V3"/>
-      <line x1="9" y1="9" x2="15" y2="9"/>
-      <line x1="9" y1="13" x2="15" y2="13"/>
-      <line x1="9" y1="17" x2="12" y2="17"/>
-      <polyline points="7 9 8 10 9 8" stroke-width="1.8"/>
-    </svg>
-  </div>
-  <div class="login-title">宜修的待辦清單</div>
-  <div class="login-sub">請輸入密碼以繼續</div>
-  <div class="login-box">
-    <input type="password" id="loginPwd" class="login-input" placeholder="密碼" onkeydown="if(event.key==='Enter')doLogin()">
-    <label class="login-remember">
-      <input type="checkbox" id="loginRemember" checked>
-      記住登入狀態（30天）
-    </label>
-    <div class="login-err" id="loginErr"></div>
-    <button class="login-btn" id="loginBtn" onclick="doLogin()">登入</button>
-  </div>
-</div>
+<!-- v600.55: 移除舊密碼登入畫面(v600 已由 Google 登入取代;此區塊會在 JS 接手前一閃) -->
 
 <div id="sidebar">
   <button id="fab" onclick="fabClick()" ontouchstart="fabTouchStart()" ontouchend="fabTouchEnd()" ontouchmove="fabTouchMove()" onmousedown="fabTouchStart()" onmouseup="fabTouchEnd()" onmouseleave="fabTouchEnd()" aria-label="新增" style="position:relative;">
@@ -1127,8 +1105,11 @@
       <button class="btn-sync" style="background:#5856D6;margin-top:6px;width:100%;" onclick="openReconcile()">🔍 對帳檢查（本機 vs 雲端）</button>
       
       <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="if(confirm('確定登出？'))doLogout()">登出</button>
+        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="doLogout()">登出</button>
       </div>
+      <!-- v600.56: 重置(對帳不一致時的修復工具)——清本機、從雲端全量重拉 -->
+      <button class="btn-sync" style="background:#8E1B0F;margin-top:10px;width:100%;font-size:13px;" onclick="doResetLocal()">🔄 重置本機資料（從雲端重新下載）</button>
+      <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.4;text-align:center;">當「對帳檢查」發現本機與雲端不一致時使用：清空本機、保留登入狀態，重新從雲端下載全部資料</div>
     </div>
   </div>
 </div>
@@ -2129,7 +2110,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.52"; // v600.52 環境守衛:偵測測試版/正式版切換(共用 origin 的 localStorage),自動重置本地防跨庫污染
+const APP_VERSION = "SUPATESTtodo-v600.57"; // v600.57 重置限額:與「匯出備份」共用 export_logs 當日 3 次額度(防交替繞過);記帳於清本機/reload 前 await
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -2276,54 +2257,55 @@ function softLogout() {
     pushLog && pushLog('登入已過期，請重新登入（本機資料已保留）', 'warn');
   } catch(e) {}
 }
-function doLogout() {
-  // 第一段確認：先警告未同步資料
+async function doLogout() {
+  // v600.56: 輕量化登出——只結束 session,不清本機資料(v600 個人帳號情境,下次同帳號登入秒進)
   const pendingTaskOps = opLog.filter(o => o.status === 'pending').length;
   const pendingCusOps = cusOpLog.filter(o => o.status === 'pending').length;
   const taskCusActions = new Set([
     'addTask','updateTask','setTaskStatus','toggleTask','deleteTask',
-    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerStats'
+    'addCustomer','markAsStopWord','unmarkStopWord','deleteCustomer','renameCustomer','mergeCustomer','updateCustomerCode'
   ]);
   const nonOpLogPending = pendingQueue.filter(q => !taskCusActions.has(q.action)).length;
   const totalUnsynced = pendingTaskOps + pendingCusOps + nonOpLogPending;
-
-  let firstMsg = '確定登出嗎？\n\n登出後將清除本機所有資料（任務、客戶、設定等）。\n下次登入會重新從雲端拉取。';
+  let msg = '確定登出嗎?\n\n(本機資料會保留,下次用同一個 Google 帳號登入即可繼續)';
   if (totalUnsynced > 0) {
-    firstMsg = `⚠️ 警告：還有 ${totalUnsynced} 筆未同步資料！\n\n如果現在登出、這些改動會永久遺失（雲端沒有）。\n\n建議：先點「立即同步」、確認推送成功後再登出。\n\n仍要強制登出？`;
+    msg = `⚠️ 還有 ${totalUnsynced} 筆未同步資料!\n\n登出本身不會刪除它們(仍留在本機),但建議先「立即同步」推送到雲端較保險。\n\n仍要登出?`;
   }
-  if (!confirm(firstMsg)) return;
-
-  // 第二段確認（雙重保險）
-  if (!confirm('再次確認：清除本機所有資料？\n\n此動作無法復原。')) return;
-
-  // 清除所有本地資料
-  try {
-    // 清 localStorage（保留少量必要設定也行、但為了徹底清乾淨、全清）
-    const keysToKeep = []; // 若想保留某些設定、加進這裡
-    const allKeys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && !keysToKeep.includes(key)) allKeys.push(key);
-    }
-    allKeys.forEach(k => localStorage.removeItem(k));
-
-    // 清 sessionStorage
-    sessionStorage.clear();
-
-    // 清快取（解除 Service Worker、雖然測試版已停用）
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(r => r.unregister());
-      }).catch(() => {});
-    }
-
-    try { indexedDB.deleteDatabase('yixiu_photos'); } catch(e) {} console.log('[doLogout] 本機資料已清除');
-  } catch (e) {
-    console.log('[doLogout] 清除錯誤: ' + e);
-  }
-
-  // reload（重新從乾淨狀態開始）
+  if (!confirm(msg)) return;
+  try { await supaInit().auth.signOut(); } catch (e) {}
   location.reload();
+}
+
+// v600.57: 重置本機資料(對帳不一致修復工具)——與「匯出備份」共用 export_logs 當日 3 次額度
+async function doResetLocal() {
+  try {
+    const sb0 = supaInit();
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const { count } = await sb0.from('export_logs').select('id', { count: 'exact', head: true })
+      .gte('exported_at', dayStart.toISOString());
+    if ((count || 0) >= 3) { alert('今日「匯出備份 + 重置」合計已達 3 次上限。\n\n重置是修復工具、正常不需頻繁使用;若確實有同步問題,請明天再試或先用「立即同步 / 對帳檢查」排查。'); return; }
+  } catch (e) { console.log('[reset] 限額查詢失敗,放行: ' + e.message); }
+  if (!confirm('重置本機資料?\n\n用途:當「對帳檢查」發現本機與雲端不一致時,清空本機、重新從雲端下載全部資料。\n\n• 保留:登入狀態、Google Drive 授權\n• 清除:本機任務/客戶/設定快取(雲端資料不受影響,會重新下載)\n\n注意:與「匯出備份」共用每日 3 次額度。')) return;
+  if (!confirm('再次確認:清空本機並從雲端重拉?\n\n(雲端資料是安全的,這只是重新下載一份乾淨的到本機)')) return;
+  try {
+    await supaInit().from('export_logs').insert({ note: 'reset', row_counts: { reset: 1 } });
+  } catch (e) { console.log('[reset] 記帳失敗,續行: ' + e.message); }
+  try {
+    const keep = {};
+    ['supaDriveTok','supaDriveFolderId','clientId','supaEdition','supaDataGen'].forEach(k => {
+      const v = localStorage.getItem(k); if (v !== null) keep[k] = v;
+    });
+    const allKeys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) allKeys.push(k); }
+    allKeys.forEach(k => localStorage.removeItem(k));
+    Object.keys(keep).forEach(k => localStorage.setItem(k, keep[k]));
+    localStorage.setItem('lastSyncTime','0'); localStorage.setItem('lastFullSync','0');
+    localStorage.setItem('lastSyncOpSeq','0'); localStorage.setItem('lastSyncCusOpSeq','0');
+    localStorage.removeItem('supaTaskSync'); localStorage.removeItem('supaCustSync');
+    try { indexedDB.deleteDatabase('yixiu_photos'); } catch(e) {}
+    sessionStorage.clear();
+  } catch (e) {}
+  setTimeout(() => location.reload(), 300);
 }
 function shakeInput() {
   const el = document.getElementById('loginPwd');
