@@ -1338,12 +1338,14 @@ function rowToTask(r){ return {
   ID:String(r.id), Task:r.title||'', Category:r.category||'', DueDate:r.due_date||'',
   Status:r.status||'Pending', Priority:Number(r.priority)||99, Note:r.note||'',
   Customer:r.customer||'', CustomerHint:r.customer_hint||'',
-  Photos:_photosArr(r.photos), mTime:Date.parse(r.updated_at)||Date.now() }; }
+  Photos:_photosArr(r.photos), mTime:Date.parse(r.updated_at)||Date.now(),
+  DoneAt: r.done_at ? Date.parse(r.done_at) : null }; }   // v600.58: 完成時間戳
 function taskToRow(t, extra){ const base = {
   id:String(t.ID), title:String(t.Task||''), category:String(t.Category||''),
   due_date:(t.DueDate?String(t.DueDate).slice(0,10):null), status:String(t.Status||'Pending'),
   priority:Number(t.Priority)||99, note:String(t.Note||''), customer:String(t.Customer||''),
-  customer_hint:String(t.CustomerHint||''), photos:_photosArr(t.Photos) };
+  customer_hint:String(t.CustomerHint||''), photos:_photosArr(t.Photos),
+  done_at:(t.DoneAt != null ? new Date(t.DoneAt).toISOString() : null) };   // v600.58
   return Object.assign(base, extra||{}); }
 
 // --- 增量水位線 ---
@@ -1591,7 +1593,13 @@ async function supaRestoreAll(payload){
       id: String(t.ID), title: String(t.Task || ''), category: String(t.Category || ''),
       due_date: t.DueDate ? String(t.DueDate).slice(0, 10) : null, status: String(t.Status || 'Pending'),
       priority: Number(t.Priority) || 99, note: String(t.Note || ''), customer: String(t.Customer || ''),
-      customer_hint: String(t.CustomerHint || ''), photos: _photosArr(t.Photos), deleted: false })));
+      customer_hint: String(t.CustomerHint || ''), photos: _photosArr(t.Photos),
+      done_at: (function(){                                     // v600.58: 還原智慧補值
+        if (t.DoneAt != null) return new Date(t.DoneAt).toISOString();
+        if (String(t.Status) === 'Done') { const est = Number(t.mTime) || 0; return est ? new Date(est).toISOString() : null; }
+        return null;
+      })(),
+      deleted: false })));
   }
   if (tables.includes('customers')){
     report.customers = await wipeAndInsert('customers', (data.customers || []).map(c => ({
@@ -2110,7 +2118,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.57"; // v600.57 重置限額:與「匯出備份」共用 export_logs 當日 3 次額度(防交替繞過);記帳於清本機/reload 前 await
+const APP_VERSION = "SUPATESTtodo-v600.58"; // v600.58 完成時間戳 done_at:完成當下蓋章、獨立於 mTime、事後編輯不動;已完成清單排序/顯示改用 DoneAt(mTime 備援);還原智慧補值(舊 GAS 備份用 mTime 估計);需配 SQL add column+回填
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -2635,6 +2643,7 @@ async function pushOpsToCloud(fetchFn) {
       if ('Customer' in p) base.customer = String(p.Customer);
       if ('CustomerHint' in p) base.customer_hint = String(p.CustomerHint);
       if ('Photos' in p) base.photos = _photosArr(p.Photos);
+      if ('done_at' in p) base.done_at = p.done_at;   // v600.58: setTaskStatus 精準覆蓋完成時間
       const { data: srow, error: uerr } = await sb.from('tasks').upsert(base, { onConflict: 'id' }).select().single();
       error = uerr;
       if (!error && srow) {                                       // v600.10: 伺服器版本回寫,mTime 即刻對齊
@@ -3944,7 +3953,8 @@ function convertActionToOp(action, payload) {
     return createOp({
       taskId: id,
       op: 'update',
-      payload: { Status: String(payload.status || 'Pending') },
+      payload: { Status: String(payload.status || 'Pending'),
+               done_at: (payload.doneAt != null ? new Date(payload.doneAt).toISOString() : null) },
       timestamp: payload.mTime || Date.now()
     });
   }
@@ -5268,7 +5278,7 @@ function render() {
   // 預算日期字串，避免 sort 和渲染重複呼叫 fmtD
   let f2 = f.map(t => ({ t, d: fmtD(t.DueDate)||'' }));
   f2.sort((a, b) => {
-    if (currentF === '已完成') return (b.t.mTime||0) - (a.t.mTime||0);
+    if (currentF === '已完成') return (b.t.DoneAt||b.t.mTime||0) - (a.t.DoneAt||a.t.mTime||0);   // v600.58
     const dA = a.d || '9999-12-31', dB = b.d || '9999-12-31';
     if (dA !== dB) return dA.localeCompare(dB);
     if ((a.t.Priority||99) !== (b.t.Priority||99)) return (a.t.Priority||99) - (b.t.Priority||99);
@@ -5305,7 +5315,7 @@ function render() {
     const catColor = getCatColor(t.Category||''); const hasColor = catColor !== '#8E8E93';
     const isDone = t.Status === 'Done';
     const isEmpty = !t.Task || !String(t.Task).trim();
-    const doneTimeStr = isDone && t.mTime ? fmtDoneTime(t.mTime) : '';
+    const doneTimeStr = isDone ? fmtDoneTime(t.DoneAt || t.mTime) : '';   // v600.58
     // v500.27: 任務名上色（客戶名綠色 / 曖昧橘色 + ⚠）
     const taskTitle = isEmpty
       ? `<span style="color:var(--red);">⚠️ 未命名（請刪除或編輯）</span>`
@@ -5577,12 +5587,14 @@ async function toggleT(id) {
   const t = allT.find(x => String(x.ID) === String(id)); if (!t) return;
   const ns = t.Status === 'Done' ? 'Pending' : 'Done';
   playSound(ns === 'Done' ? 'done' : 'tap');
-  t.Status = ns; t.mTime = Date.now();
+  const _nowMs = Date.now();
+  t.Status = ns; t.mTime = _nowMs;
+  t.DoneAt = (ns === 'Done') ? _nowMs : null;   // v600.58: 完成蓋章、取消完成清空(獨立於 mTime)
   if (ns === 'Done') _clearLocalPhotos(t);  // v502.5: 完成即清本地照片快取
   saveLocal(); renderAll();
   // v500: 改用 setTaskStatus 明確指定目標狀態，避免重試造成翻錯
   await pushOp('setTaskStatus',
-    {id, status: ns, mTime: t.mTime},
+    {id, status: ns, mTime: t.mTime, doneAt: t.DoneAt},
     `「${t.Task||id}」→${ns==='Done'?'完成':'待辦'}`
   );
 }
