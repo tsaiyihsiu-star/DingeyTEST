@@ -1203,6 +1203,14 @@
         </div>
         <div id="empListMsg" style="font-size:12px;color:var(--gray);margin-bottom:6px;"></div>
         <div id="empList" style="font-size:13px;"></div>
+        <!-- v600.65: 名冊匯入(貼上表格) -->
+        <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:10px;">
+          <div style="font-size:13px;font-weight:600;margin-bottom:4px;">➕ 批次匯入名冊</div>
+          <div style="font-size:11px;color:var(--gray);line-height:1.5;margin-bottom:6px;">從 Excel 複製四欄貼上(統編、工號、姓名、公司),每列一位員工。可含標題列(會自動略過)。統編+工號重複的會跳過。</div>
+          <textarea id="empImportBox" placeholder="23076419&#9;B103&#9;蔡宜修&#9;鼎基資訊&#10;23076419&#9;B102&#9;張智富&#9;鼎基資訊" style="width:100%;min-height:80px;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2,#2c2c2e);color:var(--text,#fff);font-size:12px;font-family:monospace;resize:vertical;"></textarea>
+          <button class="import-btn" style="margin-top:6px;background:#2e7d32;width:100%;" onclick="importEmployees()">匯入名冊</button>
+          <div id="empImportMsg" style="font-size:12px;margin-top:4px;min-height:18px;"></div>
+        </div>
       </div>
       <div id="importSection">
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">匯入（電腦版）</div>
@@ -2127,7 +2135,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.64"; // v600.64 員工名冊管理介面(僅測試版,admin):設定視窗新增名冊列表(狀態顯示)+解綁功能;匯入下輪做;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.65"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -9125,6 +9133,53 @@ async function renderEmployeeList(){
   } catch (e) {
     msg.textContent = '';
     box.innerHTML = '<p style="color:#FF453A;padding:6px 2px;">載入失敗:' + escapeHtml(e.message||String(e)) + '</p>';
+  }
+}
+async function importEmployees(){
+  const box = document.getElementById('empImportBox');
+  const msg = document.getElementById('empImportMsg');
+  const raw = (box.value || '').trim();
+  if (!raw) { msg.style.color = '#FF9500'; msg.textContent = '請先貼上名冊資料'; return; }
+  // 解析:每列以 tab 或逗號分隔,取前四欄
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+  const rows = [];
+  for (const line of lines) {
+    const cols = line.split(/\t|,/).map(c => c.trim());
+    const taxId = cols[0] || '', empNo = cols[1] || '';
+    // 略過標題列(統編欄非數字開頭、或明顯是表頭字)
+    if (/統編|統一編號|工號|姓名|公司|tax|emp/i.test(taxId)) continue;
+    if (!taxId || !empNo) continue;   // 統編+工號為必填(比對鍵)
+    rows.push({ tax_id: taxId, emp_no: empNo, name: cols[2] || '', company: cols[3] || '' });
+  }
+  if (!rows.length) { msg.style.color = '#FF453A'; msg.textContent = '沒有可匯入的有效資料(需至少統編+工號兩欄)'; return; }
+  msg.style.color = '#aaa'; msg.textContent = '匯入中… (' + rows.length + ' 筆)';
+  try {
+    const sb = supaInit();
+    // 讀現有名冊,判重(統編+工號)
+    const { data: existing } = await sb.from('employees').select('tax_id,emp_no');
+    const existSet = new Set((existing || []).map(e => e.tax_id + '|' + e.emp_no));
+    const toInsert = rows.filter(r => !existSet.has(r.tax_id + '|' + r.emp_no))
+                         .map(r => ({ tax_id: r.tax_id, emp_no: r.emp_no, name: r.name, company: r.company, status: 'pending' }));
+    const skipped = rows.length - toInsert.length;
+    let added = 0;
+    if (toInsert.length) {
+      const { data, error } = await sb.from('employees').insert(toInsert).select('id');
+      if (error) {
+        // 撞唯一索引 → 退回逐筆
+        if (error.code === '23505') {
+          for (const row of toInsert) {
+            const r = await sb.from('employees').insert(row);
+            if (!r.error) added++;
+          }
+        } else throw error;
+      } else added = (data || []).length;
+    }
+    msg.style.color = '#34C759';
+    msg.textContent = '完成:新增 ' + added + ' 筆' + (skipped ? ('、跳過 ' + skipped + ' 筆(已存在)') : '');
+    box.value = '';
+    renderEmployeeList();   // 重新整理列表
+  } catch (e) {
+    msg.style.color = '#FF453A'; msg.textContent = '匯入失敗:' + (e.message || e);
   }
 }
 async function unbindEmployee(id){
