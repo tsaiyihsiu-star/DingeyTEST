@@ -2118,7 +2118,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.60"; // v600.60 修正卡載入中:startApp600 對已移除的 #loginScreen 呼叫 .classList 拋錯致 init() 未執行(v600.55 刪 HTML 遺留);改 optional chaining 防呆
+const APP_VERSION = "SUPATESTtodo-v600.61"; // v600.61 版號對齊正式版(done_at 上線);內容自 v600.58 起已含完成時間戳,此版僅同步版號
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
