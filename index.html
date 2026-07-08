@@ -1195,6 +1195,15 @@
       <div class="cat-row"><span class="cat-name">字級</span><div class="cat-acts"><button class="cat-add-btn" onclick="toggleDensity()" style="padding:8px 16px;"><span id="densityBtn">標準</span></button></div></div>
       <div class="cat-row"><span class="cat-name">按鍵音效</span><div class="cat-acts"><button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效" style="width:48px;height:40px;">🔇</button></div></div>
 <div class="cat-row"><span class="cat-name">Gemini API Key</span><div class="cat-acts"><button class="cat-add-btn" onclick="setGeminiKeyUI()" style="background:#4527A0;">🔑 設定（AI 功能・自備）</button></div></div>
+      <!-- v600.64: 員工名冊管理(僅 admin 顯示) -->
+      <div id="adminEmpSection" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span class="cat-name" style="font-weight:700;">👥 員工名冊管理</span>
+          <button class="cat-add-btn" onclick="renderEmployeeList()" style="background:#3A3A3C;">↻ 重新整理</button>
+        </div>
+        <div id="empListMsg" style="font-size:12px;color:var(--gray);margin-bottom:6px;"></div>
+        <div id="empList" style="font-size:13px;"></div>
+      </div>
       <div id="importSection">
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">匯入（電腦版）</div>
       <button class="import-btn" onclick="document.getElementById('importFileInput').click()">
@@ -2118,7 +2127,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.63"; // v600.63 員工名冊驗證雛形(僅測試版試作):登入後過驗證閘,未綁定跳統編+工號比對→綁定放行;需配 employees 表 SQL;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.64"; // v600.64 員工名冊管理介面(僅測試版,admin):設定視窗新增名冊列表(狀態顯示)+解綁功能;匯入下輪做;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -8061,6 +8070,12 @@ function openSettings(){
   openModal('settingsM');
   fetchExtLinks();
   fetchLatestVersion();
+  // v600.64: admin 才顯示員工名冊管理
+  supaCheckAdmin().then(isAdmin => {
+    const sec = document.getElementById('adminEmpSection');
+    if (sec) sec.style.display = isAdmin ? 'block' : 'none';
+    if (isAdmin) renderEmployeeList();
+  });
 }
 // v502.50: 外部連結（雲端同步 + 本機快取容錯）
 let extLinks = [];
@@ -9066,6 +9081,63 @@ async function _submitEmployeeVerify(){
     msg.style.color = '#FF453A'; msg.textContent = '發生錯誤:' + e.message; btn.disabled = false;
   }
 }
+// ===== 員工名冊管理介面(v600.64,僅 admin) =====
+let _isAdmin = false;
+async function supaCheckAdmin(){
+  try {
+    const sb = supaInit();
+    const uid = (await sb.auth.getUser()).data.user?.id;
+    if (!uid) return false;
+    const { data } = await sb.from('app_admins').select('uid').eq('uid', uid).maybeSingle();
+    _isAdmin = !!data;
+    return _isAdmin;
+  } catch (e) { _isAdmin = false; return false; }
+}
+async function renderEmployeeList(){
+  const box = document.getElementById('empList');
+  const msg = document.getElementById('empListMsg');
+  if (!box) return;
+  msg.textContent = '載入中…';
+  try {
+    const sb = supaInit();
+    const { data, error } = await sb.from('employees')
+      .select('id,tax_id,emp_no,name,company,bound_uid,status').order('id');
+    if (error) throw error;
+    const list = data || [];
+    msg.textContent = '共 ' + list.length + ' 筆(已綁定 ' + list.filter(e=>e.bound_uid).length + ')';
+    if (!list.length) { box.innerHTML = '<p style="color:var(--gray);padding:6px 2px;">尚無名冊資料(請在 Supabase 後台或匯入功能建立)</p>'; return; }
+    box.innerHTML = list.map(e => {
+      const bound = !!e.bound_uid;
+      const statusColor = e.status==='bound' ? '#34C759' : (e.status==='rejected' ? '#FF453A' : '#FF9500');
+      const statusText = e.status==='bound' ? '已綁定' : (e.status==='rejected' ? '已拒絕' : '待綁定');
+      const unbindBtn = bound
+        ? '<button onclick="unbindEmployee(' + e.id + ')" style="padding:4px 10px;border:1px solid #FF453A;border-radius:6px;background:transparent;color:#FF453A;font-size:12px;cursor:pointer;">解綁</button>'
+        : '';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 4px;border-bottom:1px solid var(--border);">'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-weight:600;">' + escapeHtml(e.name||'(無姓名)') + ' <span style="color:var(--gray);font-weight:400;font-size:12px;">' + escapeHtml(e.emp_no||'') + '</span></div>'
+        + '<div style="font-size:11px;color:var(--gray);">統編 ' + escapeHtml(e.tax_id||'') + '・' + escapeHtml(e.company||'') + '</div>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">'
+        + '<span style="color:' + statusColor + ';font-size:12px;font-weight:600;">' + statusText + '</span>'
+        + unbindBtn + '</div></div>';
+    }).join('');
+  } catch (e) {
+    msg.textContent = '';
+    box.innerHTML = '<p style="color:#FF453A;padding:6px 2px;">載入失敗:' + escapeHtml(e.message||String(e)) + '</p>';
+  }
+}
+async function unbindEmployee(id){
+  if (!confirm('確定解除此員工的帳號綁定?\n\n解綁後,該員工需用 Google 登入重新輸入統編+工號驗證,即可綁定新帳號。\n(適用於員工換 Google 帳號的情況)')) return;
+  try {
+    const sb = supaInit();
+    const { error } = await sb.from('employees')
+      .update({ bound_uid: null, status: 'pending' }).eq('id', id);
+    if (error) throw error;
+    renderEmployeeList();
+  } catch (e) { alert('解綁失敗:' + (e.message||e)); }
+}
+
 function startApp600(){
   // v600.52 環境守衛:兩版共用 GitHub Pages origin(共用 localStorage),
   // 切換版本時重置本地資料,防止 A 版佇列推進 B 版資料庫
