@@ -2118,7 +2118,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.58"; // v600.58 完成時間戳 done_at:完成當下蓋章、獨立於 mTime、事後編輯不動;已完成清單排序/顯示改用 DoneAt(mTime 備援);還原智慧補值(舊 GAS 備份用 mTime 估計);需配 SQL add column+回填
+const APP_VERSION = "SUPATESTtodo-v600.59"; // v600.59 修正重置 bug:改明確列舉 App 資料 key 清除(原全清+白名單會把 Supabase session sb-* 一起清→登出+卡載入中);不再 sessionStorage.clear()
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -2299,19 +2299,22 @@ async function doResetLocal() {
     await supaInit().from('export_logs').insert({ note: 'reset', row_counts: { reset: 1 } });
   } catch (e) { console.log('[reset] 記帳失敗,續行: ' + e.message); }
   try {
-    const keep = {};
-    ['supaDriveTok','supaDriveFolderId','clientId','supaEdition','supaDataGen'].forEach(k => {
-      const v = localStorage.getItem(k); if (v !== null) keep[k] = v;
-    });
-    const allKeys = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k) allKeys.push(k); }
-    allKeys.forEach(k => localStorage.removeItem(k));
-    Object.keys(keep).forEach(k => localStorage.setItem(k, keep[k]));
+    const RESET_KEYS = [
+      'tasks','cats','customers','catColors','catOrder','contactsCache','extLinksCache',
+      'opLog','cusOpLog','pendingQueue','opSeqCounter',
+      'geminiApiKey',
+      'lastRuleCleanup',
+      'supaTaskSync','supaCustSync',
+      'lastSyncTime','lastFullSync','lastSyncOpSeq','lastSyncCusOpSeq'
+    ];
+    // v600.59 修正:明確列舉 App 資料 key 清除(黑名單),不再全清+白名單。
+    // 原全清會把 Supabase session sb-<ref>-auth-token 一起清 → 登出+卡載入中。
+    // 保留(不碰):Supabase session(sb-*)、Drive 票、folderId、clientId、edition、紀元。
+    RESET_KEYS.forEach(k => localStorage.removeItem(k));
     localStorage.setItem('lastSyncTime','0'); localStorage.setItem('lastFullSync','0');
     localStorage.setItem('lastSyncOpSeq','0'); localStorage.setItem('lastSyncCusOpSeq','0');
-    localStorage.removeItem('supaTaskSync'); localStorage.removeItem('supaCustSync');
     try { indexedDB.deleteDatabase('yixiu_photos'); } catch(e) {}
-    sessionStorage.clear();
+    // 不呼叫 sessionStorage.clear():Supabase 可能將 session 暫存於此
   } catch (e) {}
   setTimeout(() => location.reload(), 300);
 }
