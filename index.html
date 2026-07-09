@@ -1097,6 +1097,7 @@
       <div class="qpill" id="queuePill"></div>
       <div id="syncAnomalyBox" style="display:none;text-align:left;margin:4px 0;"></div>
       <div id="lastSyncPill" style="font-size:12px;color:var(--gray);text-align:center;padding:4px 0;"></div>
+      <div id="genInfoPill" style="font-size:11px;color:var(--gray);text-align:center;padding:2px 0 4px;"></div>
       <div id="syncLog"><p class="log-empty">尚無同步記錄</p></div>
       <div class="sync-row">
         <button class="btn-sync" id="syncNowBtn" onclick="doSyncFromModal()">立即同步</button>
@@ -1209,7 +1210,7 @@
         <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:10px;">
           <div style="font-size:13px;font-weight:600;margin-bottom:4px;">➕ 批次匯入名冊</div>
           <div style="font-size:11px;color:var(--gray);line-height:1.5;margin-bottom:6px;">從 Excel 複製四欄貼上(統編、工號、姓名、公司),每列一位員工。可含標題列(會自動略過)。統編+工號重複的會跳過。</div>
-          <textarea id="empImportBox" placeholder="23076419&#9;B103&#9;蔡宜修&#9;鼎基資訊&#10;23076419&#9;B102&#9;張智富&#9;鼎基資訊" style="width:100%;min-height:80px;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2,#2c2c2e);color:var(--text,#fff);font-size:12px;font-family:monospace;resize:vertical;"></textarea>
+          <textarea id="empImportBox" placeholder="範例（實際貼上時取代此內容）：&#10;12345678&#9;A001&#9;王小明&#9;○○公司&#10;12345678&#9;A002&#9;李小華&#9;○○公司" style="width:100%;min-height:80px;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2,#2c2c2e);color:var(--text,#fff);font-size:12px;font-family:monospace;resize:vertical;"></textarea>
           <button class="import-btn" style="margin-top:6px;background:#2e7d32;width:100%;" onclick="importEmployees()">匯入名冊</button>
           <div id="empImportMsg" style="font-size:12px;margin-top:4px;min-height:18px;"></div>
         </div>
@@ -2138,7 +2139,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.67"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.70"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -3822,6 +3823,21 @@ function updateSyncMeta() {
       else if (mins > 0) timeStr = `${mins} 分鐘前`;
       else timeStr = '剛剛';
       lastEl.textContent = `最後同步：${timeStr}`;
+        // v600.70: 顯示本機/雲端紀元(gen),判斷是否收斂一致
+        const genEl = document.getElementById('genInfoPill');
+        if (genEl) {
+          const localG = localStorage.getItem('supaDataGen');
+          genEl.textContent = `本機紀元 ${localG == null ? '(未設)' : localG}`;
+          try {
+            supaInit().from('user_settings').select('data_generation').maybeSingle()
+              .then(({ data }) => {
+                const cloudG = data ? data.data_generation : null;
+                const same = String(localG) === String(cloudG);
+                genEl.textContent = `本機紀元 ${localG == null ? '(未設)' : localG}｜雲端紀元 ${cloudG == null ? '(無)' : cloudG}` + (same ? ' ✓' : ' ⚠不一致');
+                genEl.style.color = same ? 'var(--gray)' : '#FF9500';
+              }, () => {});
+          } catch (e) {}
+        }
     } else {
       lastEl.textContent = '尚未同步';
     }
