@@ -1105,9 +1105,7 @@
       <!-- v500.27.6: 對帳檢查 -->
       <button class="btn-sync" style="background:#5856D6;margin-top:6px;width:100%;" onclick="openReconcile()">🔍 對帳檢查（本機 vs 雲端）</button>
       
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
-        <button class="btn-sync" style="background:#3A3A3C;flex:1;" onclick="doLogout()">登出</button>
-      </div>
+
       <!-- v600.56: 重置(對帳不一致時的修復工具)——清本機、從雲端全量重拉 -->
       <button class="btn-sync" style="background:#8E1B0F;margin-top:10px;width:100%;font-size:13px;" onclick="doResetLocal()">🔄 重置本機資料（從雲端重新下載）</button>
       <div style="font-size:11px;color:var(--gray);margin-top:4px;line-height:1.4;text-align:center;">當「對帳檢查」發現本機與雲端不一致時使用：清空本機、保留登入狀態，重新從雲端下載全部資料</div>
@@ -1245,6 +1243,7 @@
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">版本說明</div>
       <div id="verStatus" style="font-size:13px;margin:0 2px 8px;"></div>
       <div style="font-size:11px;color:var(--gray);margin:0 2px 8px;line-height:1.5;">© 2026 蔡宜修 · 保留所有權利<br>本程式著作權歸開發者個人所有</div>
+      <button class="cat-add-btn" style="background:#3A3A3C;width:100%;margin:4px 0 8px;" onclick="closeM('settingsM'); doLogout();">登出</button>
       <button id="markLatestBtn" class="cat-add-btn" onclick="markLatestVersion()" style="display:none;margin:0 0 10px;padding:8px 14px;">把目前版本設為最新版</button>
       <div id="changelogList"></div>
     </div>
@@ -2139,7 +2138,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.71"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.72"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
