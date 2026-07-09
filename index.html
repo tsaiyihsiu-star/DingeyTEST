@@ -2139,7 +2139,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.70"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.71"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -9044,11 +9044,12 @@ window.onload = async () => {
       supaSaveDriveTok(session);
       const ov = document.getElementById('supaLoginOverlay');
       if (ov) ov.remove();
-      supaVerifyEmployee().then(ok => { if (ok) startApp600(); });   // v600.63: 先過員工驗證閘
+      startApp600();                    // v600.71: 先顯示 App(秒開)
+      supaVerifyEmployee();               // 背景驗證:未綁定會蓋驗證層,連線失敗不蓋(防呆)
     }
   });
   const { data: { session } } = await _supa.auth.getSession();
-  if (session) { supaSaveDriveTok(session); supaVerifyEmployee().then(ok => { if (ok) startApp600(); }); }   // v600.63: 先過員工驗證閘
+  if (session) { supaSaveDriveTok(session); startApp600(); supaVerifyEmployee(); }   // v600.71: 先顯示 App、背景驗證
   else supaShowLogin();
 };
 // ===== 員工名冊註冊驗證(雛形 v600.63):公司用登入閘 =====
@@ -9062,8 +9063,8 @@ async function supaVerifyEmployee(){
     _showEmployeeVerify();
     return false;
   } catch (e) {
-    console.log('[verify] 驗證閘查詢失敗: ' + e.message);
-    _showEmployeeVerify();
+    // v600.71: 連線失敗不蓋驗證層(已進 App 的人網路斷不該被誤擋);未綁定才蓋
+    console.log('[verify] 驗證閘查詢失敗(連線問題,不蓋層): ' + e.message);
     return false;
   }
 }
