@@ -1243,13 +1243,15 @@
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:16px 2px 6px;border-top:.5px solid #E5E5EA;padding-top:12px;">版本說明</div>
       <div id="verStatus" style="font-size:13px;margin:0 2px 8px;"></div>
       <div style="font-size:11px;color:var(--gray);margin:0 2px 8px;line-height:1.5;">© 2026 蔡宜修 · 保留所有權利<br>本程式著作權歸開發者個人所有</div>
-      <button class="cat-add-btn" style="background:#3A3A3C;width:100%;margin:4px 0 8px;" onclick="closeM('settingsM'); doLogout();">登出</button>
       <button id="markLatestBtn" class="cat-add-btn" onclick="markLatestVersion()" style="display:none;margin:0 0 10px;padding:8px 14px;">把目前版本設為最新版</button>
       <div id="changelogList"></div>
     </div>
     <div style="padding:8px 12px calc(var(--sab) + 6px);border-top:.5px solid #E5E5EA;background:var(--card);flex-shrink:0;">
       <div style="text-align:center;font-size:12px;color:#8E8E93;margin-bottom:8px;">版本 <span id="settingsVer">—</span></div>
-      <button class="btn-p" style="background:#636366;" onclick="closeM('settingsM')">完成</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-p" style="background:#8E1B0F;flex:0 0 40%;" onclick="closeM('settingsM'); doLogout();">登出</button>
+        <button class="btn-p" style="background:#636366;flex:1;" onclick="closeM('settingsM')">完成</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2138,7 +2140,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.72"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.73"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
