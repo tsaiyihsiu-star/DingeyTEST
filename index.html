@@ -1190,8 +1190,8 @@
     <div class="sh-title">設定</div>
     <div class="sh-body">
       <div style="font-size:13px;font-weight:700;color:var(--gray);margin:2px 2px 6px;">顯示</div>
-      <div class="cat-row"><span class="cat-name">字級</span><div class="cat-acts"><button class="cat-add-btn" onclick="toggleDensity()" style="padding:8px 16px;"><span id="densityBtn">標準</span></button></div></div>
-      <div class="cat-row"><span class="cat-name">按鍵音效</span><div class="cat-acts"><button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效" style="width:48px;height:40px;">🔇</button></div></div>
+      <div class="cat-row"><span class="cat-name">字級 / 音效</span><div class="cat-acts"><button class="cat-add-btn" onclick="toggleDensity()" style="padding:8px 16px;"><span id="densityBtn">標準</span></button><button class="btn-sound" id="soundBtn" onclick="toggleSound()" title="按鍵音效" style="width:48px;height:40px;">🔇</button></div></div>
+      <div class="cat-row"><span class="cat-name">時區</span><div class="cat-acts"><select id="tzSelect" onchange="onTzChange(this.value)" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card,#fff);color:var(--text,#000);font-size:14px;max-width:220px;"></select></div></div>
 <div class="cat-row"><span class="cat-name">Gemini API Key</span><div class="cat-acts"><button class="cat-add-btn" onclick="setGeminiKeyUI()" style="background:#4527A0;">🔑 設定（AI 功能・自備）</button></div></div>
       <div class="cat-row"><span class="cat-name">下班彙整通知 Email</span><div class="cat-acts"><button class="cat-add-btn" id="notifyEmailBtn" onclick="setNotifyEmailUI()" style="background:#00695C;">📧 設定收件信箱</button></div></div>
       <!-- v600.64: 員工名冊管理(僅 admin 顯示) -->
@@ -1393,6 +1393,36 @@ async function loadDisplayTz(){
   } catch(e){ /* 讀不到就保留現值,fallback 裝置時區 */ }
 }
 function maybeLoadDisplayTz(){ if (_tzLoaded) return; _tzLoaded = true; loadDisplayTz().catch(function(){ _tzLoaded = false; }); }
+
+// --- 顯示時區設定 UI(v600.81):下拉選單,偵測值預選,onchange 即存並即時生效 ---
+const TZ_LIST = [
+  ['Asia/Taipei','台北 (UTC+8)'], ['Asia/Tokyo','東京 (UTC+9)'], ['Asia/Seoul','首爾 (UTC+9)'],
+  ['Asia/Hong_Kong','香港 (UTC+8)'], ['Asia/Shanghai','上海/北京 (UTC+8)'], ['Asia/Singapore','新加坡 (UTC+8)'],
+  ['Asia/Kuala_Lumpur','吉隆坡 (UTC+8)'], ['Asia/Bangkok','曼谷 (UTC+7)'], ['Asia/Jakarta','雅加達 (UTC+7)'],
+  ['Asia/Ho_Chi_Minh','胡志明 (UTC+7)'], ['Asia/Manila','馬尼拉 (UTC+8)'], ['Asia/Kolkata','新德里 (UTC+5:30)'],
+  ['Asia/Dubai','杜拜 (UTC+4)'], ['Australia/Sydney','雪梨 (UTC+10/11)'], ['Europe/London','倫敦 (UTC+0/1)'],
+  ['Europe/Paris','巴黎 (UTC+1/2)'], ['Europe/Berlin','柏林 (UTC+1/2)'], ['America/New_York','紐約 (UTC-5/4)'],
+  ['America/Chicago','芝加哥 (UTC-6/5)'], ['America/Denver','丹佛 (UTC-7/6)'], ['America/Los_Angeles','洛杉磯 (UTC-8/7)'],
+  ['Pacific/Honolulu','檀香山 (UTC-10)'],
+];
+function renderTzSelect(){
+  const sel = document.getElementById('tzSelect'); if(!sel) return;
+  const cur = _displayTz || _deviceTz();                          // 當前值:設定值優先,否則裝置偵測值
+  let list = TZ_LIST.slice();
+  if(!list.some(x => x[0] === cur)) list.unshift([cur, cur + '(偵測)']);  // 當前值不在清單就加頂端,確保選得到
+  sel.innerHTML = list.map(function(pair){
+    return '<option value="' + pair[0] + '"' + (pair[0] === cur ? ' selected' : '') + '>' + pair[1] + '</option>';
+  }).join('');
+}
+async function onTzChange(tz){
+  tz = String(tz || '').trim(); if(!tz) return;
+  try {
+    const { error } = await supaInit().from('user_settings').upsert({ timezone: tz });
+    if(error) throw new Error(error.message);
+    _displayTz = tz; localStorage.setItem('displayTz', tz);       // 立即生效,不必等重開 App
+    try { if(typeof playSound === 'function') playSound('tap'); } catch(_){}
+  } catch(e){ alert('時區儲存失敗:' + (e.message || e)); }
+}
 
 // --- 欄位映射(前端物件 <-> 資料庫列) ---
 function _photosArr(p){ if(Array.isArray(p)) return p; if(typeof p==='string'&&p.trim()){ try{ return JSON.parse(p)||[]; }catch(e){ return []; } } return []; }
@@ -2209,7 +2239,7 @@ async function supaRoute(action, extra){
 /* ===== v600.10 路由器結束 ===== */
 
 
-const APP_VERSION = "SUPATESTtodo-v600.80"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
+const APP_VERSION = "SUPATESTtodo-v600.81"; // v600.65 員工名冊匯入(僅測試版,admin):貼上表格文字批次建名冊(統編/工號/姓名/公司),統編+工號判重跳過;管理介面(列表+解綁+匯入)完整;正式版暫不動
 // v502.52 外部連結：電腦版可用上下箭頭調整順序，順序同步雲端（reorderExternalLinks），手機與同事看到的順序一致
 // v502.51 修正：設定視窗「匯入（電腦版）」整段在手機完全隱藏（只在電腦版顯示，手機不再出現空的匯入標題）
 // v502.50 版面：側欄「標準/緊湊」改為齒輪→開啟「設定」視窗，將字級、音效、匯入任務、匯入客戶、版本號整合進設定；新增「外部連結」（電腦版可新增、同步雲端，後端未更新時以本機快取暫存並提示）；預留版本說明/操作說明
@@ -8174,6 +8204,7 @@ function openSettings(){
   const v=document.getElementById('settingsVer'); if(v) v.textContent=APP_VERSION;
   try{ updateSoundBtn(); }catch(e){}
   try{ updateDensityBtn(); }catch(e){}
+  try{ renderTzSelect(); }catch(e){}
   const addWrap=document.getElementById('extLinkAddWrap');
   if(addWrap) addWrap.style.display = window.matchMedia('(hover:none) and (pointer:coarse)').matches ? 'none' : 'block';
   const impSec=document.getElementById('importSection');
