@@ -6,7 +6,7 @@
 //   2. CACHE_NAME 與 APP_VERSION 同步 bump
 //   3. 前端把「解除註冊」改回「註冊 sw.js」
 // ============================================================
-const CACHE_NAME = 'SUPATESTtodo-v600.102';   // 每次改版必同步 bump
+const CACHE_NAME = 'SUPATESTtodo-v600.103';   // 每次改版必同步 bump
 
 const CORE_ASSETS = [
   './',
