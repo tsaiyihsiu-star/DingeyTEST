@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>語音辨識測試</title>
+<!-- 這兩行讓 iOS「加入主畫面」後以獨立 PWA 模式(standalone)啟動，
+     用來重現宜修待辦實際的部署情境，不是在 Safari 分頁裡開 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif;
+    background: #1C1C1E; color: #fff;
+    min-height: 100dvh;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #8E8E93; font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: #2C2C2E; border-radius: 14px; padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 8px; color: #fff; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 14px; }
+  .row .label { color: #AEAEB2; }
+  .badge {
+    font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 8px;
+  }
+  .badge.ok { background: rgba(52,199,89,0.2); color: #34C759; }
+  .badge.no { background: rgba(255,59,48,0.2); color: #FF3B30; }
+  .badge.unknown { background: rgba(142,142,147,0.2); color: #AEAEB2; }
+  button {
+    width: 100%; padding: 16px; border: none; border-radius: 12px;
+    font-size: 17px; font-weight: 700; margin-top: 10px;
+    background: #0A84FF; color: #fff; -webkit-tap-highlight-color: transparent;
+  }
+  button:active { opacity: 0.7; }
+  button:disabled { background: #3A3A3C; color: #8E8E93; }
+  #transcript {
+    min-height: 60px; background: #1C1C1E; border-radius: 10px;
+    padding: 12px; font-size: 16px; margin-top: 10px; word-break: break-all;
+  }
+  #log {
+    font-family: monospace; font-size: 12px; color: #8E8E93;
+    white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto;
+  }
+  .status-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    background: #8E8E93; margin-right: 6px; vertical-align: middle;
+  }
+  .status-dot.listening { background: #0A84FF; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+</style>
+</head>
+<body>
+
+<h1>🎙️ 語音辨識測試頁</h1>
+<div class="sub">測試 Web Speech API 在「加入主畫面」後的獨立 PWA 模式下能不能用</div>
+
+<div class="card">
+  <h2>環境檢查</h2>
+  <div class="row"><span class="label">目前顯示模式</span><span class="badge unknown" id="displayMode">檢查中…</span></div>
+  <div class="row"><span class="label">SpeechRecognition API</span><span class="badge unknown" id="apiCheck">檢查中…</span></div>
+  <div class="row"><span class="label">頁面協定</span><span class="badge unknown" id="protoCheck">檢查中…</span></div>
+</div>
+
+<div class="card">
+  <h2><span class="status-dot" id="statusDot"></span><span id="statusText">尚未開始</span></h2>
+  <button id="startBtn" onclick="toggleListen()">開始語音辨識測試</button>
+  <div id="transcript">（辨識結果會顯示在這裡）</div>
+</div>
+
+<div class="card">
+  <h2>詳細記錄（回報結果時可以截圖這裡）</h2>
+  <div id="log"></div>
+</div>
+
+<script>
+  const logEl = document.getElementById('log');
+  function log(msg) {
+    const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+    logEl.textContent += `[${t}] ${msg}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(msg);
+  }
+
+  // ── 環境檢查 ──────────────────────────────
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  const displayModeEl = document.getElementById('displayMode');
+  displayModeEl.textContent = isStandalone ? '獨立 PWA (standalone)' : '瀏覽器分頁 (browser)';
+  displayModeEl.className = 'badge ' + (isStandalone ? 'ok' : 'unknown');
+  log('顯示模式：' + (isStandalone ? 'standalone（已加入主畫面開啟）' : 'browser（在瀏覽器分頁開啟）'));
+  log('User Agent: ' + navigator.userAgent);
+
+  const protoEl = document.getElementById('protoCheck');
+  const isSecure = window.isSecureContext;
+  protoEl.textContent = isSecure ? location.protocol + ' (安全)' : location.protocol + ' (不安全)';
+  protoEl.className = 'badge ' + (isSecure ? 'ok' : 'no');
+  log('isSecureContext：' + isSecure);
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const apiEl = document.getElementById('apiCheck');
+  if (SR) {
+    apiEl.textContent = '存在';
+    apiEl.className = 'badge ok';
+    log('window.webkitSpeechRecognition 存在，物件建立測試通過（但這不代表實際辨識會成功，還要看下面按鈕測試）');
+  } else {
+    apiEl.textContent = '不存在';
+    apiEl.className = 'badge no';
+    log('window.SpeechRecognition / webkitSpeechRecognition 都不存在——這個瀏覽器/模式下直接沒有這個 API');
+  }
+
+  // ── 實際測試 ──────────────────────────────
+  let recognition = null;
+  let listening = false;
+  const startBtn = document.getElementById('startBtn');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const transcriptEl = document.getElementById('transcript');
+
+  function toggleListen() {
+    if (!SR) {
+      log('無法測試：API 不存在');
+      alert('這個環境沒有 SpeechRecognition API，無法測試');
+      return;
+    }
+    if (listening) {
+      recognition.stop();
+      return;
+    }
+    try {
+      recognition = new SR();
+      recognition.lang = 'zh-TW';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        listening = true;
+        statusDot.classList.add('listening');
+        statusText.textContent = '聆聽中…請說話';
+        startBtn.textContent = '停止測試';
+        log('✅ onstart 觸發——麥克風權限通過、辨識引擎已啟動');
+      };
+      recognition.onresult = (e) => {
+        let text = '';
+        for (let i = 0; i < e.results.length; i++) {
+          text += e.results[i][0].transcript;
+        }
+        transcriptEl.textContent = text || '（收到結果，但內容是空的）';
+        log('📝 onresult：' + text);
+      };
+      recognition.onerror = (e) => {
+        log('❌ onerror：' + e.error + (e.message ? ' — ' + e.message : ''));
+        statusText.textContent = '發生錯誤：' + e.error;
+      };
+      recognition.onend = () => {
+        listening = false;
+        statusDot.classList.remove('listening');
+        statusText.textContent = '已停止';
+        startBtn.textContent = '開始語音辨識測試';
+        log('⏹️ onend 觸發');
+      };
+
+      log('嘗試呼叫 recognition.start() …');
+      recognition.start();
+    } catch (err) {
+      log('❌ 呼叫 start() 時直接拋出例外：' + (err && err.message || err));
+      alert('啟動失敗：' + (err && err.message || err));
+    }
+  }
+</script>
+</body>
+</html>
