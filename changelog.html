@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.268<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.269<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.269',
+  date: '2026-10',
+  notes: ['修正 v600.268 H7 可讀單檔導覽註解誤插在 style 標籤之前，導致 iPhone 將註解顯示成畫面文字並把 flex 版面推向右側的問題。導覽註解改放入 style 內；H5 第二輪、H6 音效與彈窗規則、資料、登入、Supabase、同步及其他操作邏輯均不變。']
+}, {
   v: 'v600.268',
   date: '2026-10',
   notes: ['UI／互動標準化 H5 第二輪：移除 2 條未使用的共用 CSS 與 2 段已失效歷史註解；所有函式、動畫、登入、同步、資料遷移及診斷保護均保留。', 'H6：開窗音效改為單次呼叫明確指定，移除全域暫存旗標；ERP、通用輸入與通用訊息視窗不再因非同步或巢狀流程影響其他視窗音效。H7：新增可讀單檔導覽及區塊界線，不搬動可執行內容、DOM 或外部資源。']
