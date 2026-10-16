@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.270<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.271<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.271',
+  date: '2026-10',
+  notes: ['修正測試版 v600.270 任務清單卡片左右出現額外留白、與正式版 v600.269 實機基準不一致的問題；任務卡片恢復貼齊清單左右邊界。上下卡片間距、圓角、逾期與分類色線、同客戶展開、顯示密度、排序、資料、登入、Supabase、同步及 ERP 流程均不變。']
+}, {
   v: 'v600.270',
   date: '2026-10',
   notes: ['頁面布局標準化 I1～I3：統一 iPhone 安全區與 Visual Viewport 計算；將側欄、分類列、新增鈕及頂部工具列尺寸整理為共用布局 token；傳統排序與路線排序的一般／緊湊尺寸改由共用密度 token 管理。既有畫面尺寸、自動緊湊 900 實體像素門檻、四段介面、滑動與下拉同步門檻、排序演算法、資料、登入、Supabase、同步及 ERP 流程均不變。']
