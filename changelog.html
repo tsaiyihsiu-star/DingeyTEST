@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.269<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.270<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.270',
+  date: '2026-10',
+  notes: ['頁面布局標準化 I1～I3：統一 iPhone 安全區與 Visual Viewport 計算；將側欄、分類列、新增鈕及頂部工具列尺寸整理為共用布局 token；傳統排序與路線排序的一般／緊湊尺寸改由共用密度 token 管理。既有畫面尺寸、自動緊湊 900 實體像素門檻、四段介面、滑動與下拉同步門檻、排序演算法、資料、登入、Supabase、同步及 ERP 流程均不變。']
+}, {
   v: 'v600.269',
   date: '2026-10',
   notes: ['修正 v600.268 H7 可讀單檔導覽註解誤插在 style 標籤之前，導致 iPhone 將註解顯示成畫面文字並把 flex 版面推向右側的問題。導覽註解改放入 style 內；H5 第二輪、H6 音效與彈窗規則、資料、登入、Supabase、同步及其他操作邏輯均不變。']
