@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.278<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.279<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.279',
+  date: '2026-10',
+  notes: ['第二批 iPhone PWA 驗收熱修：修正任務選單「聯絡／導航／資訊」在有聯絡資料時仍被集中 CSS 持續隱藏；路線排序拖曳不再於每次移動先清空位移，避免卡片快速閃爍；行事曆年月統一為 YYYY/MM 並維持單行；聯絡資訊檢視視窗改為由上往下切出。任務資料、聯絡資料、排序保存、登入、Supabase、同步及 v600.274～v600.278 既有成果不變。']
+}, {
   v: 'v600.278',
   date: '2026-10',
   notes: ['完成 UI／互動標準化階段 5D 行內清理：按主畫面／選單／行事曆、彈窗，以及設定／匯入／動態模板三個內部檢查點，將可安全判定的行內 style 與 onclick 一對一搬移至集中樣式與事件綁定；動態插值例外保留原狀。畫面、事件結果、資料、登入、Supabase、同步、離線流程、手勢與既有無障礙行為不變。']
