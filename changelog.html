@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.277<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.278<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.278',
+  date: '2026-10',
+  notes: ['完成 UI／互動標準化階段 5D 行內清理：按主畫面／選單／行事曆、彈窗，以及設定／匯入／動態模板三個內部檢查點，將可安全判定的行內 style 與 onclick 一對一搬移至集中樣式與事件綁定；動態插值例外保留原狀。畫面、事件結果、資料、登入、Supabase、同步、離線流程、手勢與既有無障礙行為不變。']
+}, {
   v: 'v600.277',
   date: '2026-10',
   notes: ['完成 UI／互動標準化階段 5C 減少動態效果：尊重系統 prefers-reduced-motion 設定；開啟時縮短自動動畫與轉場、停止持續旋轉或脈衝，並將同客戶展開的平滑捲動改為立即到位。關閉時維持原有動畫；手勢即時跟手、最終畫面狀態、資料、登入、Supabase、同步與離線流程不變。此版本合併 v600.274～v600.277 作為第一批聯合驗收候選。']
