@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.280<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.281<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.281',
+  date: '2026-10',
+  notes: ['第二批 iPhone PWA 實機驗收熱修：修正分類管理拖曳卡片在 transform 彈窗內使用錯誤座標基準，造成卡片跳到手指下方；並修正 ERP 保養、合約及聯絡資料查詢有結果後，匯入按鈕仍被 5D 集中樣式隱藏。查詢、匯入、資料寫入、同步、路線拖曳及既有功能不變。']
+}, {
   v: 'v600.280',
   date: '2026-10',
   notes: ['第二批 iPhone PWA 驗收第二次熱修：路線排序與分類管理排序均改用等高占位元素及脫離版面流的固定跟手卡片，拖曳期間不再反覆搬動原卡片，避免上下跳動；正常放開後才保存順序，touchcancel、切至背景或 pagehide 中斷時會還原且不寫入排序。任務與分類資料格式、登入、Supabase、同步內容、下拉同步門檻及 v600.274～v600.279 既有成果不變。']
