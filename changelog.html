@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.283<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.284<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.284',
+  date: '2026-10',
+  notes: ['修正 ERP 客戶聯絡資料快取漏讀 import_source，造成已完成認領的資料重新查詢時仍再次列為認領；現在會正確保留 ERP 來源並排除已完成項目。認領寫入同時檢查 Supabase 錯誤、實際更新資料列及來源值，零筆更新或寫入不完整不再誤報成功。ERP 查詢、客戶匹配、主從群組、新增、更新及衝突阻擋規則不變。']
+}, {
   v: 'v600.283',
   date: '2026-10',
   notes: ['修正 ERP 客戶聯絡資料預覽未可靠使用最新本地客戶與聯絡快取的問題：查詢後與實際匯入前都會先同步並刷新資料，再從原始 ERP 查詢結果完整重比。客戶編號精準對應；編號無法對應時僅允許正規化名稱唯一匹配；同名多筆、編號衝突或同一編號對應多筆時列為待確認並停止匯入。主從客戶群組與既有新增、更新、認領及排除規則維持不變。']
