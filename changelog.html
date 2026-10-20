@@ -16,12 +16,16 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.285<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.286<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
 const CHANGELOG = [{
+  v: 'v600.286',
+  date: '2026-10',
+  notes: ['修正 ERP 已刪除客戶重新匯入後仍留在「已停用的詞」：恢復客戶時會同時寫入 deleted:false 與 is_stop_word:false，並檢查 Supabase 回傳資料列及匯入後讀回狀態。對於先前已恢復但仍為停用狀態的 ERP 客戶，再次查詢會列出「恢復客戶狀態」，即使聯絡資料沒有差異也能由使用者確認解除停用；僅允許 ERP 編號精準匹配，或名稱唯一且無編號衝突時處理，衝突與不唯一情況仍阻擋匯入。']
+}, {
   v: 'v600.285',
   date: '2026-10',
   notes: ['修正 ERP 客戶聯絡資料新增客戶與新增／更新聯絡資料未檢查 Supabase 回傳錯誤及實際寫入結果，造成失敗仍顯示成功的問題；現在只有資料庫回傳正確資料列且完成後重新讀取驗證通過才計入成功。已刪除客戶及聯絡資料可在名稱、ERP 編號、群組、類型與來源唯一對應時恢復原資料列重新匯入，不另建重複資料；同名多筆、編號衝突、候選不唯一、零筆更新或部分失敗均停止並顯示原因。']
