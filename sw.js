@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // 宜修待辦 Supabase 世代 Service Worker（測試版 index.html 用）
 // v600.69: Stale-While-Revalidate（先舊後新）——解「長時間背景/導航後冷啟動變慢」。
 //          開 App 立刻用快取殼層顯示(秒開),同時背景抓新版存快取,新版下次開啟生效。
@@ -11,7 +11,7 @@
 //          網址完全一致，否則會快取到舊網址、離線時反而讀不到(取不到，不是壞掉，只是
 //          白白浪費這格快取)。之後升級 supabase-js 版本時，這裡跟 index.html 要一起改。
 // ============================================================
-const CACHE_NAME = 'SUPATESTtodo-v600.295';   // 每次改版必同步 bump
+const CACHE_NAME = 'SUPATESTtodo-v600.296';   // 每次改版必同步 bump
 // 程式殼層:SWR(先快取秒開,背景更新);首次無快取時走網路
 const SHELL_ASSETS = [
   './',
@@ -24,8 +24,8 @@ const SHELL_ASSETS = [
 const STATIC_ASSETS = [
   './icon.png'
 ];
-// 外部資源:非致命
-// v600 重要:supabase-js 必須快取——離線開 App 時認證閘才起得來(getSession 走本機)
+// 外部關鍵資源：supabase-js 必須和程式殼一起成功預快取。
+// v600.296：若 CDN 失敗，新的 Worker 不啟用，也不刪除仍可離線使用的舊快取。
 const EXTRA_ASSETS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js'
 ];
@@ -33,9 +33,8 @@ self.addEventListener('install', e => {
   self.skipWaiting();
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    // 預快取殼層+靜態(離線後盾+SWR 首屏);外部非致命
-    await cache.addAll(SHELL_ASSETS.concat(STATIC_ASSETS));
-    await Promise.allSettled(EXTRA_ASSETS.map(u => cache.add(u)));
+    // 預快取殼層、靜態與登入函式庫；全部成功才允許新版 Worker 安裝完成。
+    await cache.addAll(SHELL_ASSETS.concat(STATIC_ASSETS,EXTRA_ASSETS));
   })());
 });
 self.addEventListener('activate', e => {
@@ -113,4 +112,3 @@ self.addEventListener('fetch', e => {
     caches.match(req).then(r => r || fetch(req).catch(() => r || Response.error()))
   );
 });
-
