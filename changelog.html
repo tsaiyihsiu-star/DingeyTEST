@@ -16,11 +16,12 @@
 <main>
   <div class="top"><button class="back" type="button" id="backBtn">返回設定</button></div>
   <h1>版本更新紀錄</h1>
-  <div class="meta">紀錄版本：v600.315<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
+  <div class="meta">紀錄版本：v600.316<br>線上優先取得最新版；離線時顯示最後成功快取內容。</div>
   <div id="networkNotice" class="notice" hidden></div>
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
+const CHANGELOG_V600316 = [{v:'v600.316',date:'2026-11',notes:["修正客戶整理拆分時，畫面允許重新指定全部聯絡資料，但資料庫交易函式只接受原歸屬空白或異常資料，導致顯示「聯絡資料歸屬與目前群組不一致」。新版會依目前預覽的完整聯絡資料清單提交，允許重新指定本群組既有資料；外組 ID、非法客戶名稱、重複、缺少或多出的資料仍會整筆阻擋。"]}];
 const CHANGELOG_V600315 = [{v:'v600.315',date:'2026-11',notes:["修正客戶整理選擇「拆成獨立客戶」時，聯絡資料歸屬格式與資料庫交易函式不一致，導致顯示「聯絡資料歸屬格式不完整」而無法執行。新版會送出完整且排序一致的歸屬清單；缺少任何一筆歸屬仍會阻擋，不會部分寫入。"]}];
 const CHANGELOG_V600314 = [{v:'v600.314',date:'2026-11',notes:["修正客戶整理在帳號已完成遷移、裝置仍留有未提交舊待確認紀錄時被永久阻擋；現在會比對資料庫最後成功 request ID，確認不同且待確認紀錄已超過 2 分鐘後安全解除。若 request ID 相同、紀錄仍很新或證據不足，仍會阻擋重複操作。本版本不會自動執行客戶整理或修改資料。"]}];
 const CHANGELOG_V600313 = [{v:'v600.313',date:'2026-11',notes:["完整備份改為從 Supabase 取得權威快照，保存客戶資料列 ID、有效與停用別名、客戶遷移狀態，以及聯絡資料的 ERP／Excel 匯入來源。完整還原改為單一交易，任一資料失敗會整筆回滾，並用 request ID 與操作收據防止重複送出。","舊格式備份缺少新客戶架構必要欄位時，不再允許覆蓋客戶與聯絡資料；任務、分類等不受影響的項目仍可個別還原。","手動新增、從任務建立或自動補回新客戶時，會同步建立唯一群組 ID；恢復舊停用客戶若群組 ID 空白，也會一併補齊；既有空白群組鍵的舊客戶會以客戶名稱回退顯示，不再從客戶管理消失。","任務保存舊客戶別名時，正式客戶的任務數會正確計入；客戶遷移預覽與週期範本診斷也會把有效別名解析到正式客戶。"]}];
@@ -857,7 +858,7 @@ const CHANGELOG = [{v:'v600.303',date:'2026-10',notes:["修正客戶資料盤點
   notes: ['修正：新增客戶時若名稱和已停用的詞相同，現在會正確解除停用並同步雲端（以前重新整理後會被打回停用）。']
 }];
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
-function render(){document.getElementById('list').innerHTML=CHANGELOG_V600315.concat(CHANGELOG_V600314,CHANGELOG_V600313,CHANGELOG_V600312,CHANGELOG_V600311,CHANGELOG_LATEST,CHANGELOG).map(function(c){return '<article class="entry"><div class="ver">'+escapeHtml(c.v)+(c.date?' <span class="date">'+escapeHtml(c.date)+'</span>':'')+'</div><ul>'+c.notes.map(function(n){return '<li>'+escapeHtml(n)+'</li>';}).join('')+'</ul></article>';}).join('');}
+function render(){document.getElementById('list').innerHTML=CHANGELOG_V600316.concat(CHANGELOG_V600315,CHANGELOG_V600314,CHANGELOG_V600313,CHANGELOG_V600312,CHANGELOG_V600311,CHANGELOG_LATEST,CHANGELOG).map(function(c){return '<article class="entry"><div class="ver">'+escapeHtml(c.v)+(c.date?' <span class="date">'+escapeHtml(c.date)+'</span>':'')+'</div><ul>'+c.notes.map(function(n){return '<li>'+escapeHtml(n)+'</li>';}).join('')+'</ul></article>';}).join('');}
 function updateNetworkNotice(){const el=document.getElementById('networkNotice');if(navigator.onLine){el.hidden=true;el.textContent='';el.classList.remove('offline');}else{el.hidden=false;el.textContent='目前離線，顯示裝置最後成功下載的更新紀錄。';el.classList.add('offline');}}
 document.getElementById('backBtn').addEventListener('click',function(){if(history.length>1)history.back();else location.href='./index.html';});
 window.addEventListener('online',updateNetworkNotice);window.addEventListener('offline',updateNetworkNotice);render();updateNetworkNotice();
