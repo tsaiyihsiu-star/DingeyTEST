@@ -21,6 +21,7 @@
   <section id="list" aria-label="版本更新紀錄"></section>
 </main>
 <script>
+const CHANGELOG_V600319 = [{v:'v600.319',date:'2026-11',notes:["補強客戶整理安全邏輯：到場群組會真正套用所選唯一主客戶；後端會驗證全部待判斷群組決策均完整送達，缺少、多出或重複都整筆阻擋。","孤立聯絡資料、誤建客戶仍有聯絡資料，以及整理群組含同名已刪除或停用列時，均在寫入前阻擋。v600.319 RPC 未啟用時維持唯讀預覽，不提供執行按鈕。"]}];
 const CHANGELOG_V600318 = [{v:'v600.318',date:'2026-11',notes:["修正混淆建置將多段程式提前到頁面 DOM 完成前執行，造成行事曆元素尚未建立就發生錯誤，進而使左下分類、客戶、設定與同步四個按鈕沒有綁定點擊功能。新建置保留原始程式順序，並在行事曆 DOM 之後執行。"]}];
 const CHANGELOG_V600317 = [{v:'v600.317',date:'2026-11',notes:["修正新增、改指向或取消客戶別名時，資料庫交易函式的區域變數與欄位同名，導致顯示「column reference alias_name is ambiguous」。新版改用不會與資料表欄位衝突的變數名稱；別名衝突、目標客戶、重複送出與交易回滾防護維持不變。"]}];
 const CHANGELOG_V600316 = [{v:'v600.316',date:'2026-11',notes:["修正客戶整理拆分時，畫面允許重新指定全部聯絡資料，但資料庫交易函式只接受原歸屬空白或異常資料，導致顯示「聯絡資料歸屬與目前群組不一致」。新版會依目前預覽的完整聯絡資料清單提交，允許重新指定本群組既有資料；外組 ID、非法客戶名稱、重複、缺少或多出的資料仍會整筆阻擋。"]}];
@@ -860,7 +861,7 @@ const CHANGELOG = [{v:'v600.303',date:'2026-10',notes:["修正客戶資料盤點
   notes: ['修正：新增客戶時若名稱和已停用的詞相同，現在會正確解除停用並同步雲端（以前重新整理後會被打回停用）。']
 }];
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
-function render(){document.getElementById('list').innerHTML=CHANGELOG_V600318.concat(CHANGELOG_V600317,CHANGELOG_V600316,CHANGELOG_V600315,CHANGELOG_V600314,CHANGELOG_V600313,CHANGELOG_V600312,CHANGELOG_V600311,CHANGELOG_LATEST,CHANGELOG).map(function(c){return '<article class="entry"><div class="ver">'+escapeHtml(c.v)+(c.date?' <span class="date">'+escapeHtml(c.date)+'</span>':'')+'</div><ul>'+c.notes.map(function(n){return '<li>'+escapeHtml(n)+'</li>';}).join('')+'</ul></article>';}).join('');}
+function render(){document.getElementById('list').innerHTML=CHANGELOG_V600319.concat(CHANGELOG_V600318,CHANGELOG_V600317,CHANGELOG_V600316,CHANGELOG_V600315,CHANGELOG_V600314,CHANGELOG_V600313,CHANGELOG_V600312,CHANGELOG_V600311,CHANGELOG_LATEST,CHANGELOG).map(function(c){return '<article class="entry"><div class="ver">'+escapeHtml(c.v)+(c.date?' <span class="date">'+escapeHtml(c.date)+'</span>':'')+'</div><ul>'+c.notes.map(function(n){return '<li>'+escapeHtml(n)+'</li>';}).join('')+'</ul></article>';}).join('');}
 function updateNetworkNotice(){const el=document.getElementById('networkNotice');if(navigator.onLine){el.hidden=true;el.textContent='';el.classList.remove('offline');}else{el.hidden=false;el.textContent='目前離線，顯示裝置最後成功下載的更新紀錄。';el.classList.add('offline');}}
 document.getElementById('backBtn').addEventListener('click',function(){if(history.length>1)history.back();else location.href='./index.html';});
 window.addEventListener('online',updateNetworkNotice);window.addEventListener('offline',updateNetworkNotice);render();updateNetworkNotice();
